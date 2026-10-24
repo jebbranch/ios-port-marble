@@ -1,0 +1,77 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -138,14 +138,17 @@
+ 		    "shift=%u\n", apid, shift);
+ 		return 0;
+ 	}
+-	vm_offset_t va = ml_io_map(SP_CHNL_PA + ((vm_offset_t)apid << shift),
+-	    SP_CHNL_SLOT);
++	/* XNU maps 16 KiB pages: align the slot down and keep the offset. */
++	vm_offset_t pa = SP_CHNL_PA + ((vm_offset_t)apid << shift);
++	vm_offset_t base = pa & ~(vm_offset_t)0x3fffu;
++	unsigned delta = (unsigned)(pa - base);
++	vm_offset_t va = ml_io_map(base, 0x4000);
+ 	if (!va) {
+ 		printf("SWEET BATTERY: chnls map failed APID=%u shift=%u\n",
+ 		    apid, shift);
+ 		return 0;
+ 	}
+-	sp_chnl = va;
++	sp_chnl = va + delta;
+ 	sp_chnl_apid = apid;
+ 	sp_chnl_shift = shift;
+ 	return va;
+@@ -195,6 +198,19 @@
+ 		}
+ 	}
+ 	printf("SWEET BATTERY: ppid %#x absent from the APID map\n", ppid);
++}
++
++/* Owner (write EE) of a PPID; 0xff when the PPID is not mapped. */
++static unsigned
++sp_ppid_owner(unsigned ppid)
++{
++	for (unsigned i = 0; i < sp_count; ++i) {
++		uint32_t map = sp_rd(sp_core, 0x2000u + 4u * i);
++		if (map && ((map >> 8) & 0xfffu) == ppid) {
++			return sp_rd(sp_cfg, 4u * i) & 7u;
++		}
++	}
++	return 0xffu;
+ }
+ 
+ int
+@@ -407,6 +423,18 @@
+ 	if (apid == SP_NO_APID || sp_poisoned[apid]) {
+ 		IOLockUnlock(sp_lock);
+ 		return -1;
++	}
++	/* Touching the chnls slot of another EE's APID is an external abort,
++	 * not a DENIED status, so refuse before mapping anything. */
++	{
++		unsigned owner = sp_ppid_owner((sid << 8) | peripheral);
++
++		if (owner != 0) {
++			printf("SWEET BATTERY: write refused ppid=%#x owner=%u\n",
++			    (sid << 8) | peripheral, owner);
++			IOLockUnlock(sp_lock);
++			return -1;
++		}
+ 	}
+ 
+ 	/* The target must read the same through both windows. */
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -989,8 +989,10 @@
+ 	if (sweet_spmi_read(3, 0xf063, &v) == 0) {
+ 		g_hap_wr(0xf063, v & ~1u, "autores off");
+ 	}
+-	if (sweet_spmi_read(3, 0xf246, &v) == 0 && !(v & 0x80u)) {
+-		g_hap_wr(0xf246, v | 0x80u, "boost on");
++	if (sweet_spmi_read(3, 0xf246, &v) == 0) {
++		/* hBoost is owned by EE3; its chnls slot aborts, and the PMIC
++		 * firmware normally leaves the rail on for the charger. */
++		printf("SWEET HAP: boost vreg=%#x (owner 3, read only)\n", v);
+ 	}
+ 	if (sweet_spmi_read(3, 0xf068, &v) == 0) {
+ 		g_hap_wr(0xf068, v | 1u, "vreg ready");
