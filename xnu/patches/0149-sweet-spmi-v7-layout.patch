@@ -1,0 +1,84 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -2,11 +2,13 @@
+  * SPMI access for the battery, the PMK8350 RTC (SID 0, 0x61xx) and the
+  * PM8350B haptics engine (SID 3, 0xf0xx..0xf2xx).
+  *
+- * The live DT describes one PMIC arbiter:
++ * The live DT describes one PMIC arbiter and it reports version 0x70000000:
+  *   cnfg 0x0c42d000, core 0x0c400000, chnls 0x0c500000, obsrvr 0x0c440000
+- * sweet_keys.c proved the observer layout on this SoC (0x80 bytes per
+- * APID, APID map at core+0x900); the stride is still checked against the
+- * haptics revision byte because a wrong one would read an unrelated slot.
++ * v7 layout (drivers/spmi/spmi-pmic-arb.c): APID map at core+0x2000,
++ * ownership at cnfg+4*apid, observer slot stride 0x20, chnls stride 0x1000.
++ * sweet_keys.c still uses the v5 offsets (0x900 / cnfg+0x700 / 0x80) and
++ * only appears to work because those slots happen to contain plausible
++ * values; do not copy it for new peripherals.
+  *
+  * Writes go through the separate "chnls" window.  Its per-APID stride
+  * differs between arbiter generations (0x1000 or 0x10000), so before the
+@@ -46,8 +48,8 @@
+ static IOLock *sp_lock;
+ static unsigned sp_count;
+ static bool sp_attempted, sp_ready;
+-/* Observer bytes per APID: 0x80 (proven by keys) or 0x20. */
+-static unsigned sp_obs_stride = 0x80u;
++/* Observer bytes per APID on this arbiter (v7): 0x20. */
++static unsigned sp_obs_stride = 0x20u;
+ /* Chosen "chnls" per-APID stride exponent: 12 or 16, 0 until validated. */
+ static unsigned sp_rw_shift;
+ /* A timed-out command may complete late: never reuse that lane this boot. */
+@@ -69,11 +71,12 @@
+ {
+ 	uint16_t found = SP_NO_APID;
+ 	for (unsigned i = 0; i < sp_count; ++i) {
+-		uint32_t map = sp_rd(sp_core, 0x900u + 4u * i);
++		/* v7: APID map at core+0x2000, owner table at cnfg+0. */
++		uint32_t map = sp_rd(sp_core, 0x2000u + 4u * i);
+ 		if (!map || ((map >> 8) & 0xfffu) != ppid) {
+ 			continue;
+ 		}
+-		unsigned owner = sp_rd(sp_cfg, 0x700u + 4u * i) & 7u;
++		unsigned owner = sp_rd(sp_cfg, 4u * i) & 7u;
+ 		if (found == SP_NO_APID || owner == 0) {
+ 			found = (uint16_t)i;
+ 		}
+@@ -183,9 +186,9 @@
+ sp_dump_ppid(uint16_t ppid)
+ {
+ 	for (unsigned i = 0; i < sp_count; ++i) {
+-		uint32_t map = sp_rd(sp_core, 0x900u + 4u * i);
++		uint32_t map = sp_rd(sp_core, 0x2000u + 4u * i);
+ 		if (map && ((map >> 8) & 0xfffu) == ppid) {
+-			unsigned owner = sp_rd(sp_cfg, 0x700u + 4u * i) & 7u;
++			unsigned owner = sp_rd(sp_cfg, 4u * i) & 7u;
+ 			printf("SWEET BATTERY: ppid %#x apid=%u map=%#x "
+ 			    "owner=%u\n", ppid, i, map, owner);
+ 			return;
+@@ -224,21 +227,14 @@
+ 	sp_ready = true;
+ 
+ 	/*
+-	 * Confirm the observer stride with the haptics revision byte.  A wrong
+-	 * stride addresses another slot and will not look like revision 1..4.
++	 * Arbiter v7: observer stride 0x20, APID map at core+0x2000 and the
++	 * owner table at cnfg+0.  Read the haptics revision once as a sanity
++	 * check; it should be 1..5 (HAP520 reports 2).
+ 	 */
+ 	uint16_t apid = sp_find_apid(SP_HAP_PPID);
+ 	uint8_t rev = 0;
+ 	if (apid != SP_NO_APID) {
+-		if (!(sp_obs_read_stride(apid, SP_HAP_REV, 0x80u, &rev) == 0 &&
+-		    rev >= 1 && rev <= 5)) {
+-			uint8_t alt = 0;
+-			if (sp_obs_read_stride(apid, SP_HAP_REV, 0x20u, &alt) == 0 &&
+-			    alt >= 1 && alt <= 5) {
+-				sp_obs_stride = 0x20u;
+-				rev = alt;
+-			}
+-		}
++		(void)sp_obs_read_stride(apid, SP_HAP_REV, sp_obs_stride, &rev);
+ 	}
+ 	printf("SWEET BATTERY: SPMI arb=%#x APIDs=%u obs-stride=%#x "
+ 	    "hap-rev=%#x\n", arb_version, sp_count, sp_obs_stride, rev);
