@@ -1,0 +1,56 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -249,6 +249,19 @@
+ 			sp_dump_ppid(diag[i]);
+ 		}
+ 	}
++	{
++		/* The GPIO subtype register is a known constant (0x11).  The
++		 * observer stride that reads it correctly is the one to use. */
++		uint16_t gapid = sp_find_apid(0x4c1u);
++		uint8_t v20 = 0, v80 = 0;
++
++		if (gapid != SP_NO_APID) {
++			(void)sp_obs_read_stride(gapid, 0xc105u, 0x20u, &v20);
++			(void)sp_obs_read_stride(gapid, 0xc105u, 0x80u, &v80);
++			printf("SWEET BATTERY: gpio subtype stride20=%#x "
++			    "stride80=%#x (want 0x11)\n", v20, v80);
++		}
++	}
+ 	return 0;
+ }
+ 
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -956,9 +956,18 @@
+ 	/* REVISION1 (0x00) reads 0 on this HAP520; the hardware type is in
+ 	 * REVISION2 (0x01), where 2 means HAP520. */
+ 	(void)sweet_spmi_read(3, 0xf000, &rev1);
+-	if (sweet_spmi_read(3, 0xf001, &rev) != 0 || rev < 1 || rev > 5) {
+-		printf("SWEET HAP: no cfg revision (rev1=%#x rev2=%#x)\n",
+-		    rev1, rev);
++	for (unsigned i = 0; i < 3; i++) {
++		uint8_t r = 0;
++
++		if (sweet_spmi_read(3, 0xf001, &r) == 0 && r >= 1 && r <= 5) {
++			rev = r;
++			break;
++		}
++		printf("SWEET HAP: rev2 try %u -> %#x\n", i, r);
++		delay(2000);
++	}
++	if (rev == 0) {
++		printf("SWEET HAP: no cfg revision (rev1=%#x)\n", rev1);
+ 		return;
+ 	}
+ 	(void)sweet_spmi_read(3, 0xf101, &ptn);
+@@ -2262,8 +2271,8 @@
+ 	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
+ 
+ 	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
+-	g_rtc_set_from_pmic();
+ 	g_haptics_try();
++	g_rtc_set_from_pmic();
+ 	g_spmi_dump("rtc", 0, 0x6100, 16);
+ 	g_spmi_dump("hap", 3, 0xf000, 16);
+ 	g_spmi_dump("hap", 3, 0xf100, 16);
