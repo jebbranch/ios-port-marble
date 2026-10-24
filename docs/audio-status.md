@@ -237,3 +237,37 @@ STATUS.md  本文件
   vendor-graph / sweetlog），README 重写为“克隆→构建→部署”全流程
 - recovery（TWRP）adbd 为 root，XNU 结束后可直接 dd userdata 尾部，
   不必等 Android 启动
+
+## 0137–0139：SHM_MAP 的失败形态已经清楚
+- 高位地址（XNU 只能分配到的 ~35 GB）：APM 立即回 `GPR_BASIC_RSP_RESULT`
+  `status=1`（拒绝）
+- 厂商自己的 DMA 地址 0x1FFE8000、SMEM 0x80900000、SPU 共享区
+  0x8BB80000/0x8BBE0000：**完全没有响应**，但前后 SPF 状态查询都正常
+  → APM 没有重启，是 map 请求本身卡住
+- 因此不是端口、令牌或报文格式的问题；剩下两个方向：
+  1. AP 侧需要先建立 LPASS 的 SMMU/上下文（XNU 没有 SMMU 驱动）；
+  2. 调用顺序要按厂商来（厂商在 GRAPH_OPEN 前映射 PCM 缓冲）
+
+## 0140：SMMU 现场与侧线（ring-run33）
+- `apps_smmu @0x15000000` 可读：IDR0 `0x00200406`，+0x10 `0x0000001c`
+- **`lpass_tbu @0x151e9000` 一读就 fault**：XNU 不能直接访问 TBU 寄存器，
+  日志停在那一行，后面的 GLINK 初始化没有执行
+- 同时发现侧线（RTC/触觉）**从未真正工作**：`sweet_spmi.c` 仍在用 0093
+  之前的旧基址，init 读到 `arb=0x08000100 APIDs=0`，所有 SPMI 读都失败
+- 现场 DT 的正确窗口：`cnfg 0x0c42d000, core 0x0c400000,
+  chnls 0x0c500000, obsrvr 0x0c440000`；observer 每 APID 0x80 字节
+  （keys 驱动已经用这个布局工作）
+
+## 设备内核版本
+- 本机 Android 内核是 **5.10**（不是 5.15）。厂商参考源码用
+  `MiCode/Xiaomi_Kernel_OpenSource` 的 **`marble-s-oss`** 分支；
+  5.15 的 msm 代码只能当旁证。
+
+## 0141–0142：RTC 与触觉
+- 0141：修正 SPMI 基址；读 PMK8350 `0x6148`（4 字节小端 Unix 秒），
+  值在 2020–2050 才调用 `clock_set_calendar_microtime()`
+- 0141：PM8350B（HAP520）直驱：VMAX 3600 mV、sine、
+  T_LRA=5882 us、DIRECT_PLAY 满幅 300 ms
+- 0142：写通道（chnls）步长先用**触觉 revision 字节**验证，
+  且每次写都要求目标寄存器经 observer 与 chnls 读到相同值，
+  否则一个字节都不写（避免错误步长误写其他 PMIC 外设）
