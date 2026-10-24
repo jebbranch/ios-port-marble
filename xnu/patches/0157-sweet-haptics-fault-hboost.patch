@@ -1,0 +1,62 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -291,7 +291,7 @@
+ 	    peripheral == 0x12 || peripheral == 0x13 || peripheral == 0x48 ||
+ 	    peripheral == 0x61)) ||
+ 	    (sid == 3 && (peripheral == 0xf0 || peripheral == 0xf1 ||
+-	    peripheral == 0xf2)))) {
++	    peripheral == 0xf2 || peripheral == 0x9d)))) {
+ 		return -1;
+ 	}
+ 	IOLockLock(sp_lock);
+@@ -426,7 +426,7 @@
+ 	if (!sp_ready || !buf || len < 1 || len > 4 || sid > 15 ||
+ 	    addr > 0xffffu ||
+ 	    !((sid == 3 && (peripheral == 0xf0 || peripheral == 0xf1 ||
+-	    peripheral == 0xf2)) ||
++	    peripheral == 0xf2 || peripheral == 0x9d)) ||
+ 	    (sid == 0 && peripheral == 0x61))) {
+ 		return -1;
+ 	}
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1007,14 +1007,36 @@
+ 	if (sweet_spmi_read(3, 0xf063, &v) == 0) {
+ 		g_hap_wr(0xf063, v & ~1u, "autores off");
+ 	}
++	/*
++	 * hBoost lives on the PM8350B's hap_cfg SDAM (sdam@9d00 in the live
++	 * DT, phandle 0x5e2).  The charger firmware asks the PBS for the rail
++	 * by writing PBS_ARG 0x42 = 1 and then starting it with PBS_TRIG
++	 * 0xe5.  The owner guard refuses the store when another execution
++	 * environment owns this APID, so this cannot disturb the charger.
++	 */
+ 	if (sweet_spmi_read(3, 0xf246, &v) == 0) {
+-		/* hBoost is owned by EE3; its chnls slot aborts, and the PMIC
+-		 * firmware normally leaves the rail on for the charger. */
+-		printf("SWEET HAP: boost vreg=%#x (owner 3, read only)\n", v);
++		printf("SWEET HAP: boost vreg=%#x\n", v);
++		if ((v & 1u) == 0) {
++			uint8_t on = 1;
++			int r1 = sweet_spmi_write(3, 0x9d42, &on, 1);
++			int r2 = 0;
++
++			if (r1 == 0) {
++				r2 = sweet_spmi_write(3, 0x9de5, &on, 1);
++			}
++			printf("SWEET HAP: hboost trigger rc=%d/%d\n", r1, r2);
++			delay(20000);
++			if (sweet_spmi_read(3, 0xf246, &v) == 0) {
++				printf("SWEET HAP: boost vreg now=%#x\n", v);
++			}
++		}
+ 	}
+ 	if (sweet_spmi_read(3, 0xf068, &v) == 0) {
+ 		g_hap_wr(0xf068, v | 1u, "vreg ready");
+ 	}
++	/* The vendor's enable path clears the latched SC / auto-res / hBoost
++	 * ready faults before every play; without it PLAY can be ignored. */
++	g_hap_wr(0xf066, 0x07, "fault clear");
+ 	g_hap_wr(0xf046, 0x80, "enable");
+ 	delay(2000);
+ 	g_hap_wr(0xf04c, 0x81, "play");
