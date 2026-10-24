@@ -1,0 +1,15 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1667,7 +1667,11 @@
+ 	 * touches no data.  The SPF-state queries around it reveal whether
+ 	 * an illegal map restarts the ADSP. */
+ 	g_apm_state_query_sync("before_map");
+-	(void)g_apm_map_probe(0x1ffe8000u, 0u, 0x5000u, "vendor_pa");
++	/* Regions the bootloader already mapped for the ADSP: SMEM (GLINK
++	 * lives here) and the two SPU shared buffers.  Mapping only. */
++	(void)g_apm_map_probe(0x80900000u, 0u, 0x4000u, "smem");
++	(void)g_apm_map_probe(0x8bb80000u, 0u, 0x4000u, "spu_tz");
++	(void)g_apm_map_probe(0x8bbe0000u, 0u, 0x4000u, "spu_modem");
+ 	g_apm_state_query_sync("after_map");
+ 	if (g_apm_shm_map(0x2002u) != 0 || g_shm_va == 0 || g_shm_pa == 0) {
+ 		printf("SWEET GLINK: pcm: no shared memory, tone skipped\n");
