@@ -1,0 +1,57 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -486,6 +486,26 @@
+ 		    *(volatile uint32_t *)v,
+ 		    *(volatile uint32_t *)(v + 4) & 1u);
+ 	}
++	sweet_log_sync();
++}
++
++/* Give both amps a defined reset edge, then log every control pad so a dead
++ * rail or a stuck reset is visible before the first transfer. */
++static void
++se15_amp_pins(void)
++{
++	static const uint32_t rst[2] = { 0x0f101000u, 0x0f178000u };
++	static const uint32_t aux[2] = { 0x0f134000u, 0x0f158000u };
++
++	for (int i = 0; i < 2; i++) {
++		sw_gpio_drive(rst[i], false);
++		delay(2);
++		sw_gpio_drive(rst[i], true);
++	}
++	delay(10);
++	printf("SWEET I2C: rstA=%d rstB=%d spksw=%d irq=%d\n",
++	    sw_gpio_read_level(rst[0]), sw_gpio_read_level(rst[1]),
++	    sw_gpio_read_level(aux[0]), sw_gpio_read_level(aux[1]));
+ 	sweet_log_sync();
+ }
+ 
+@@ -503,6 +523,7 @@
+ 		return false;
+ 	}
+ 	se15_pins();
++	se15_amp_pins();
+ 	fw = se15_rd(SE_FW);
+ 	tx = se15_rd(SE_HW_TX);
+ 	rx = se15_rd(SE_HW_RX);
+@@ -638,12 +659,15 @@
+ se15_aw_read(uint8_t addr, uint8_t reg, uint16_t *out)
+ {
+ 	uint8_t b[2] = { 0, 0 };
++	int r;
+ 
+-	if (se15_msg(addr, &reg, 1, NULL, 0, true) != 0) {
+-		return -1;
++	r = se15_msg(addr, &reg, 1, NULL, 0, true);
++	if (r != 0) {
++		return r;
+ 	}
+-	if (se15_msg(addr, NULL, 0, b, 2, false) != 0) {
+-		return -1;
++	r = se15_msg(addr, NULL, 0, b, 2, false);
++	if (r != 0) {
++		return r;
+ 	}
+ 	*out = (uint16_t)(((uint16_t)b[0] << 8) | b[1]);
+ 	return 0;
