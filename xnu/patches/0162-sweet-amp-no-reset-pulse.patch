@@ -1,0 +1,78 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -133,9 +133,11 @@
+ 	uint32_t off = SW_GPIO_IO(SW_I2C_SDA);
+ 
+ 	if (high) {
+-		/* open-drain high: let the external pull-up do the work */
+-		sw_wr(off, sw_rd(off) | 2u);
++		/* Open-drain high: release the pin (input + pull-up) *before*
++		 * touching the output bit.  Driving high in push-pull mode while
++		 * a slave pulls ACK low would fight the slave. */
+ 		sw_gpio_cfg(SW_I2C_SDA, 3, false);
++		sw_wr(off, sw_rd(off) | 2u);
+ 	} else {
+ 		sw_wr(off, sw_rd(off) & ~2u);
+ 		sw_gpio_cfg(SW_I2C_SDA, 0, true);
+@@ -374,15 +376,23 @@
+ 
+ 	int found;
+ 
+-	/* Vendor sequence (disassembled from aw882xx_hw_reset): raw 0, delay,
+-	 * raw 1, delay.  The chip stays out of reset at the high level. */
+-	sw_gpio_drive(SW_AMP_RST_A_PA, false);
+-	sw_gpio_drive(SW_AMP_RST_B_PA, false);
+-	delay(2000);   /* the vendor msleep()s: delay() here is microseconds */
+-	sw_gpio_drive(SW_AMP_RST_A_PA, true);
+-	sw_gpio_drive(SW_AMP_RST_B_PA, true);
+-	delay(10000);  /* let the chip bring its I2C block up before the scan */
+-	printf("SWEET I2C: resets pulsed low->high\n");
++	/*
++	 * The vendor's aw882xx_hw_reset() in this build is a no-op: its GPIO
++	 * code is commented out ("reset is not available").  Android therefore
++	 * never pulses these lines, and the chip answers I2C in whatever state
++	 * the boot chain left it.  Never pulse a running chip here either: only
++	 * release a line that is actually held low, then leave it high.
++	 */
++	if (sw_gpio_read_level(SW_AMP_RST_A_PA) == 0) {
++		sw_gpio_drive(SW_AMP_RST_A_PA, true);
++	}
++	if (sw_gpio_read_level(SW_AMP_RST_B_PA) == 0) {
++		sw_gpio_drive(SW_AMP_RST_B_PA, true);
++	}
++	delay(20000);  /* let the chips settle before the first address */
++	printf("SWEET I2C: resets released (A=%d B=%d)\n",
++	    sw_gpio_read_level(SW_AMP_RST_A_PA),
++	    sw_gpio_read_level(SW_AMP_RST_B_PA));
+ 
+ 	/* Level check: with the pin driven, the IO register should follow
+ 	 * the output.  A stubborn 1 while driving low means the line is
+@@ -399,6 +409,28 @@
+ 		    (int)(sw_rd(SW_GPIO_IO(SW_I2C_SDA)) & 1u));
+ 	}
+ 
++	/* Prove the clock line actually moves: drive it low and high and read
++	 * the pad back.  A stuck 1 while driven low means the pin is not ours
++	 * (or the QUP still owns it). */
++	sw_gpio_cfg(SW_I2C_SCL, 0, true);
++	sw_scl(0);
++	delay(200);
++	printf("SWEET I2C: scl driven low reads %d\n",
++	    (int)(sw_rd(SW_GPIO_IO(SW_I2C_SCL)) & 1u));
++	sw_scl(1);
++	delay(200);
++	printf("SWEET I2C: scl high reads %d\n",
++	    (int)(sw_rd(SW_GPIO_IO(SW_I2C_SCL)) & 1u));
++
++	/* Recover a bus left mid-transfer by the previous OS: nine clocks. */
++	for (int i = 0; i < 9; i++) {
++		sw_scl(0);
++		sw_i2c_delay();
++		sw_scl(1);
++		sw_i2c_delay();
++	}
++	sw_i2c_stop();
++
+ 	sw_i2c_pins_up();
+ 	printf("SWEET I2C: bus idle, sda=%d\n", sw_sda_read());
+ 	found = sw_i2c_scan("released");
