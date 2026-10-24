@@ -1,0 +1,12 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -292,7 +292,8 @@
+ 	unsigned peripheral = addr >> 8;
+ 	if (!sp_ready || !buf || len < 1 || len > 4 || sid > 15 ||
+ 	    addr > 0xffffu ||
+-	    !((sid == 3 && (peripheral == 0xf0 || peripheral == 0xf2)) ||
++	    !((sid == 3 && (peripheral == 0xf0 || peripheral == 0xf1 ||
++	    peripheral == 0xf2)) ||
+ 	    (sid == 0 && peripheral == 0x61))) {
+ 		return -1;
+ 	}
