@@ -1,0 +1,122 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -259,7 +259,8 @@
+ 	{
+ 		/* PON and GPIO are known-good; the rest are the ones we need. */
+ 		static const uint16_t diag[] = {
+-			0x008u, 0x4c1u, 0x061u, 0x3f0u, 0x3f1u, 0x3f2u
++			0x008u, 0x4c1u, 0x061u, 0x3f0u, 0x3f1u, 0x3f2u,
++			0x319u, 0x071u, 0x07du, 0x09du
+ 		};
+ 		for (unsigned i = 0; i < sizeof(diag) / sizeof(diag[0]); i++) {
+ 			sp_dump_ppid(diag[i]);
+@@ -380,9 +381,19 @@
+ 	uint16_t apid = sp_find_apid(SP_HAP_PPID);
+ 	uint8_t want = 0, got = 0;
+ 
+-	if (apid == SP_NO_APID || sp_poisoned[apid] ||
+-	    sp_obs_read(apid, SP_HAP_REV + 1u, &want) != 0 ||
+-	    want < 1 || want > 5) {
++	if (apid == SP_NO_APID || sp_poisoned[apid]) {
++		return false;
++	}
++	/* First reads on a slot are often stale; retry a few times. */
++	for (unsigned t = 0; t < 3; t++) {
++		want = 0;
++		if (sp_obs_read(apid, SP_HAP_REV + 1u, &want) == 0 &&
++		    want >= 1 && want <= 5) {
++			break;
++		}
++		delay(1000);
++	}
++	if (want < 1 || want > 5) {
+ 		printf("SWEET BATTERY: no haptics ID for RW probe (rev=%#x)\n",
+ 		    want);
+ 		return false;
+@@ -391,15 +402,20 @@
+ 	 * chnls is 4 MiB.  768 APIDs at 0x10000 each would need 48 MiB, so the
+ 	 * 0x1000 slot stride is the only layout this arbiter can be using.
+ 	 */
+-	if (!sp_chnl_read(apid, SP_HAP_REV + 1u, 12, &got) || got != want) {
+-		printf("SWEET BATTERY: RW slot not verified (want=%02x "
+-		    "got=%02x)\n", want, got);
+-		return false;
++	for (unsigned t = 0; t < 3; t++) {
++		got = 0;
++		if (sp_chnl_read(apid, SP_HAP_REV + 1u, 12, &got) &&
++		    got == want) {
++			sp_rw_shift = 12;
++			printf("SWEET BATTERY: RW slot verified at stride %#x\n",
++			    1u << sp_rw_shift);
++			return true;
++		}
++		delay(1000);
+ 	}
+-	sp_rw_shift = 12;
+-	printf("SWEET BATTERY: RW slot verified at stride %#x\n",
+-	    1u << sp_rw_shift);
+-	return true;
++	printf("SWEET BATTERY: RW slot not verified (want=%02x got=%02x)\n",
++	    want, got);
++	return false;
+ }
+ 
+ int
+@@ -440,9 +456,19 @@
+ 	/* The target must read the same through both windows. */
+ 	{
+ 		uint8_t want = 0, got = 0;
+-		if (sp_obs_read(apid, addr, &want) != 0 ||
+-		    !sp_chnl_read(apid, addr, sp_rw_shift, &got) ||
+-		    want != got) {
++		bool ok = false;
++
++		for (unsigned t = 0; t < 3 && !ok; t++) {
++			want = got = 0;
++			if (sp_obs_read(apid, addr, &want) == 0 &&
++			    sp_chnl_read(apid, addr, sp_rw_shift, &got) &&
++			    want == got) {
++				ok = true;
++			} else {
++				delay(1000);
++			}
++		}
++		if (!ok) {
+ 			printf("SWEET BATTERY: RW target mismatch sid=%u "
+ 			    "per=%#x (want=%02x got=%02x), not written\n",
+ 			    sid, peripheral, want, got);
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -904,6 +904,24 @@
+ }
+ 
+ /*
++ * Set the wall clock from sweettime=<unix seconds> in the boot args.  The
++ * image is built on the host, so the value is accurate to boot latency and
++ * does not depend on the PMIC RTC's epoch or access rights.
++ */
++static void
++g_clock_from_bootarg(void)
++{
++	int secs = 0;
++
++	if (PE_parse_boot_argn("sweettime", &secs, sizeof(secs)) &&
++	    secs > 1577836800) {
++		clock_set_calendar_microtime((clock_sec_t)secs, 0);
++		printf("SWEET RTC: clock set from sweettime=%d\n", secs);
++		sweet_log_sync();
++	}
++}
++
++/*
+  * PMK8350 RTC (SID 0, reg 0x6148): four little-endian bytes of Unix time.
+  * Only used when the value is plausible, so a broken read can never move
+  * the kernel clock to a random date.
+@@ -2273,6 +2291,7 @@
+ 	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
+ 
+ 	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
++	g_clock_from_bootarg();
+ 	g_haptics_try();
+ 	g_rtc_set_from_pmic();
+ 	g_spmi_dump("rtc", 0, 0x6100, 16);
