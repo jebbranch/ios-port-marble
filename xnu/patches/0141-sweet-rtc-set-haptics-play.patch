@@ -1,0 +1,359 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -1,9 +1,18 @@
+ /*
+- * Battery-only adaptation of input/sweet_keys.c, observer EXT_READL.
+- * PMIC READ ONLY. The only MMIO store issues a one-byte read command.
+- * No interrupt clear, peripheral enable, charger config, or PMIC writes.
+- * Init is serialized by the single built-in SweetBattery personality.
+- * Battery APIDs are disjoint from the existing keys' 008/4c1 APIDs.
++ * SPMI access for the battery, the PMK8350 RTC (SID 0, 0x61xx) and the
++ * PM8350B haptics engine (SID 3, 0xf0xx..0xf2xx).
++ *
++ * The live DT describes one PMIC arbiter:
++ *   cnfg 0x0c42d000, core 0x0c400000, chnls 0x0c500000, obsrvr 0x0c440000
++ * sweet_keys.c proved the observer layout on this SoC (0x80 bytes per
++ * APID, APID map at core+0x900).  Writes must go through the separate
++ * "chnls" window; its per-APID stride differs between arbiter generations
++ * (0x1000 or 0x10000), so the first write validates the slot by reading the
++ * target register back through that window and comparing it with the
++ * observer value.  If the two agree the write is issued; otherwise nothing
++ * is written.  This keeps a wrong stride from touching the wrong slave.
++ *
++ * Writes are restricted to the RTC control block and the haptics blocks.
+  */
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+ #include <sys/param.h>
+@@ -14,17 +23,22 @@
+ 
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ 
+-#define SP_CORE_PA 0x0c440000u
+-#define SP_OBS_PA  0x0e600000u
+-#define SP_CFG_PA  0x0c40a000u
++#define SP_CORE_PA 0x0c400000u
++#define SP_OBS_PA  0x0c440000u
++#define SP_CFG_PA  0x0c42d000u
++#define SP_CHNL_PA 0x0c500000u
++#define SP_CHNL_SZ 0x00400000u
+ #define SP_NO_APID 0xffffu
++#define SP_MAX_APID 1024u
+ 
+-static vm_offset_t sp_core, sp_obs, sp_cfg;
++static vm_offset_t sp_core, sp_obs, sp_cfg, sp_chnl;
+ static IOLock *sp_lock;
+ static unsigned sp_count;
+ static bool sp_attempted, sp_ready;
++/* Chosen "chnls" per-APID stride exponent: 12 or 16, 0 until validated. */
++static unsigned sp_rw_shift;
+ /* A timed-out command may complete late: never reuse that lane this boot. */
+-static bool sp_poisoned[512];
++static bool sp_poisoned[SP_MAX_APID];
+ 
+ static uint32_t
+ sp_rd(vm_offset_t base, unsigned off)
+@@ -60,25 +74,27 @@
+ 	sp_attempted = true;
+ 	sp_lock = IOLockAlloc();
+ 	if (!sp_lock) {
++		printf("SWEET BATTERY: no SPMI lock\n");
+ 		return -1;
+ 	}
+ 	sp_core = ml_io_map(SP_CORE_PA, 0x2000);
+ 	sp_cfg = ml_io_map(SP_CFG_PA, 0x1000);
+-	sp_obs = ml_io_map(SP_OBS_PA, 0x10000); /* EE 0, 512 * 0x80 */
+-	if (!sp_core || !sp_cfg || !sp_obs) {
++	sp_obs = ml_io_map(SP_OBS_PA, 0x80000);
++	sp_chnl = ml_io_map(SP_CHNL_PA, SP_CHNL_SZ);
++	if (!sp_core || !sp_cfg || !sp_obs || !sp_chnl) {
+ 		printf("SWEET BATTERY: SPMI mapping failed\n");
+ 		return -1;
+ 	}
+ 	uint32_t arb_version = sp_rd(sp_core, 0);
+ 	sp_count = sp_rd(sp_core, 4) & 0x7ffu;
+-	if (arb_version < 0x50000000u || arb_version >= 0x70000000u ||
+-	    !sp_count || sp_count > 512) {
++	if (arb_version < 0x50000000u || arb_version >= 0x80000000u ||
++	    !sp_count || sp_count > SP_MAX_APID) {
+ 		printf("SWEET BATTERY: unsupported SPMI arb=%#x APIDs=%u\n",
+ 		    arb_version, sp_count);
+ 		return -1;
+ 	}
+ 	sp_ready = true;
+-	printf("SWEET BATTERY: SPMI arb=%#x APIDs=%u, observer reads only\n",
++	printf("SWEET BATTERY: SPMI arb=%#x APIDs=%u\n",
+ 	    arb_version, sp_count);
+ 	return 0;
+ }
+@@ -86,10 +102,8 @@
+ int
+ sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out)
+ {
+-	/* Battery blocks (SID 0) plus read-only probes of the RTC (0x61) and
+-	 * the PM8350B haptics engine (SID 3, 0xf0..0xf2). */
+ 	unsigned peripheral = addr >> 8;
+-	if (!sp_ready || !out || addr > 0xffffu ||
++	if (!sp_ready || !out || sid > 15 || addr > 0xffffu ||
+ 	    !((sid == 0 && (peripheral == 0x10 || peripheral == 0x11 ||
+ 	    peripheral == 0x12 || peripheral == 0x13 || peripheral == 0x48 ||
+ 	    peripheral == 0x61)) ||
+@@ -103,7 +117,7 @@
+ 		IOLockUnlock(sp_lock);
+ 		return -1;
+ 	}
+-	unsigned off = 0x80u * apid;
++	unsigned off = 0x80u * apid; /* observer, EE 0 */
+ 	uint32_t cmd = (1u << 27) | ((addr & 0xffu) << 4);
+ 	__asm__ volatile("dmb oshst" ::: "memory");
+ 	*(volatile uint32_t *)(sp_obs + off) = cmd; /* EXT_READL, BC=0 */
+@@ -127,4 +141,110 @@
+ 	IOLockUnlock(sp_lock);
+ 	return -1;
+ }
++
++/*
++ * One byte read through the "chnls" window at a candidate stride.  Used only
++ * to prove that a RW slot maps to the APID we think it does.
++ */
++static bool
++sp_chnl_read(uint16_t apid, unsigned addr, unsigned shift, uint8_t *out)
++{
++	unsigned off = apid << shift;
++	uint32_t cmd = (1u << 27) | ((addr & 0xffu) << 4);
++	__asm__ volatile("dmb oshst" ::: "memory");
++	*(volatile uint32_t *)(sp_chnl + off) = cmd;
++	__asm__ volatile("dsb osh" ::: "memory");
++	for (unsigned i = 0; i < 1000; ++i) {
++		uint32_t status = sp_rd(sp_chnl, off + 0x08u);
++		if (status & 1u) {
++			if (status & 0x0eu) {
++				return false;
++			}
++			*out = (uint8_t)sp_rd(sp_chnl, off + 0x18u);
++			return true;
++		}
++		delay(1);
++	}
++	return false;
++}
++
++int
++sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
++    unsigned len)
++{
++	unsigned peripheral = addr >> 8;
++	if (!sp_ready || !buf || len < 1 || len > 4 || sid > 15 ||
++	    addr > 0xffffu ||
++	    !((sid == 3 && (peripheral == 0xf0 || peripheral == 0xf2)) ||
++	    (sid == 0 && peripheral == 0x61))) {
++		return -1;
++	}
++	IOLockLock(sp_lock);
++	uint16_t apid = sp_find_apid((sid << 8) | peripheral);
++	if (apid == SP_NO_APID || sp_poisoned[apid]) {
++		IOLockUnlock(sp_lock);
++		return -1;
++	}
++
++	/* Prove the RW slot: read the target register back through chnls. */
++	unsigned shift = sp_rw_shift;
++	if (!shift) {
++		uint8_t want = 0, got = 0;
++		IOLockUnlock(sp_lock);
++		if (sweet_spmi_read(sid, addr, &want) != 0) {
++			return -1;
++		}
++		IOLockLock(sp_lock);
++		apid = sp_find_apid((sid << 8) | peripheral);
++		if (apid == SP_NO_APID || sp_poisoned[apid]) {
++			IOLockUnlock(sp_lock);
++			return -1;
++		}
++		if (sp_chnl_read(apid, addr, 12, &got) && got == want) {
++			shift = 12;
++		} else if (sp_chnl_read(apid, addr, 16, &got) && got == want) {
++			shift = 16;
++		} else {
++			printf("SWEET BATTERY: RW slot for sid=%u per=%#x "
++			    "not verified (want=%02x got=%02x)\n",
++			    sid, peripheral, want, got);
++			IOLockUnlock(sp_lock);
++			return -1;
++		}
++		sp_rw_shift = shift;
++		printf("SWEET BATTERY: RW slot verified at stride %#x\n",
++		    1u << shift);
++	}
++
++	unsigned off = apid << shift;
++	uint32_t word = 0;
++	for (unsigned i = 0; i < len; ++i) {
++		word |= (uint32_t)buf[i] << (8 * i);
++	}
++	uint32_t cmd = ((addr & 0xffu) << 4) | (len - 1u); /* EXT_WRITEL */
++	__asm__ volatile("dmb oshst" ::: "memory");
++	*(volatile uint32_t *)(sp_chnl + off + 0x10u) = word;
++	*(volatile uint32_t *)(sp_chnl + off) = cmd;
++	__asm__ volatile("dsb osh" ::: "memory");
++	for (unsigned i = 0; i < 1000; ++i) {
++		uint32_t status = sp_rd(sp_chnl, off + 0x08u);
++		if (status & 1u) {
++			if (status & 0x0eu) {
++				printf("SWEET BATTERY: SPMI write denied sid=%u "
++				    "addr=%#x status=%#x\n", sid, addr, status);
++				IOLockUnlock(sp_lock);
++				return -1;
++			}
++			IOLockUnlock(sp_lock);
++			return 0;
++		}
++		delay(1);
++	}
++	sp_poisoned[apid] = true;
++	printf("SWEET BATTERY: SPMI write timeout sid=%u addr=%#x APID=%u\n",
++	    sid, addr, apid);
++	IOLockUnlock(sp_lock);
++	return -1;
++}
++
+ #endif /* ARM64_BOARD_CONFIG_SWEET */
+--- a/bsd/dev/sweet_spmi.h
++++ b/bsd/dev/sweet_spmi.h
+@@ -8,6 +8,10 @@
+ int sweet_spmi_init(void);
+ /* Thread context only; 0 success, -1 failure; *out unchanged on failure. */
+ int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
++/* Writes are limited to the RTC and haptics blocks; the RW slot is proven
++ * against the observer value before anything is issued. */
++int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
++    unsigned len);
+ #ifdef __cplusplus
+ }
+ #endif
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -39,6 +39,8 @@
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ extern int sweet_spmi_init(void);
+ extern int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
++extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
++    unsigned len);
+ void sweet_glink_probe(void);
+ 
+ #define G_SMEM_PA       0x80900000u
+@@ -899,7 +901,97 @@
+ 	sweet_log_sync();
+ }
+ 
++/*
++ * PMK8350 RTC (SID 0, reg 0x6148): four little-endian bytes of Unix time.
++ * Only used when the value is plausible, so a broken read can never move
++ * the kernel clock to a random date.
++ */
+ static void
++g_rtc_set_from_pmic(void)
++{
++	uint8_t b[4];
++	uint32_t secs = 0;
++
++	for (unsigned i = 0; i < 4; i++) {
++		if (sweet_spmi_read(0, 0x6148u + i, &b[i]) != 0) {
++			printf("SWEET RTC: read failed at %#x\n", 0x6148u + i);
++			return;
++		}
++		secs |= (uint32_t)b[i] << (8 * i);
++	}
++	if (secs < 1577836800u || secs > 2524608000u) { /* 2020 .. 2050 */
++		printf("SWEET RTC: pmic=%u implausible, clock untouched\n",
++		    secs);
++		return;
++	}
++	printf("SWEET RTC: pmic=%u bytes=%02x %02x %02x %02x\n", secs,
++	    b[0], b[1], b[2], b[3]);
++	clock_set_calendar_microtime((clock_sec_t)secs, 0);
++	printf("SWEET RTC: kernel calendar set\n");
++	sweet_log_sync();
++}
++
++static void
++g_hap_wr(unsigned addr, uint8_t val, const char *what)
++{
++	printf("SWEET HAP: %s %#x<-%02x rc=%d\n", what, addr, val,
++	    sweet_spmi_write(3, addr, &val, 1));
++}
++
++/*
++ * PM8350B (HAP520) direct play: sine drive at the DT LRA period, 3.6 V,
++ * full amplitude, 300 ms.  The register values follow qcom-hv-haptics.c
++ * from the marble-s-oss 5.10 tree.  hBoost is left as found unless the
++ * VREG_EN bit is clear, in which case it is turned on explicitly.
++ */
++static void
++g_haptics_try(void)
++{
++	uint8_t rev = 0, ptn = 0, v = 0;
++
++	if (sweet_spmi_init() != 0 ||
++	    sweet_spmi_read(3, 0xf000, &rev) != 0 || rev < 1 || rev > 5) {
++		printf("SWEET HAP: no cfg revision (rev=%#x)\n", rev);
++		return;
++	}
++	(void)sweet_spmi_read(3, 0xf101, &ptn);
++	printf("SWEET HAP: cfg=%#x ptn=%#x boost-vreg=%#x ", rev, ptn,
++	    sweet_spmi_read(3, 0xf246, &v) == 0 ? v : 0xffu);
++	printf("hboost-follow=%#x\n",
++	    sweet_spmi_read(3, 0xf241, &v) == 0 ? v : 0xffu);
++
++	/* 3600 mV in 50 mV steps, sine waveform. */
++	g_hap_wr(0xf048, 72, "vmax");
++	g_hap_wr(0xf049, 0x01, "wave");
++	/* Open-loop LRA period: 5882 us / 5 us per step = 0x0498. */
++	{
++		uint8_t t[2] = { 0x98, 0x04 };
++		printf("SWEET HAP: tlra %#x rc=%d\n", 0x498,
++		    sweet_spmi_write(3, 0xf05c, t, sizeof(t)));
++	}
++	g_hap_wr(0xf126, 0xff, "direct amplitude");
++	if (sweet_spmi_read(3, 0xf063, &v) == 0) {
++		g_hap_wr(0xf063, v & ~1u, "autores off");
++	}
++	if (sweet_spmi_read(3, 0xf246, &v) == 0 && !(v & 0x80u)) {
++		g_hap_wr(0xf246, v | 0x80u, "boost on");
++	}
++	if (sweet_spmi_read(3, 0xf068, &v) == 0) {
++		g_hap_wr(0xf068, v | 1u, "vreg ready");
++	}
++	g_hap_wr(0xf046, 0x80, "enable");
++	delay(2000);
++	g_hap_wr(0xf04c, 0x81, "play");
++	delay(300000);
++	g_hap_wr(0xf04c, 0x00, "stop");
++	g_hap_wr(0xf046, 0x00, "disable");
++	if (sweet_spmi_read(3, 0xf046, &v) == 0) {
++		printf("SWEET HAP: final en=%#x\n", v);
++	}
++	sweet_log_sync();
++}
++
++static void
+ g_dump(const char *tag, const uint8_t *p, uint32_t len)
+ {
+ 	char line[80];
+@@ -2147,13 +2239,14 @@
+ 	}
+ 	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
+ 
+-	/* Read-only side quest: RTC, haptics and the SMMU/TBU state. */
++	/* Side quest: RTC and haptics, then the SMMU/TBU state. */
+ 	g_spmi_dump("rtc", 0, 0x6100, 16);
+ 	g_spmi_dump("hap", 3, 0xf000, 16);
+ 	g_spmi_dump("hap", 3, 0xf100, 16);
++	g_rtc_set_from_pmic();
++	g_haptics_try();
++	/* 0x151e9000 (lpass_tbu) faults from XNU; do not touch it again. */
+ 	g_mmio_dump("apps_smmu", 0x15000000u, 8);
+-	g_mmio_dump("lpass_tbu", 0x151e9000u, 8);
+-	g_mmio_dump("qsmmu_cfg", 0x151ce000u, 8);
+ 
+ 	if (!g_smem_init()) {
+ 		goto out;
