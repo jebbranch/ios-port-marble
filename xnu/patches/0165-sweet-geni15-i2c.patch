@@ -1,0 +1,250 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -327,8 +327,216 @@
+ 		}
+ 	}
+ 	return err ? -1 : 0;
++}
++
++/* ---- GENI I2C on SE15 -------------------------------------------------
++ * Android drives both AW882xx amps through this QUP SE, and ABL leaves the
++ * I2C microcode loaded (fw 0x303, proto 3).  The hardware controller avoids
++ * every bit-bang timing unknown, so use it when it is present.  Register
++ * map and packing follow sweet_touch.c (same QUP block, different SE).
++ */
++#define SW_SE15_PA   0x00880000u
++#define SE_STATUS    0x040u
++#define SE_MCLK      0x048u
++#define SE_FW        0x068u
++#define SE_CLK_SEL   0x07cu
++#define SE_DMA       0x258u
++#define SE_TX_LEN    0x26cu
++#define SE_RX_LEN    0x270u
++#define SE_SCL       0x278u
++#define SE_CMD       0x600u
++#define SE_CTRL      0x604u
++#define SE_IRQ       0x610u
++#define SE_IRQ_EN    0x614u
++#define SE_IRQ_CLR   0x618u
++#define SE_TX        0x700u
++#define SE_RX        0x780u
++#define SE_TX_COUNT  0x800u
++#define SE_RX_COUNT  0x804u
++#define SE_TX_WM     0x80cu
++#define SE_HW_TX     0xe24u
++#define SE_HW_RX     0xe28u
++#define SE_RX_WM_IRQ (1u << 26)
++#define SE_RX_LAST   (1u << 27)
++#define SE_TX_WM_IRQ (1u << 30)
++#define SE_DONE      (1u << 0)
++#define SE_NACK      (1u << 10)
++#define SE_ERRORS    (0x3eu | (1u << 9) | (1u << 10) | (1u << 12) | \
++                      (1u << 13) | (3u << 24) | (3u << 28))
++#define SE_EVENTS    (SE_DONE | SE_ERRORS | SE_RX_WM_IRQ | SE_RX_LAST | \
++                      SE_TX_WM_IRQ)
++#define SE_PACK0     0x0007f8feu
++#define SE_PACK1     0x000ffefeu
++
++static vm_offset_t se15;
++static bool se15_ready;
++
++static uint32_t
++se15_rd(uint32_t off)
++{
++	uint32_t v = *(volatile uint32_t *)(se15 + off);
++
++	__asm__ volatile("dmb oshld" ::: "memory");
++	return v;
++}
++
++static void
++se15_wr(uint32_t off, uint32_t val)
++{
++	__asm__ volatile("dmb oshst" ::: "memory");
++	*(volatile uint32_t *)(se15 + off) = val;
++	__asm__ volatile("dsb osh" ::: "memory");
+ }
+ 
++static bool
++se15_wait_clear(uint32_t off, uint32_t mask)
++{
++	for (unsigned i = 0; i < 5000; i++) {
++		if (!(se15_rd(off) & mask)) {
++			return true;
++		}
++		delay(1);
++	}
++	return false;
++}
++
++static bool
++se15_init(void)
++{
++	uint32_t fw, tx, rx;
++
++	se15 = ml_io_map(SW_SE15_PA, 0x1000u);
++	if (!se15) {
++		printf("SWEET I2C: se15 map failed\n");
++		return false;
++	}
++	fw = se15_rd(SE_FW);
++	tx = se15_rd(SE_HW_TX);
++	rx = se15_rd(SE_HW_RX);
++	printf("SWEET I2C: se15 fw=%#x proto=%u status=%#x tx=%#x rx=%#x\n",
++	    fw, (fw >> 8) & 0xffu, se15_rd(SE_STATUS), tx, rx);
++	if (((fw >> 8) & 0xffu) != 3u || (se15_rd(0x64) & 1u) ||
++	    ((tx >> 24) & 0x3fu) != 32u || ((rx >> 24) & 0x3fu) != 32u ||
++	    ((tx >> 16) & 0x3fu) < 2u || ((rx >> 16) & 0x3fu) < 2u) {
++		printf("SWEET I2C: se15 has no I2C firmware\n");
++		return false;
++	}
++	if (se15_rd(SE_STATUS) & 0x1001u) {
++		printf("SWEET I2C: se15 busy, not taken over\n");
++		return false;
++	}
++	se15_wr(0xe18, 0);              /* no GSI events */
++	se15_wr(0xe1c, 0);              /* poll local status */
++	se15_wr(0x644, 0);
++	se15_wr(SE_IRQ_CLR, 0xffffffffu);
++	se15_wr(0x648, 0xffffffffu);
++	se15_wr(SE_DMA, 0);
++	se15_wr(0x28, se15_rd(0x28) | 0x7fu);
++	se15_wr(0xe30, se15_rd(0xe30) | 0x0fu);
++	se15_wr(0x24, 0x7f);
++	se15_wr(0x20, 1);
++	se15_wr(SE_CLK_SEL, 0);
++	se15_wr(SE_MCLK, (7u << 4) | 1u);
++	se15_wr(SE_SCL, (10u << 20) | (11u << 10) | 26u); /* 100 kHz */
++	se15_wr(0x254, 0);
++	se15_wr(0x260, SE_PACK0);
++	se15_wr(0x264, SE_PACK1);
++	se15_wr(0x284, SE_PACK0);
++	se15_wr(0x288, SE_PACK1);
++	se15_wr(SE_TX_WM, 0);
++	se15_wr(0x810, 0);
++	se15_wr(0x814, ((rx >> 16) & 0x3fu) - 1u);
++	se15_wr(SE_IRQ_EN, SE_EVENTS);
++	se15_ready = true;
++	printf("SWEET I2C: se15 configured for I2C\n");
++	return true;
++}
++
++/* One FIFO message: TX up to 3 bytes, RX up to 90. */
++static int
++se15_msg(uint8_t addr, const uint8_t *tx, unsigned nt, uint8_t *rx,
++    unsigned nr, bool stretch)
++{
++	unsigned sent = 0, got = 0;
++	int err = -1;
++
++	if (!se15_ready || nt > 3 || nr > 90 || (nt && nr) || (!nt && !nr)) {
++		return -1;
++	}
++	if (!se15_wait_clear(SE_STATUS, 1u)) {
++		return -1;
++	}
++	se15_wr(SE_IRQ_CLR, 0xffffffffu);
++	se15_wr(SE_TX_WM, nt ? 1u : 0u);
++	se15_wr(nr ? SE_RX_LEN : SE_TX_LEN, nr ? nr : nt);
++	se15_wr(SE_CMD, ((nr ? 2u : 1u) << 27) | ((uint32_t)addr << 9) |
++	    (stretch ? 4u : 0u));
++	for (unsigned i = 0; i < 20000; i++) {
++		uint32_t irq = se15_rd(SE_IRQ);
++
++		if (irq & SE_ERRORS) {
++			err = (irq & SE_NACK) ? -2 : -1;
++			/* A completed NACK is the normal probe miss. */
++			for (unsigned j = 0; j < 5000 && !(irq & SE_DONE); j++) {
++				delay(1);
++				irq = se15_rd(SE_IRQ);
++			}
++			se15_wr(SE_IRQ_CLR, irq);
++			return err;
++		}
++		if (nt && !sent && (irq & SE_TX_WM_IRQ)) {
++			uint32_t word = 0;
++
++			for (unsigned j = 0; j < nt; j++) {
++				word |= (uint32_t)tx[j] << (8u * j);
++			}
++			se15_wr(SE_TX, word);
++			sent = nt;
++			se15_wr(SE_TX_WM, 0);
++		}
++		uint32_t count = se15_rd(SE_RX_COUNT) & 0x1ffffffu;
++		while (count--) {
++			uint32_t word = se15_rd(SE_RX);
++
++			for (unsigned j = 0; j < 4 && got < nr; j++) {
++				rx[got++] = (uint8_t)(word >> (8u * j));
++			}
++		}
++		if (irq & SE_DONE) {
++			se15_wr(SE_IRQ_CLR, irq);
++			return (got == nr && sent == nt) ? 0 : -1;
++		}
++		se15_wr(SE_IRQ_CLR,
++		    irq & (SE_RX_WM_IRQ | SE_RX_LAST | SE_TX_WM_IRQ));
++		delay(1);
++	}
++	se15_wr(SE_CTRL, 2);            /* abort, release the bus */
++	for (unsigned i = 0; i < 5000; i++) {
++		if (se15_rd(SE_IRQ) & (1u << 5)) {
++			break;
++		}
++		delay(1);
++	}
++	se15_wr(SE_IRQ_CLR, 0xffffffffu);
++	return err;
++}
++
++/* AW882xx: 8-bit register pointer, 16-bit big-endian data. */
++static int
++se15_aw_read(uint8_t addr, uint8_t reg, uint16_t *out)
++{
++	uint8_t b[2] = { 0, 0 };
++
++	if (se15_msg(addr, &reg, 1, NULL, 0, true) != 0) {
++		return -1;
++	}
++	if (se15_msg(addr, NULL, 0, b, 2, false) != 0) {
++		return -1;
++	}
++	*out = (uint16_t)(((uint16_t)b[0] << 8) | b[1]);
++	return 0;
++}
++
+ void sweet_i2c_probe_amps(void);
+ 
+ void
+@@ -355,22 +563,15 @@
+ 	printf("SWEET I2C: TLMM @%#x scl cfg=%#x sda cfg=%#x\n",
+ 	    SW_I2C_TLMM_PA, cfg_scl, cfg_sda);
+ 
+-	/* Check the GENI I2C controller Android uses for these amps.  If ABL
+-	 * loaded the I2C microcode into SE15 (0x880000) the hardware path is
+-	 * available, and is far more reliable than bit-banging.  Read-only. */
+-	{
+-		vm_offset_t se15 = ml_io_map(0x00880000u, 0x1000u);
++	/* Take over SE15 if ABL left the I2C microcode loaded, then try the
++	 * hardware path before falling back to bit-banging below. */
++	if (se15_init()) {
++		for (int i = 0; i < 2; i++) {
++			uint16_t id = 0;
++			int r = se15_aw_read(addrs[i], 0x00, &id);
+ 
+-		if (se15) {
+-			uint32_t fw = *(volatile uint32_t *)(se15 + 0x068u);
+-
+-			printf("SWEET I2C: se15 fw=%#x proto=%u status=%#x "
+-			    "tx=%#x rx=%#x\n", fw, (fw >> 8) & 0xffu,
+-			    *(volatile uint32_t *)(se15 + 0x040u),
+-			    *(volatile uint32_t *)(se15 + 0xe24u),
+-			    *(volatile uint32_t *)(se15 + 0xe28u));
+-		} else {
+-			printf("SWEET I2C: se15 map failed\n");
++			printf("SWEET I2C: geni amp %#x r=%d id=%#x\n",
++			    addrs[i], r, id);
+ 		}
+ 	}
+ 
