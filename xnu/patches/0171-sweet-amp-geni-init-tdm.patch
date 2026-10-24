@@ -1,0 +1,90 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -701,9 +701,70 @@
+ 		return r;
+ 	}
+ 	*out = (uint16_t)(((uint16_t)b[0] << 8) | b[1]);
++	return 0;
++}
++
++/* AW882xx: 8-bit register pointer, 16-bit big-endian data. */
++static int
++se15_aw_write(uint8_t addr, uint8_t reg, uint16_t val)
++{
++	uint8_t b[2] = { (uint8_t)(val >> 8), (uint8_t)val };
++
++	if (se15_msg(addr, &reg, 1, NULL, 0, true) != 0) {
++		return -1;
++	}
++	if (se15_msg(addr, b, 2, NULL, 0, false) != 0) {
++		return -1;
++	}
+ 	return 0;
+ }
++
++/* mi2s2 (tert TDM) carries sck/data0/ws/data1 on GPIO121..124; their first
++ * mux function is mi2s2, exactly like the QUP pins.  Without this the amp
++ * never sees BCLK/WS and its PLL check would fail. */
++static void
++se15_tdm_pins(void)
++{
++	for (int i = 0; i < 4; i++) {
++		vm_offset_t v = ml_io_map(0x0f179000u + (uint32_t)i * 0x1000u,
++		    0x1000u);
++		uint32_t cfg;
+ 
++		if (!v) {
++			printf("SWEET I2C: tdm pin %d map failed\n", 121 + i);
++			continue;
++		}
++		cfg = *(volatile uint32_t *)v;
++		cfg &= ~0x3ffu;
++		cfg |= (1u << 2) | (1u << 6);   /* mi2s2, no pull, 4 mA */
++		*(volatile uint32_t *)v = cfg;
++	}
++	printf("SWEET I2C: tdm pins 121-124 on mi2s2\n");
++	sweet_log_sync();
++}
++
++/* Soft reset, then the vendor Music profile from the ACF table. */
++static int
++se15_aw_init(uint8_t addr)
++{
++	unsigned n = sizeof(aw882xx_music_a) / sizeof(aw882xx_music_a[0]);
++	int bad = 0;
++
++	if (se15_aw_write(addr, 0x00, 0x55aa) != 0) {
++		printf("SWEET I2C: geni amp %#x soft reset failed\n", addr);
++		return -1;
++	}
++	delay(2);
++	for (unsigned i = 0; i < n; i++) {
++		if (se15_aw_write(addr, aw882xx_music_a[i].reg,
++		    aw882xx_music_a[i].val) != 0) {
++			bad++;
++		}
++	}
++	printf("SWEET I2C: geni amp %#x profile %u/%u\n", addr, n - bad, n);
++	return bad ? -1 : 0;
++}
++
+ void sweet_i2c_probe_amps(void);
+ 
+ void
+@@ -735,12 +796,16 @@
+ 	 * audio pass, after the disk and GLINK are up. */
+ 	if (se15_probe_calls++ > 0) {
+ 		if (se15_init()) {
++			se15_tdm_pins();
+ 			for (int i = 0; i < 2; i++) {
+ 				uint16_t id = 0;
+ 				int r = se15_aw_read(addrs[i], 0x00, &id);
+ 
+ 				printf("SWEET I2C: geni amp %#x r=%d id=%#x\n",
+ 				    addrs[i], r, id);
++				if (r == 0 && id == 0x2032) {
++					(void)se15_aw_init(addrs[i]);
++				}
+ 			}
+ 		}
+ 	}
