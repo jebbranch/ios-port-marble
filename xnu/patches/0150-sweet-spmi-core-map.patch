@@ -1,0 +1,12 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -209,7 +209,8 @@
+ 		printf("SWEET BATTERY: no SPMI lock\n");
+ 		return -1;
+ 	}
+-	sp_core = ml_io_map(SP_CORE_PA, 0x2000);
++	/* The v7 APID map lives at core+0x2000; core is 0x3000 in the DT. */
++	sp_core = ml_io_map(SP_CORE_PA, 0x4000);
+ 	sp_cfg = ml_io_map(SP_CFG_PA, 0x1000);
+ 	sp_obs = ml_io_map(SP_OBS_PA, SP_OBS_SZ);
+ 	if (!sp_core || !sp_cfg || !sp_obs) {
