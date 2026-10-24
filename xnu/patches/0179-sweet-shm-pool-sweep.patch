@@ -1,0 +1,40 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1351,13 +1351,7 @@
+ static int
+ g_apm_shm_map_gpr(uint32_t src_port)
+ {
+-	static const uint64_t addrs[] = {
+-		0x11ffe8000u,   /* vendor trace's dma-buf address (4.8 GB) */
+-		0x120000000u,   /* 4.5 GB, next 4 KiB-aligned window */
+-		0x80000000u,    /* bottom of DDR */
+-		0x1ffe8000u,    /* same offset as the vendor address, 512 MB */
+-	};
+-	static const uint32_t flags[] = { 0u, 4u };
++	static const uint64_t addrs[] = { 0xa2d00000u };
+ 	uint8_t body[20];
+ 
+ 	if (g_shm_mapped) {
+@@ -1371,15 +1365,17 @@
+ 			printf("SWEET GLINK: shm: map %#llx failed\n", addrs[i]);
+ 			continue;
+ 		}
+-		for (unsigned f = 0; f < sizeof(flags) / sizeof(flags[0]); f++) {
++		/* pool 3 is SHMEM8_4K; sweep every pool id to see which one
++		 * accepts a DDR address at all. */
++		for (unsigned p = 0; p < 8; p++) {
+ 			memset(body, 0, sizeof(body));
+-			g_put32(body + 0, APM_SHM_POOL | (1u << 16));
+-			g_put32(body + 4, flags[f]);
++			g_put32(body + 0, p | (1u << 16));
++			g_put32(body + 4, 0u);
+ 			g_put32(body + 8, (uint32_t)addrs[i]);
+ 			g_put32(body + 12, (uint32_t)(addrs[i] >> 32));
+ 			g_put32(body + 16, G_SHM_SIZE);
+-			printf("SWEET GLINK: shm_map_gpr pa=%#llx flag=%u\n",
+-			    addrs[i], flags[f]);
++			printf("SWEET GLINK: shm_map_gpr pool=%u pa=%#llx\n",
++			    p, addrs[i]);
+ 			sweet_log_sync();
+ 			if (g_apm_cmd(src_port, 1, body, sizeof(body),
+ 			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
