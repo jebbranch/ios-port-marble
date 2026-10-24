@@ -1,0 +1,96 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -52,6 +52,9 @@
+ static unsigned sp_rw_shift;
+ /* A timed-out command may complete late: never reuse that lane this boot. */
+ static bool sp_poisoned[SP_MAX_APID];
++/* Diagnostics: last arbiter status and whether a failure was already logged. */
++static uint32_t sp_last_status;
++static bool sp_read_logged[SP_MAX_APID];
+ 
+ static uint32_t
+ sp_rd(vm_offset_t base, unsigned off)
+@@ -97,6 +100,7 @@
+ 		uint32_t status = sp_rd(sp_obs, off + 0x08u);
+ 		if (status & 1u) {
+ 			if (status & 0x0eu) {
++				sp_last_status = status;
+ 				return -1;
+ 			}
+ 			*out = (uint8_t)sp_rd(sp_obs, off + 0x18u);
+@@ -104,6 +108,7 @@
+ 		}
+ 		delay(1);
+ 	}
++	sp_last_status = 0xffffffffu;
+ 	return -2;
+ }
+ 
+@@ -173,6 +178,22 @@
+ 	return false;
+ }
+ 
++/* Diagnostic: where a PPID sits in the APID map and who owns it. */
++static void
++sp_dump_ppid(uint16_t ppid)
++{
++	for (unsigned i = 0; i < sp_count; ++i) {
++		uint32_t map = sp_rd(sp_core, 0x900u + 4u * i);
++		if (map && ((map >> 8) & 0xfffu) == ppid) {
++			unsigned owner = sp_rd(sp_cfg, 0x700u + 4u * i) & 7u;
++			printf("SWEET BATTERY: ppid %#x apid=%u map=%#x "
++			    "owner=%u\n", ppid, i, map, owner);
++			return;
++		}
++	}
++	printf("SWEET BATTERY: ppid %#x absent from the APID map\n", ppid);
++}
++
+ int
+ sweet_spmi_init(void)
+ {
+@@ -221,6 +242,15 @@
+ 	}
+ 	printf("SWEET BATTERY: SPMI arb=%#x APIDs=%u obs-stride=%#x "
+ 	    "hap-rev=%#x\n", arb_version, sp_count, sp_obs_stride, rev);
++	{
++		/* PON and GPIO are known-good; the rest are the ones we need. */
++		static const uint16_t diag[] = {
++			0x008u, 0x4c1u, 0x061u, 0x3f0u, 0x3f1u, 0x3f2u
++		};
++		for (unsigned i = 0; i < sizeof(diag) / sizeof(diag[0]); i++) {
++			sp_dump_ppid(diag[i]);
++		}
++	}
+ 	return 0;
+ }
+ 
+@@ -238,16 +268,25 @@
+ 	}
+ 	IOLockLock(sp_lock);
+ 	uint16_t apid = sp_find_apid((sid << 8) | peripheral);
+-	if (apid == SP_NO_APID || sp_poisoned[apid]) {
++	if (apid == SP_NO_APID) {
++		printf("SWEET BATTERY: no APID sid=%u per=%#x\n", sid, peripheral);
+ 		IOLockUnlock(sp_lock);
+ 		return -1;
+ 	}
++	if (sp_poisoned[apid]) {
++		IOLockUnlock(sp_lock);
++		return -1;
++	}
+ 	int r = sp_obs_read(apid, addr, out);
+ 	if (r != 0) {
++		if (!sp_read_logged[apid]) {
++			printf("SWEET BATTERY: read fail sid=%u addr=%#x "
++			    "APID=%u status=%#x%s\n", sid, addr, apid,
++			    sp_last_status, r == -2 ? " timeout" : "");
++			sp_read_logged[apid] = true;
++		}
+ 		if (r == -2) {
+ 			sp_poisoned[apid] = true;
+-			printf("SWEET BATTERY: SPMI read timeout sid=%u addr=%#x "
+-			    "APID=%u disabled\n", sid, addr, apid);
+ 		}
+ 		IOLockUnlock(sp_lock);
+ 		return -1;
