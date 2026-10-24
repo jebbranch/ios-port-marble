@@ -1,0 +1,11 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -39,6 +39,8 @@
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ extern int sweet_spmi_init(void);
+ extern int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
++extern int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
++    unsigned len);
+ extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
+     unsigned len);
+ void sweet_glink_probe(void);
