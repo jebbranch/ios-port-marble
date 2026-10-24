@@ -1,0 +1,95 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -20,6 +20,7 @@
+ #include <libkern/libkern.h>
+ 
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
++extern void sweet_log_sync(void);
+ 
+ #define SW_I2C_TLMM_PA  0x0f138000u     /* pinctrl@f000000 + 56*0x1000 */
+ #define SW_I2C_TLMM_SZ  0x2000u
+@@ -370,6 +371,7 @@
+ 
+ static vm_offset_t se15;
+ static bool se15_ready;
++static int se15_probe_calls;
+ 
+ static uint32_t
+ se15_rd(uint32_t off)
+@@ -413,8 +415,10 @@
+ 	fw = se15_rd(SE_FW);
+ 	tx = se15_rd(SE_HW_TX);
+ 	rx = se15_rd(SE_HW_RX);
+-	printf("SWEET I2C: se15 fw=%#x proto=%u status=%#x tx=%#x rx=%#x\n",
+-	    fw, (fw >> 8) & 0xffu, se15_rd(SE_STATUS), tx, rx);
++	printf("SWEET I2C: se15 fw=%#x proto=%u status=%#x tx=%#x rx=%#x "
++	    "geni=%#x\n", fw, (fw >> 8) & 0xffu, se15_rd(SE_STATUS), tx, rx,
++	    se15_rd(0x64));
++	sweet_log_sync();
+ 	if (((fw >> 8) & 0xffu) != 3u || (se15_rd(0x64) & 1u) ||
+ 	    ((tx >> 24) & 0x3fu) != 32u || ((rx >> 24) & 0x3fu) != 32u ||
+ 	    ((tx >> 16) & 0x3fu) < 2u || ((rx >> 16) & 0x3fu) < 2u) {
+@@ -425,19 +429,27 @@
+ 		printf("SWEET I2C: se15 busy, not taken over\n");
+ 		return false;
+ 	}
++	printf("SWEET I2C: se15 cfg step 1\n");
++	sweet_log_sync();
+ 	se15_wr(0xe18, 0);              /* no GSI events */
+ 	se15_wr(0xe1c, 0);              /* poll local status */
+ 	se15_wr(0x644, 0);
+ 	se15_wr(SE_IRQ_CLR, 0xffffffffu);
+ 	se15_wr(0x648, 0xffffffffu);
++	printf("SWEET I2C: se15 cfg step 2\n");
++	sweet_log_sync();
+ 	se15_wr(SE_DMA, 0);
+ 	se15_wr(0x28, se15_rd(0x28) | 0x7fu);
+ 	se15_wr(0xe30, se15_rd(0xe30) | 0x0fu);
+ 	se15_wr(0x24, 0x7f);
+ 	se15_wr(0x20, 1);
++	printf("SWEET I2C: se15 cfg step 3\n");
++	sweet_log_sync();
+ 	se15_wr(SE_CLK_SEL, 0);
+ 	se15_wr(SE_MCLK, (7u << 4) | 1u);
+ 	se15_wr(SE_SCL, (10u << 20) | (11u << 10) | 26u); /* 100 kHz */
++	printf("SWEET I2C: se15 cfg step 4\n");
++	sweet_log_sync();
+ 	se15_wr(0x254, 0);
+ 	se15_wr(0x260, SE_PACK0);
+ 	se15_wr(0x264, SE_PACK1);
+@@ -447,6 +459,8 @@
+ 	se15_wr(0x810, 0);
+ 	se15_wr(0x814, ((rx >> 16) & 0x3fu) - 1u);
+ 	se15_wr(SE_IRQ_EN, SE_EVENTS);
++	printf("SWEET I2C: se15 cfg step 5\n");
++	sweet_log_sync();
+ 	se15_ready = true;
+ 	printf("SWEET I2C: se15 configured for I2C\n");
+ 	return true;
+@@ -563,15 +577,18 @@
+ 	printf("SWEET I2C: TLMM @%#x scl cfg=%#x sda cfg=%#x\n",
+ 	    SW_I2C_TLMM_PA, cfg_scl, cfg_sda);
+ 
+-	/* Take over SE15 if ABL left the I2C microcode loaded, then try the
+-	 * hardware path before falling back to bit-banging below. */
+-	if (se15_init()) {
+-		for (int i = 0; i < 2; i++) {
+-			uint16_t id = 0;
+-			int r = se15_aw_read(addrs[i], 0x00, &id);
++	/* The first probe runs before UFS is mounted, so a fault there would
++	 * take the log with it.  Only touch the GENI controller from the later
++	 * audio pass, after the disk and GLINK are up. */
++	if (se15_probe_calls++ > 0) {
++		if (se15_init()) {
++			for (int i = 0; i < 2; i++) {
++				uint16_t id = 0;
++				int r = se15_aw_read(addrs[i], 0x00, &id);
+ 
+-			printf("SWEET I2C: geni amp %#x r=%d id=%#x\n",
+-			    addrs[i], r, id);
++				printf("SWEET I2C: geni amp %#x r=%d id=%#x\n",
++				    addrs[i], r, id);
++			}
+ 		}
+ 	}
+ 
