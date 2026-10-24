@@ -1,0 +1,154 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -86,11 +86,15 @@
+ int
+ sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out)
+ {
+-	/* Restrict access to the battery blocks; keys retain their own lanes. */
++	/* Battery blocks (SID 0) plus read-only probes of the RTC (0x61) and
++	 * the PM8350B haptics engine (SID 3, 0xf0..0xf2). */
+ 	unsigned peripheral = addr >> 8;
+-	if (!sp_ready || !out || sid != 0 || addr > 0xffffu ||
+-	    (peripheral != 0x10 && peripheral != 0x11 && peripheral != 0x12 &&
+-	    peripheral != 0x13 && peripheral != 0x48)) {
++	if (!sp_ready || !out || addr > 0xffffu ||
++	    !((sid == 0 && (peripheral == 0x10 || peripheral == 0x11 ||
++	    peripheral == 0x12 || peripheral == 0x13 || peripheral == 0x48 ||
++	    peripheral == 0x61)) ||
++	    (sid == 3 && (peripheral == 0xf0 || peripheral == 0xf1 ||
++	    peripheral == 0xf2)))) {
+ 		return -1;
+ 	}
+ 	IOLockLock(sp_lock);
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -36,6 +36,9 @@
+ extern vm_map_address_t pmap_map(vm_map_address_t virt, vm_offset_t start,
+     vm_offset_t end, vm_prot_t prot, unsigned int flags);
+ extern ppnum_t pmap_find_phys(pmap_t pmap, addr64_t va);
++extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
++extern int sweet_spmi_init(void);
++extern int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
+ void sweet_glink_probe(void);
+ 
+ #define G_SMEM_PA       0x80900000u
+@@ -851,7 +854,52 @@
+ 	sweet_log_sync();
+ }
+ 
++/* SPMI reads only: RTC on PMK8350 (SID 0, 0x61xx) and the PM8350B
++ * haptics engine (SID 3, 0xf0xx/0xf1xx). */
+ static void
++g_spmi_dump(const char *tag, unsigned sid, unsigned base, unsigned n)
++{
++	uint8_t v;
++	int any = 0;
++
++	if (sweet_spmi_init() != 0) {
++		printf("SWEET SPMI: %s: not ready\n", tag);
++		return;
++	}
++	printf("SWEET SPMI: %s sid=%u base=%#x:", tag, sid, base);
++	for (unsigned i = 0; i < n; i++) {
++		if (sweet_spmi_read(sid, base + i, &v) == 0) {
++			printf(" %02x=%02x", base + i, v);
++			any++;
++		}
++	}
++	if (!any) {
++		printf(" (no access)");
++	}
++	printf("\n");
++	sweet_log_sync();
++}
++
++/* MMIO window dump (SMMU/TBU state).  Reads only. */
++static void
++g_mmio_dump(const char *tag, uint64_t pa, unsigned n)
++{
++	vm_offset_t v = ml_io_map((vm_offset_t)pa, 0x1000);
++
++	if (!v) {
++		printf("SWEET MMIO: %s: map failed\n", tag);
++		return;
++	}
++	printf("SWEET MMIO: %s @%#llx:", tag, pa);
++	for (unsigned i = 0; i < n; i++) {
++		printf(" +%02x=%08x", i * 4,
++		    *(volatile uint32_t *)(v + i * 4));
++	}
++	printf("\n");
++	sweet_log_sync();
++}
++
++static void
+ g_dump(const char *tag, const uint8_t *p, uint32_t len)
+ {
+ 	char line[80];
+@@ -1436,8 +1484,8 @@
+ /* One-shot SHM_MAP probe for an arbitrary physical address.  Used to find
+  * out which addresses the ADSP is willing to map. */
+ static int
+-g_apm_map_probe(uint32_t pa_lsw, uint32_t pa_msw, uint32_t size,
+-    const char *what)
++g_apm_map_probe(uint32_t src_port, uint32_t pa_lsw, uint32_t pa_msw,
++    uint32_t size, uint32_t flag, uint32_t token, const char *what)
+ {
+ 	uint8_t pkt[24 + 20];
+ 	uint32_t pkt_size = sizeof(pkt);
+@@ -1445,17 +1493,17 @@
+ 	memset(pkt, 0, sizeof(pkt));
+ 	g_put32(pkt + 0, (6u << 4) | (pkt_size << 8));
+ 	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8) | 0x10000u);
+-	g_put32(pkt + 8, 0x2002u);
++	g_put32(pkt + 8, src_port);
+ 	g_put32(pkt + 12, 1);
+-	g_put32(pkt + 16, 0x2100u);
++	g_put32(pkt + 16, token);
+ 	g_put32(pkt + 20, APM_CMD_SHARED_MEM_MAP_REGIONS);
+ 	g_put32(pkt + 24, APM_SHM_POOL | (1u << 16));
+-	g_put32(pkt + 28, 4u);
++	g_put32(pkt + 28, flag);
+ 	g_put32(pkt + 32, pa_lsw);
+ 	g_put32(pkt + 36, pa_msw);
+ 	g_put32(pkt + 40, size);
+-	printf("SWEET GLINK: map_probe %s pa=%#x:%#x size=%#x\n",
+-	    what, pa_msw, pa_lsw, size);
++	printf("SWEET GLINK: map_probe %s src=%#x flag=%u pa=%#x:%#x "
++	    "size=%#x\n", what, src_port, flag, pa_msw, pa_lsw, size);
+ 	sweet_log_sync();
+ 	g_rsp_ready = 0;
+ 	g_rsp_len = 0;
+@@ -1667,11 +1715,12 @@
+ 	 * touches no data.  The SPF-state queries around it reveal whether
+ 	 * an illegal map restarts the ADSP. */
+ 	g_apm_state_query_sync("before_map");
+-	/* Regions the bootloader already mapped for the ADSP: SMEM (GLINK
+-	 * lives here) and the two SPU shared buffers.  Mapping only. */
+-	(void)g_apm_map_probe(0x80900000u, 0u, 0x4000u, "smem");
+-	(void)g_apm_map_probe(0x8bb80000u, 0u, 0x4000u, "spu_tz");
+-	(void)g_apm_map_probe(0x8bbe0000u, 0u, 0x4000u, "spu_modem");
++	/* Same low region, different client port / property flag: SMEM is
++	 * already reachable by the ADSP, so a refusal here is telling. */
++	(void)g_apm_map_probe(0x2010u, 0x80900000u, 0u, 0x4000u, 4u, 0x50u,
++	    "smem_2010");
++	(void)g_apm_map_probe(0x2011u, 0x80900000u, 0u, 0x4000u, 0u, 0x51u,
++	    "smem_2011");
+ 	g_apm_state_query_sync("after_map");
+ 	if (g_apm_shm_map(0x2002u) != 0 || g_shm_va == 0 || g_shm_pa == 0) {
+ 		printf("SWEET GLINK: pcm: no shared memory, tone skipped\n");
+@@ -2098,6 +2147,14 @@
+ 	}
+ 	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
+ 
++	/* Read-only side quest: RTC, haptics and the SMMU/TBU state. */
++	g_spmi_dump("rtc", 0, 0x6100, 16);
++	g_spmi_dump("hap", 3, 0xf000, 16);
++	g_spmi_dump("hap", 3, 0xf100, 16);
++	g_mmio_dump("apps_smmu", 0x15000000u, 8);
++	g_mmio_dump("lpass_tbu", 0x151e9000u, 8);
++	g_mmio_dump("qsmmu_cfg", 0x151ce000u, 8);
++
+ 	if (!g_smem_init()) {
+ 		goto out;
+ 	}
