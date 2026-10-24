@@ -1,0 +1,45 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -24,6 +24,7 @@
+ #include <sys/param.h>
+ #include <sys/systm.h>
+ #include <sys/errno.h>
++#include <sys/sysctl.h>
+ #include <kern/clock.h>
+ #include <kern/thread.h>
+ #include <kern/sched_prim.h>
+@@ -1062,7 +1063,34 @@
+ 		printf("SWEET HAP: final en=%#x\n", v);
+ 	}
+ 	sweet_log_sync();
++}
++
++/*
++ * User-space trigger for the haptics engine.  iOS's own haptic stack is not
++ * present in this kernel, so this gives bring-up a deterministic way to fire
++ * the hardware once the system is running:
++ *
++ *     sysctl -w kern.sweetvibe=1
++ */
++static int
++sweet_vibe_sysctl SYSCTL_HANDLER_ARGS
++{
++	int v = 0;
++	int err;
++
++	err = sysctl_handle_int(oidp, &v, 0, req);
++	if (err != 0 || req->newptr == NULL) {
++		return err;
++	}
++	if (v != 0) {
++		g_haptics_try();
++	}
++	return 0;
+ }
++
++SYSCTL_PROC(_kern, OID_AUTO, sweetvibe,
++    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, 0, 0,
++    sweet_vibe_sysctl, "I", "trigger the PM8350B haptics engine");
+ 
+ static void
+ g_dump(const char *tag, const uint8_t *p, uint32_t len)
