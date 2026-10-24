@@ -1,0 +1,84 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1313,44 +1313,51 @@
+ static int
+ g_apm_shm_map_gpr(uint32_t src_port)
+ {
++	static const uint64_t addrs[] = {
++		0xa2d00000u,    /* tail of adsp_region */
++		0x80900000u,    /* smem */
++		0xb8000000u,    /* splash */
++		0x9fd00000u,    /* adsp firmware head */
++	};
++	static const uint32_t flags[] = { 0u, 4u };
+ 	uint8_t body[20];
+ 
+ 	if (g_shm_mapped) {
+ 		return 0;
+ 	}
+-	if (!g_shm_va) {
+-		g_shm_va = ml_io_map(G_SHM_FIXED_PA, G_SHM_SIZE);
+-		if (g_shm_va) {
+-			g_shm_pa = G_SHM_FIXED_PA;
+-			printf("SWEET GLINK: shm: fixed pa=%#llx size=%#x\n",
+-			    g_shm_pa, G_SHM_SIZE);
++	for (unsigned i = 0; i < sizeof(addrs) / sizeof(addrs[0]); i++) {
++		vm_offset_t va = ml_io_map((vm_offset_t)addrs[i], G_SHM_SIZE);
++
++		if (!va) {
++			printf("SWEET GLINK: shm: map %#llx failed\n", addrs[i]);
++			continue;
++		}
++		for (unsigned f = 0; f < sizeof(flags) / sizeof(flags[0]); f++) {
++			memset(body, 0, sizeof(body));
++			g_put32(body + 0, APM_SHM_POOL | (1u << 16));
++			g_put32(body + 4, flags[f]);
++			g_put32(body + 8, (uint32_t)addrs[i]);
++			g_put32(body + 12, (uint32_t)(addrs[i] >> 32));
++			g_put32(body + 16, G_SHM_SIZE);
++			printf("SWEET GLINK: shm_map_gpr pa=%#llx flag=%u\n",
++			    addrs[i], flags[f]);
+ 			sweet_log_sync();
++			if (g_apm_cmd(src_port, 1, body, sizeof(body),
++			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
++				continue;
++			}
++			g_shm_handle = g_le32(g_rsp + 32);
++			printf("SWEET GLINK: shm handle=%#x\n", g_shm_handle);
++			if (g_shm_handle == 0 || g_shm_handle == 0xffffffffu) {
++				continue;
++			}
++			g_shm_va = va;
++			g_shm_pa = addrs[i];
++			g_shm_mapped = 1;
++			return 0;
+ 		}
+ 	}
+-	if (!g_shm_va) {
+-		return -1;
+-	}
+-	memset(body, 0, sizeof(body));
+-	g_put32(body + 0, APM_SHM_POOL | (1u << 16));
+-	g_put32(body + 4, 0u);          /* property_flag: plain physical */
+-	g_put32(body + 8, (uint32_t)g_shm_pa);
+-	g_put32(body + 12, (uint32_t)(g_shm_pa >> 32));
+-	g_put32(body + 16, G_SHM_SIZE);
+-	printf("SWEET GLINK: shm_map_gpr src=%#x pa=%#llx size=%#x\n",
+-	    src_port, g_shm_pa, G_SHM_SIZE);
+-	sweet_log_sync();
+-	if (g_apm_cmd(src_port, 1, body, sizeof(body),
+-	    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
+-		printf("SWEET GLINK: shm_map_gpr: failed\n");
+-		return -1;
+-	}
+-	g_shm_handle = g_le32(g_rsp + 32);
+-	printf("SWEET GLINK: shm handle=%#x\n", g_shm_handle);
+-	if (g_shm_handle == 0 || g_shm_handle == 0xffffffffu) {
+-		return -1;
+-	}
+-	g_shm_mapped = 1;
+-	return 0;
++	return -1;
+ }
+ 
+ static int
