@@ -35,6 +35,8 @@ PY
 # partition.  Change them if your partition layout differs.
 CMDLINE='debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 cs_debug=0 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweetkeys=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=1 sweetglink=1 sweetreboot=1'
 for a in "$@"; do CMDLINE="$CMDLINE $a"; done
+# Host wall clock at image build time; XNU sets its calendar from this.
+CMDLINE="$CMDLINE sweettime=$(date +%s)"
 
 mkdir -p "$OUT"
 
