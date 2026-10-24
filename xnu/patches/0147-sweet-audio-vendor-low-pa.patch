@@ -1,0 +1,26 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1811,8 +1811,9 @@
+ {
+ 	/* The vendor maps the PCM region from 0x2002 and feeds buffers from
+ 	 * the stream port 0x2011; graph commands stay on 0x2010. */
+-	/* One clean probe per boot: the vendor's own buffer address
+-	 * (0x1FFE8000, inside the 28 MB audio CMA pool).  Mapping alone
++	/* One clean probe per boot: the vendor's own buffer address.  The
++	 * kprobe trace's map carries msw=1, so the real PA is 0x1_1FFE8000
++	 * (4.5 GB); probes before 0147 dropped the high word.  Mapping alone
+ 	 * touches no data.  The SPF-state queries around it reveal whether
+ 	 * an illegal map restarts the ADSP. */
+ 	g_apm_state_query_sync("before_map");
+@@ -1822,6 +1823,11 @@
+ 	    "smem_2010");
+ 	(void)g_apm_map_probe(0x2011u, 0x80900000u, 0u, 0x4000u, 0u, 0x51u,
+ 	    "smem_2011");
++	/* The vendor trace's SHM_MAP carries msw=1: the real physical address
++	 * is 0x1_1FFE8000 (4.5 GB), not 0x1FFE8000.  Everything before 0147
++	 * probed the wrong address. */
++	(void)g_apm_map_probe(0x2002u, 0x1FFE8000u, 1u, 0x5000u, 4u, 0x2du,
++	    "vendor_low");
+ 	g_apm_state_query_sync("after_map");
+ 	if (g_apm_shm_map(0x2002u) != 0 || g_shm_va == 0 || g_shm_pa == 0) {
+ 		printf("SWEET GLINK: pcm: no shared memory, tone skipped\n");
