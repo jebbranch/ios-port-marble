@@ -1,0 +1,85 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -337,6 +337,13 @@
+  * map and packing follow sweet_touch.c (same QUP block, different SE).
+  */
+ #define SW_SE15_PA   0x00880000u
++/* QUP wrapper2 branch votes (gcc-waipio layout, DT clock ids 120/138/139).
++ * Vote page GCC+0x62010: bit0 core, bit1 S-AHB, bit2 M-AHB, bit3 core2x,
++ * bit4 SE0 (i2c@880000).  Wrap page GCC+0x2e000: AHB halt 0x4/0x8, SE0 halt
++ * 0xc, RCG cmd 0x2e014 and CFG 0x2e018.  Android votes these at boot; a
++ * fastboot-booted XNU arrives with the leaves cold. */
++#define SW_GCC_VOTE_PA 0x00162000u
++#define SW_GCC_WRAP_PA 0x0012e000u
+ #define SE_STATUS    0x040u
+ #define SE_MCLK      0x048u
+ #define SE_FW        0x068u
+@@ -400,6 +407,58 @@
+ 		delay(1);
+ 	}
+ 	return false;
++}
++
++/* Bring the wrapper2 leaves out of their cold state.  XO/1 (19.2 MHz) keeps
++ * the RCG away from PLL and regulator changes, matching sweet_touch. */
++static bool
++se15_clocks(void)
++{
++	static bool done;
++	static vm_offset_t vote, wrap;
++	uint32_t before, after, cfg;
++
++	if (done) {
++		return true;
++	}
++	vote = ml_io_map(SW_GCC_VOTE_PA, 0x1000u);
++	wrap = ml_io_map(SW_GCC_WRAP_PA, 0x1000u);
++	if (!vote || !wrap) {
++		printf("SWEET I2C: gcc map failed\n");
++		return false;
++	}
++	before = *(volatile uint32_t *)(vote + 0x10);
++	*(volatile uint32_t *)(vote + 0x10) = before | 0x1fu;
++	__asm__ volatile("dsb osh" ::: "memory");
++	after = *(volatile uint32_t *)(vote + 0x10);
++	printf("SWEET I2C: wrap2 vote %#x -> %#x\n", before, after);
++	cfg = *(volatile uint32_t *)(wrap + 0x18);
++	printf("SWEET I2C: wrap2 rcg cmd=%#x cfg=%#x\n",
++	    *(volatile uint32_t *)(wrap + 0x14), cfg);
++	if ((cfg & 0x371fu) != 1u) {
++		*(volatile uint32_t *)(wrap + 0x18) =
++		    (cfg & ~(0x371fu | (1u << 20))) | 1u;
++		__asm__ volatile("dsb osh" ::: "memory");
++		*(volatile uint32_t *)(wrap + 0x14) |= 1u;
++		__asm__ volatile("dsb osh" ::: "memory");
++		for (unsigned i = 0; i < 1000; i++) {
++			if (!(*(volatile uint32_t *)(wrap + 0x14) & 1u)) {
++				break;
++			}
++			delay(1);
++		}
++		printf("SWEET I2C: wrap2 rcg now cmd=%#x cfg=%#x\n",
++		    *(volatile uint32_t *)(wrap + 0x14),
++		    *(volatile uint32_t *)(wrap + 0x18));
++	}
++	delay(5);
++	printf("SWEET I2C: wrap2 halt m=%#x s=%#x s0=%#x\n",
++	    *(volatile uint32_t *)(wrap + 0x4),
++	    *(volatile uint32_t *)(wrap + 0x8),
++	    *(volatile uint32_t *)(wrap + 0xc));
++	sweet_log_sync();
++	done = true;
++	return true;
+ }
+ 
+ static bool
+@@ -412,6 +471,9 @@
+ 		printf("SWEET I2C: se15 map failed\n");
+ 		return false;
+ 	}
++	if (!se15_clocks()) {
++		return false;
++	}
+ 	fw = se15_rd(SE_FW);
+ 	tx = se15_rd(SE_HW_TX);
+ 	rx = se15_rd(SE_HW_RX);
