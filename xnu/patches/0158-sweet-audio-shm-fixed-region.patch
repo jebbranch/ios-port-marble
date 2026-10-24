@@ -1,0 +1,49 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1480,6 +1480,14 @@
+ #define APM_VENDOR_SG_ID                    0xb00000d5u
+ #define APM_SHM_POOL                        3u   /* SHMEM8_4K */
+ #define G_SHM_SIZE                          0x1000u
++/*
++ * The DSP can only reach memory within its own reserved region
++ * (adsp_region@9fd00000, 49 MiB).  XNU's physical allocator manages only the
++ * 33 GiB window the ADT describes, so kmem_alloc_contig cannot return a page
++ * the DSP can address.  Place the PCM buffer near the end of the reserved
++ * region and map it uncached instead.
++ */
++#define G_SHM_FIXED_PA                      0xa2d00000u
+ 
+ /* Send one APM command with the payload inlined in the GPR packet. */
+ static int
+@@ -1556,9 +1564,17 @@
+ 		return 0;
+ 	}
+ 	if (!g_shm_va) {
+-		/* Find the lowest physical range the kernel can still give us:
+-		 * the ADSP's mapping window is far below the 35 GB the
+-		 * unconstrained allocator hands out. */
++		g_shm_va = ml_io_map(G_SHM_FIXED_PA, G_SHM_SIZE);
++		if (g_shm_va) {
++			g_shm_pa = G_SHM_FIXED_PA;
++			printf("SWEET GLINK: shm: fixed pa=%#llx size=%#x\n",
++			    g_shm_pa, G_SHM_SIZE);
++			sweet_log_sync();
++		}
++	}
++	if (!g_shm_va) {
++		/* Fallback: the old allocator path.  It only ever returned high
++		 * memory, which the DSP cannot reach, so this should not run. */
+ 		static const ppnum_t lim[] = {
+ 			0x40000u, 0x80000u, 0x100000u, 0x180000u,
+ 			0x200000u, 0x300000u, 0u
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -260,7 +260,7 @@
+ 		/* PON and GPIO are known-good; the rest are the ones we need. */
+ 		static const uint16_t diag[] = {
+ 			0x008u, 0x4c1u, 0x061u, 0x3f0u, 0x3f1u, 0x3f2u,
+-			0x319u, 0x071u, 0x07du, 0x09du
++			0x319u, 0x071u, 0x07du, 0x09du, 0x39du
+ 		};
+ 		for (unsigned i = 0; i < sizeof(diag) / sizeof(diag[0]); i++) {
+ 			sp_dump_ppid(diag[i]);
