@@ -1,0 +1,71 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -21,6 +21,7 @@
+ 
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ extern void sweet_log_sync(void);
++extern unsigned int vm_page_free_count;
+ 
+ #define SW_I2C_TLMM_PA  0x0f138000u     /* pinctrl@f000000 + 56*0x1000 */
+ #define SW_I2C_TLMM_SZ  0x2000u
+@@ -39,13 +40,41 @@
+ 
+ static int sw_aw_read(uint8_t addr, uint8_t reg, uint16_t *out);
+ 
++/* ml_io_map never unmaps, so keep one mapping per pad instead of leaking a
++ * new kernel_map entry on every probe-time level read. */
++static vm_offset_t
++sw_pad_map(uint32_t pa)
++{
++	static struct {
++		uint32_t pa;
++		vm_offset_t va;
++	} cache[8];
++	static int n;
++
++	for (int i = 0; i < n; i++) {
++		if (cache[i].pa == pa) {
++			return cache[i].va;
++		}
++	}
++	if (n >= 8) {
++		return 0;
++	}
++	cache[n].va = ml_io_map(pa, 0x1000u);
++	cache[n].pa = pa;
++	if (!cache[n].va) {
++		return 0;
++	}
++	n++;
++	return cache[n - 1].va;
++}
++
+ /* aw882xx_hw_reset uses gpiod_set_raw_value_cansleep: raw 0, delay, raw 1,
+  * delay.  Raw values ignore the active-low flag, so the chip is held in
+  * reset while the line is low and runs once it is pulled high. */
+ static void
+ sw_gpio_drive(uint32_t pa, bool high)
+ {
+-	vm_offset_t v = ml_io_map(pa, 0x1000);
++	vm_offset_t v = sw_pad_map(pa);
+ 	uint32_t cfg;
+ 
+ 	if (!v) {
+@@ -67,7 +96,7 @@
+ static int
+ sw_gpio_read_level(uint32_t pa)
+ {
+-	vm_offset_t v = ml_io_map(pa, 0x1000);
++	vm_offset_t v = sw_pad_map(pa);
+ 
+ 	if (!v) {
+ 		return -1;
+@@ -513,6 +542,8 @@
+ se15_init(void)
+ {
+ 	uint32_t fw, tx, rx;
++
++	printf("SWEET I2C: free pages before GENI=%u\n", vm_page_free_count);
+ 
+ 	se15 = ml_io_map(SW_SE15_PA, 0x1000u);
+ 	if (!se15) {
