@@ -1,0 +1,27 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1622,7 +1622,9 @@
+ 	    0x10000u);
+ 	g_put32(pkt + 8, src_port);
+ 	g_put32(pkt + 12, 1);
+-	g_put32(pkt + 16, 0x2000u);
++	/* Linux' q6apm tags SHM_MAP with the graph id: use the same token as
++	 * GRAPH_OPEN here instead of the old arbitrary 0x2000. */
++	g_put32(pkt + 16, 0x100u + APM_CMD_GRAPH_OPEN);
+ 	g_put32(pkt + 20, APM_CMD_SHARED_MEM_MAP_REGIONS);
+ 	g_put32(pkt + 24, APM_SHM_POOL | (1u << 16));
+ 	g_put32(pkt + 28, 4u);          /* property_flag, as the vendor sends */
+@@ -1908,6 +1910,13 @@
+ 	 * probed the wrong address. */
+ 	(void)g_apm_map_probe(0x2002u, 0x1FFE8000u, 1u, 0x5000u, 4u, 0x2du,
+ 	    "vendor_low");
++	/* Addresses the DSP's own boot chain mapped (adsp_region@9fd00000 and
++	 * the firmware load address seen in the ADSP banner).  If these still
++	 * return status 1, the refusal is about permissions, not the address. */
++	(void)g_apm_map_probe(0x2002u, 0x9fd00000u, 0u, 0x1000u, 4u, 0x2du,
++	    "adsp_start");
++	(void)g_apm_map_probe(0x2002u, 0xa0700000u, 0u, 0x1000u, 4u, 0x2du,
++	    "adsp_load");
+ 	g_apm_state_query_sync("after_map");
+ 	if (g_apm_shm_map(0x2002u) != 0 || g_shm_va == 0 || g_shm_pa == 0) {
+ 		printf("SWEET GLINK: pcm: no shared memory, tone skipped\n");
