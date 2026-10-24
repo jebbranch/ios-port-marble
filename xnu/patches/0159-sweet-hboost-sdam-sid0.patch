@@ -1,0 +1,54 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -289,9 +289,9 @@
+ 	if (!sp_ready || !out || sid > 15 || addr > 0xffffu ||
+ 	    !((sid == 0 && (peripheral == 0x10 || peripheral == 0x11 ||
+ 	    peripheral == 0x12 || peripheral == 0x13 || peripheral == 0x48 ||
+-	    peripheral == 0x61)) ||
++	    peripheral == 0x61 || peripheral == 0x9d)) ||
+ 	    (sid == 3 && (peripheral == 0xf0 || peripheral == 0xf1 ||
+-	    peripheral == 0xf2 || peripheral == 0x9d)))) {
++	    peripheral == 0xf2)))) {
+ 		return -1;
+ 	}
+ 	IOLockLock(sp_lock);
+@@ -426,8 +426,8 @@
+ 	if (!sp_ready || !buf || len < 1 || len > 4 || sid > 15 ||
+ 	    addr > 0xffffu ||
+ 	    !((sid == 3 && (peripheral == 0xf0 || peripheral == 0xf1 ||
+-	    peripheral == 0xf2 || peripheral == 0x9d)) ||
+-	    (sid == 0 && peripheral == 0x61))) {
++	    peripheral == 0xf2)) ||
++	    (sid == 0 && (peripheral == 0x61 || peripheral == 0x9d)))) {
+ 		return -1;
+ 	}
+ 	IOLockLock(sp_lock);
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1018,11 +1018,11 @@
+ 		printf("SWEET HAP: boost vreg=%#x\n", v);
+ 		if ((v & 1u) == 0) {
+ 			uint8_t on = 1;
+-			int r1 = sweet_spmi_write(3, 0x9d42, &on, 1);
++			int r1 = sweet_spmi_write(0, 0x9d42, &on, 1);
+ 			int r2 = 0;
+ 
+ 			if (r1 == 0) {
+-				r2 = sweet_spmi_write(3, 0x9de5, &on, 1);
++				r2 = sweet_spmi_write(0, 0x9de5, &on, 1);
+ 			}
+ 			printf("SWEET HAP: hboost trigger rc=%d/%d\n", r1, r2);
+ 			delay(20000);
+@@ -1041,6 +1041,12 @@
+ 	delay(2000);
+ 	g_hap_wr(0xf04c, 0x81, "play");
+ 	delay(300000);
++	{
++		uint8_t f = 0;
++		if (sweet_spmi_read(3, 0xf00c, &f) == 0) {
++			printf("SWEET HAP: fault during play=%#x\n", f);
++		}
++	}
+ 	g_hap_wr(0xf04c, 0x00, "stop");
+ 	g_hap_wr(0xf046, 0x00, "disable");
+ 	{
