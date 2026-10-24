@@ -1,0 +1,17 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1314,10 +1314,10 @@
+ g_apm_shm_map_gpr(uint32_t src_port)
+ {
+ 	static const uint64_t addrs[] = {
+-		0xa2d00000u,    /* tail of adsp_region */
+-		0x80900000u,    /* smem */
+-		0xb8000000u,    /* splash */
+-		0x9fd00000u,    /* adsp firmware head */
++		0x11ffe8000u,   /* vendor trace's dma-buf address (4.8 GB) */
++		0x120000000u,   /* 4.5 GB, next 4 KiB-aligned window */
++		0x80000000u,    /* bottom of DDR */
++		0x1ffe8000u,    /* same offset as the vendor address, 512 MB */
+ 	};
+ 	static const uint32_t flags[] = { 0u, 4u };
+ 	uint8_t body[20];
