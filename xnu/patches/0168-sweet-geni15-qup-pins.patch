@@ -1,0 +1,73 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -459,6 +459,34 @@
+ 	sweet_log_sync();
+ 	done = true;
+ 	return true;
++}
++
++/* The bit-bang pass leaves both pads as GPIO outputs; GENI only reaches the
++ * bus once they carry the QUP function (mux 1, as in sweet_touch) and the
++ * DT-requested internal pull-up. */
++static void
++se15_pins(void)
++{
++	static const uint32_t pa[2] = { 0x0f138000u, 0x0f139000u };
++
++	for (int i = 0; i < 2; i++) {
++		vm_offset_t v = ml_io_map(pa[i], 0x1000u);
++		uint32_t cfg;
++
++		if (!v) {
++			printf("SWEET I2C: pin %d map failed\n", 56 + i);
++			continue;
++		}
++		cfg = *(volatile uint32_t *)v;
++		cfg &= ~0x3ffu;
++		cfg |= (1u << 2) | 3u | (2u << 6);
++		*(volatile uint32_t *)v = cfg;
++		__asm__ volatile("dsb osh" ::: "memory");
++		printf("SWEET I2C: pin %d cfg=%#x level=%u\n", 56 + i,
++		    *(volatile uint32_t *)v,
++		    *(volatile uint32_t *)(v + 4) & 1u);
++	}
++	sweet_log_sync();
+ }
+ 
+ static bool
+@@ -474,6 +502,7 @@
+ 	if (!se15_clocks()) {
+ 		return false;
+ 	}
++	se15_pins();
+ 	fw = se15_rd(SE_FW);
+ 	tx = se15_rd(SE_HW_TX);
+ 	rx = se15_rd(SE_HW_RX);
+@@ -540,6 +569,8 @@
+ 		return -1;
+ 	}
+ 	if (!se15_wait_clear(SE_STATUS, 1u)) {
++		printf("SWEET I2C: se15 busy st=%#x irq=%#x\n",
++		    se15_rd(SE_STATUS), se15_rd(SE_IRQ));
+ 		return -1;
+ 	}
+ 	se15_wr(SE_IRQ_CLR, 0xffffffffu);
+@@ -558,6 +589,8 @@
+ 				irq = se15_rd(SE_IRQ);
+ 			}
+ 			se15_wr(SE_IRQ_CLR, irq);
++			printf("SWEET I2C: se15 err irq=%#x st=%#x\n", irq,
++			    se15_rd(SE_STATUS));
+ 			return err;
+ 		}
+ 		if (nt && !sent && (irq & SE_TX_WM_IRQ)) {
+@@ -586,6 +619,9 @@
+ 		    irq & (SE_RX_WM_IRQ | SE_RX_LAST | SE_TX_WM_IRQ));
+ 		delay(1);
+ 	}
++	printf("SWEET I2C: se15 timeout st=%#x irq=%#x rx=%#x tx=%#x\n",
++	    se15_rd(SE_STATUS), se15_rd(SE_IRQ),
++	    se15_rd(SE_RX_COUNT), se15_rd(SE_TX_COUNT));
+ 	se15_wr(SE_CTRL, 2);            /* abort, release the bus */
+ 	for (unsigned i = 0; i < 5000; i++) {
+ 		if (se15_rd(SE_IRQ) & (1u << 5)) {
