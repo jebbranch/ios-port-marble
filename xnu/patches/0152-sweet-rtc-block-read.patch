@@ -1,0 +1,97 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -292,7 +292,58 @@
+ 	IOLockUnlock(sp_lock);
+ 	return 0;
+ }
++
++/*
++ * Multi-byte read (EXT_READL, BC = len-1).  The RTC time register at
++ * 0x6148 is a block register: the vendor's rtc-pm8xxx driver always reads
++ * four bytes at once, and single-byte reads of it are refused.
++ */
++int
++sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
++    unsigned len)
++{
++	unsigned peripheral = addr >> 8;
+ 
++	if (!sp_ready || !buf || len < 1 || len > 4 || sid > 15 ||
++	    addr > 0xffffu || !(sid == 0 && peripheral == 0x61)) {
++		return -1;
++	}
++	IOLockLock(sp_lock);
++	uint16_t apid = sp_find_apid((sid << 8) | peripheral);
++	if (apid == SP_NO_APID || sp_poisoned[apid]) {
++		IOLockUnlock(sp_lock);
++		return -1;
++	}
++	unsigned off = sp_obs_stride * apid;
++	uint32_t cmd = (1u << 27) | ((addr & 0xffu) << 4) | (len - 1u);
++	__asm__ volatile("dmb oshst" ::: "memory");
++	*(volatile uint32_t *)(sp_obs + off) = cmd;
++	__asm__ volatile("dsb osh" ::: "memory");
++	for (unsigned i = 0; i < 1000; ++i) {
++		uint32_t status = sp_rd(sp_obs, off + 0x08u);
++		if (status & 1u) {
++			if (status & 0x0eu) {
++				printf("SWEET BATTERY: block read status=%#x\n",
++				    status);
++				IOLockUnlock(sp_lock);
++				return -1;
++			}
++			uint32_t word = sp_rd(sp_obs, off + 0x18u);
++			for (unsigned k = 0; k < len; k++) {
++				buf[k] = (uint8_t)(word >> (8 * k));
++			}
++			IOLockUnlock(sp_lock);
++			return 0;
++		}
++		delay(1);
++	}
++	sp_poisoned[apid] = true;
++	printf("SWEET BATTERY: block read timeout sid=%u addr=%#x\n",
++	    sid, addr);
++	IOLockUnlock(sp_lock);
++	return -1;
++}
++
+ /* Lock held.  Pick the chnls stride using the fixed haptics revision. */
+ static bool
+ sp_detect_rw_shift(void)
+--- a/bsd/dev/sweet_spmi.h
++++ b/bsd/dev/sweet_spmi.h
+@@ -8,6 +8,9 @@
+ int sweet_spmi_init(void);
+ /* Thread context only; 0 success, -1 failure; *out unchanged on failure. */
+ int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
++/* Block read (1..4 bytes); used for the RTC time register at 0x6148. */
++int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
++    unsigned len);
+ /* Writes are limited to the RTC and haptics blocks; the RW slot is proven
+  * against the observer value before anything is issued. */
+ int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -910,15 +910,14 @@
+ g_rtc_set_from_pmic(void)
+ {
+ 	uint8_t b[4];
+-	uint32_t secs = 0;
+ 
+-	for (unsigned i = 0; i < 4; i++) {
+-		if (sweet_spmi_read(0, 0x6148u + i, &b[i]) != 0) {
+-			printf("SWEET RTC: read failed at %#x\n", 0x6148u + i);
+-			return;
+-		}
+-		secs |= (uint32_t)b[i] << (8 * i);
++	/* 0x6148 is a block register; the vendor reads all four bytes. */
++	if (sweet_spmi_read_block(0, 0x6148u, b, sizeof(b)) != 0) {
++		printf("SWEET RTC: block read failed\n");
++		return;
+ 	}
++	uint32_t secs = (uint32_t)b[0] | ((uint32_t)b[1] << 8) |
++	    ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
+ 	if (secs < 1577836800u || secs > 2524608000u) { /* 2020 .. 2050 */
+ 		printf("SWEET RTC: pmic=%u implausible, clock untouched\n",
+ 		    secs);
