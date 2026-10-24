@@ -1,0 +1,55 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1310,6 +1310,44 @@
+  * The hand-built packet below put the body at offset 24, so the DSP read the
+  * pool id as the payload size and answered AR_EBADPARAM.  Build the body in
+  * a standalone array and let g_apm_cmd place it correctly. */
++/* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
++ * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
++ * Read-only probe: model, stream-match entries, and any existing mapping
++ * that covers the ADSP's SID. */
++static void
++g_smmu_probe(void)
++{
++	static bool done;
++	vm_offset_t v;
++	uint32_t idr0, idr1, cr0;
++	int valid = 0;
++
++	if (done) {
++		return;
++	}
++	done = true;
++	v = ml_io_map(0x15000000u, 0x2000u);
++	if (!v) {
++		printf("SWEET SMMU: map failed\n");
++		return;
++	}
++	idr0 = *(volatile uint32_t *)(v + 0x40);
++	idr1 = *(volatile uint32_t *)(v + 0x44);
++	cr0 = *(volatile uint32_t *)(v + 0x00);
++	printf("SWEET SMMU: idr0=%#x idr1=%#x scr0=%#x\n", idr0, idr1, cr0);
++	for (unsigned n = 0; n < 32; n++) {
++		uint32_t smr = *(volatile uint32_t *)(v + 0x800 + 4 * n);
++		uint32_t s2cr = *(volatile uint32_t *)(v + 0xc00 + 4 * n);
++
++		if (smr & 1u) {
++			valid++;
++			printf("SWEET SMMU: smr%d=%#x s2cr=%#x\n", n, smr, s2cr);
++		}
++	}
++	printf("SWEET SMMU: %d valid stream entries\n", valid);
++	sweet_log_sync();
++}
++
+ static int
+ g_apm_shm_map_gpr(uint32_t src_port)
+ {
+@@ -1325,6 +1363,7 @@
+ 	if (g_shm_mapped) {
+ 		return 0;
+ 	}
++	g_smmu_probe();
+ 	for (unsigned i = 0; i < sizeof(addrs) / sizeof(addrs[0]); i++) {
+ 		vm_offset_t va = ml_io_map((vm_offset_t)addrs[i], G_SHM_SIZE);
+ 
