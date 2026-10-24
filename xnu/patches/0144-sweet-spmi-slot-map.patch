@@ -1,0 +1,120 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -31,13 +31,18 @@
+ #define SP_OBS_PA  0x0c440000u
+ #define SP_CFG_PA  0x0c42d000u
+ #define SP_CHNL_PA 0x0c500000u
+-#define SP_CHNL_SZ 0x00400000u
++#define SP_CHNL_SLOT 0x1000u     /* one APID slot; the full window is 4 MiB */
++#define SP_OBS_SZ 0x20000u       /* 1024 APIDs * 0x80, the largest stride */
+ #define SP_NO_APID 0xffffu
+ #define SP_MAX_APID 1024u
+ #define SP_HAP_PPID 0x3f0u      /* SID 3, peripheral 0xf0 */
+ #define SP_HAP_REV  0xf000u
+ 
+-static vm_offset_t sp_core, sp_obs, sp_cfg, sp_chnl;
++static vm_offset_t sp_core, sp_obs, sp_cfg;
++/* chnls is mapped one 4 KiB slot at a time; 4 MiB does not fit io_submap. */
++static vm_offset_t sp_chnl;
++static uint16_t sp_chnl_apid = SP_NO_APID;
++static unsigned sp_chnl_shift;
+ static IOLock *sp_lock;
+ static unsigned sp_count;
+ static bool sp_attempted, sp_ready;
+@@ -106,6 +111,30 @@
+ sp_obs_read(uint16_t apid, unsigned addr, uint8_t *out)
+ {
+ 	return sp_obs_read_stride(apid, addr, sp_obs_stride, out);
++}
++
++/*
++ * Map the "chnls" slot for one APID on demand.  The whole window is 4 MiB
++ * and XNU's io_submap is only 8 MiB, so mapping it in one piece aborts with
++ * KERN_RESOURCE_SHORTAGE; a single 4 KiB page covers every register here.
++ */
++static vm_offset_t
++sp_chnl_slot(uint16_t apid, unsigned shift)
++{
++	if (sp_chnl && sp_chnl_apid == apid && sp_chnl_shift == shift) {
++		return sp_chnl;
++	}
++	vm_offset_t va = ml_io_map(SP_CHNL_PA + ((vm_offset_t)apid << shift),
++	    SP_CHNL_SLOT);
++	if (!va) {
++		printf("SWEET BATTERY: chnls map failed APID=%u shift=%u\n",
++		    apid, shift);
++		return 0;
++	}
++	sp_chnl = va;
++	sp_chnl_apid = apid;
++	sp_chnl_shift = shift;
++	return va;
+ }
+ 
+ /*
+@@ -115,18 +144,22 @@
+ static bool
+ sp_chnl_read(uint16_t apid, unsigned addr, unsigned shift, uint8_t *out)
+ {
+-	unsigned off = apid << shift;
++	vm_offset_t va = sp_chnl_slot(apid, shift);
+ 	uint32_t cmd = (1u << 27) | ((addr & 0xffu) << 4);
++
++	if (!va) {
++		return false;
++	}
+ 	__asm__ volatile("dmb oshst" ::: "memory");
+-	*(volatile uint32_t *)(sp_chnl + off) = cmd;
++	*(volatile uint32_t *)va = cmd;
+ 	__asm__ volatile("dsb osh" ::: "memory");
+ 	for (unsigned i = 0; i < 1000; ++i) {
+-		uint32_t status = sp_rd(sp_chnl, off + 0x08u);
++		uint32_t status = sp_rd(va, 0x08u);
+ 		if (status & 1u) {
+ 			if (status & 0x0eu) {
+ 				return false;
+ 			}
+-			*out = (uint8_t)sp_rd(sp_chnl, off + 0x18u);
++			*out = (uint8_t)sp_rd(va, 0x18u);
+ 			return true;
+ 		}
+ 		delay(1);
+@@ -148,9 +181,8 @@
+ 	}
+ 	sp_core = ml_io_map(SP_CORE_PA, 0x2000);
+ 	sp_cfg = ml_io_map(SP_CFG_PA, 0x1000);
+-	sp_obs = ml_io_map(SP_OBS_PA, 0x80000);
+-	sp_chnl = ml_io_map(SP_CHNL_PA, SP_CHNL_SZ);
+-	if (!sp_core || !sp_cfg || !sp_obs || !sp_chnl) {
++	sp_obs = ml_io_map(SP_OBS_PA, SP_OBS_SZ);
++	if (!sp_core || !sp_cfg || !sp_obs) {
+ 		printf("SWEET BATTERY: SPMI mapping failed\n");
+ 		return -1;
+ 	}
+@@ -282,18 +314,22 @@
+ 		}
+ 	}
+ 
+-	unsigned off = apid << sp_rw_shift;
++	vm_offset_t va = sp_chnl_slot(apid, sp_rw_shift);
++	if (!va) {
++		IOLockUnlock(sp_lock);
++		return -1;
++	}
+ 	uint32_t word = 0;
+ 	for (unsigned i = 0; i < len; ++i) {
+ 		word |= (uint32_t)buf[i] << (8 * i);
+ 	}
+ 	uint32_t cmd = ((addr & 0xffu) << 4) | (len - 1u); /* EXT_WRITEL */
+ 	__asm__ volatile("dmb oshst" ::: "memory");
+-	*(volatile uint32_t *)(sp_chnl + off + 0x10u) = word;
+-	*(volatile uint32_t *)(sp_chnl + off) = cmd;
++	*(volatile uint32_t *)(va + 0x10u) = word;
++	*(volatile uint32_t *)va = cmd;
+ 	__asm__ volatile("dsb osh" ::: "memory");
+ 	for (unsigned i = 0; i < 1000; ++i) {
+-		uint32_t status = sp_rd(sp_chnl, off + 0x08u);
++		uint32_t status = sp_rd(va, 0x08u);
+ 		if (status & 1u) {
+ 			if (status & 0x0eu) {
+ 				printf("SWEET BATTERY: SPMI write denied sid=%u "
