@@ -1,0 +1,59 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -235,7 +235,8 @@
+ 	uint16_t apid = sp_find_apid(SP_HAP_PPID);
+ 	uint8_t rev = 0;
+ 	if (apid != SP_NO_APID) {
+-		(void)sp_obs_read_stride(apid, SP_HAP_REV, sp_obs_stride, &rev);
++		/* REVISION2: 2 = HAP520.  REVISION1 is 0 on this part. */
++		(void)sp_obs_read_stride(apid, SP_HAP_REV + 1u, sp_obs_stride, &rev);
+ 	}
+ 	printf("SWEET BATTERY: SPMI arb=%#x APIDs=%u obs-stride=%#x "
+ 	    "hap-rev=%#x\n", arb_version, sp_count, sp_obs_stride, rev);
+@@ -300,7 +301,7 @@
+ 	uint8_t want = 0, got = 0;
+ 
+ 	if (apid == SP_NO_APID || sp_poisoned[apid] ||
+-	    sp_obs_read(apid, SP_HAP_REV, &want) != 0 ||
++	    sp_obs_read(apid, SP_HAP_REV + 1u, &want) != 0 ||
+ 	    want < 1 || want > 5) {
+ 		printf("SWEET BATTERY: no haptics ID for RW probe (rev=%#x)\n",
+ 		    want);
+@@ -310,7 +311,7 @@
+ 	 * chnls is 4 MiB.  768 APIDs at 0x10000 each would need 48 MiB, so the
+ 	 * 0x1000 slot stride is the only layout this arbiter can be using.
+ 	 */
+-	if (!sp_chnl_read(apid, SP_HAP_REV, 12, &got) || got != want) {
++	if (!sp_chnl_read(apid, SP_HAP_REV + 1u, 12, &got) || got != want) {
+ 		printf("SWEET BATTERY: RW slot not verified (want=%02x "
+ 		    "got=%02x)\n", want, got);
+ 		return false;
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -947,15 +947,21 @@
+ static void
+ g_haptics_try(void)
+ {
+-	uint8_t rev = 0, ptn = 0, v = 0;
++	uint8_t rev1 = 0, rev = 0, ptn = 0, v = 0;
+ 
+-	if (sweet_spmi_init() != 0 ||
+-	    sweet_spmi_read(3, 0xf000, &rev) != 0 || rev < 1 || rev > 5) {
+-		printf("SWEET HAP: no cfg revision (rev=%#x)\n", rev);
++	if (sweet_spmi_init() != 0) {
++		return;
++	}
++	/* REVISION1 (0x00) reads 0 on this HAP520; the hardware type is in
++	 * REVISION2 (0x01), where 2 means HAP520. */
++	(void)sweet_spmi_read(3, 0xf000, &rev1);
++	if (sweet_spmi_read(3, 0xf001, &rev) != 0 || rev < 1 || rev > 5) {
++		printf("SWEET HAP: no cfg revision (rev1=%#x rev2=%#x)\n",
++		    rev1, rev);
+ 		return;
+ 	}
+ 	(void)sweet_spmi_read(3, 0xf101, &ptn);
+-	printf("SWEET HAP: cfg=%#x ptn=%#x boost-vreg=%#x ", rev, ptn,
++	printf("SWEET HAP: cfg=%#x/%#x ptn=%#x boost-vreg=%#x ", rev1, rev, ptn,
+ 	    sweet_spmi_read(3, 0xf246, &v) == 0 ? v : 0xffu);
+ 	printf("hboost-follow=%#x\n",
+ 	    sweet_spmi_read(3, 0xf241, &v) == 0 ? v : 0xffu);
