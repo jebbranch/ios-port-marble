@@ -1,0 +1,37 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -123,6 +123,12 @@
+ {
+ 	if (sp_chnl && sp_chnl_apid == apid && sp_chnl_shift == shift) {
+ 		return sp_chnl;
++	}
++	/* Never map outside the 4 MiB chnls window. */
++	if (((vm_offset_t)apid << shift) >= 0x400000u) {
++		printf("SWEET BATTERY: chnls offset out of window APID=%u "
++		    "shift=%u\n", apid, shift);
++		return 0;
+ 	}
+ 	vm_offset_t va = ml_io_map(SP_CHNL_PA + ((vm_offset_t)apid << shift),
+ 	    SP_CHNL_SLOT);
+@@ -264,15 +270,16 @@
+ 		    want);
+ 		return false;
+ 	}
+-	if (sp_chnl_read(apid, SP_HAP_REV, 12, &got) && got == want) {
+-		sp_rw_shift = 12;
+-	} else if (sp_chnl_read(apid, SP_HAP_REV, 16, &got) && got == want) {
+-		sp_rw_shift = 16;
+-	} else {
++	/*
++	 * chnls is 4 MiB.  768 APIDs at 0x10000 each would need 48 MiB, so the
++	 * 0x1000 slot stride is the only layout this arbiter can be using.
++	 */
++	if (!sp_chnl_read(apid, SP_HAP_REV, 12, &got) || got != want) {
+ 		printf("SWEET BATTERY: RW slot not verified (want=%02x "
+ 		    "got=%02x)\n", want, got);
+ 		return false;
+ 	}
++	sp_rw_shift = 12;
+ 	printf("SWEET BATTERY: RW slot verified at stride %#x\n",
+ 	    1u << sp_rw_shift);
+ 	return true;
