@@ -1,0 +1,63 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1304,10 +1304,60 @@
+ static uint64_t    g_shm_pa;
+ static uint32_t    g_shm_handle;
+ static int         g_shm_mapped;
++
++/* GPR reserves 16 bytes after the header for the payload descriptor
++ * (address lsw/msw, mem_map_handle, payload_size); the SHM body follows it.
++ * The hand-built packet below put the body at offset 24, so the DSP read the
++ * pool id as the payload size and answered AR_EBADPARAM.  Build the body in
++ * a standalone array and let g_apm_cmd place it correctly. */
++static int
++g_apm_shm_map_gpr(uint32_t src_port)
++{
++	uint8_t body[20];
++
++	if (g_shm_mapped) {
++		return 0;
++	}
++	if (!g_shm_va) {
++		g_shm_va = ml_io_map(G_SHM_FIXED_PA, G_SHM_SIZE);
++		if (g_shm_va) {
++			g_shm_pa = G_SHM_FIXED_PA;
++			printf("SWEET GLINK: shm: fixed pa=%#llx size=%#x\n",
++			    g_shm_pa, G_SHM_SIZE);
++			sweet_log_sync();
++		}
++	}
++	if (!g_shm_va) {
++		return -1;
++	}
++	memset(body, 0, sizeof(body));
++	g_put32(body + 0, APM_SHM_POOL | (1u << 16));
++	g_put32(body + 4, 0u);          /* property_flag: plain physical */
++	g_put32(body + 8, (uint32_t)g_shm_pa);
++	g_put32(body + 12, (uint32_t)(g_shm_pa >> 32));
++	g_put32(body + 16, G_SHM_SIZE);
++	printf("SWEET GLINK: shm_map_gpr src=%#x pa=%#llx size=%#x\n",
++	    src_port, g_shm_pa, G_SHM_SIZE);
++	sweet_log_sync();
++	if (g_apm_cmd(src_port, 1, body, sizeof(body),
++	    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
++		printf("SWEET GLINK: shm_map_gpr: failed\n");
++		return -1;
++	}
++	g_shm_handle = g_le32(g_rsp + 32);
++	printf("SWEET GLINK: shm handle=%#x\n", g_shm_handle);
++	if (g_shm_handle == 0 || g_shm_handle == 0xffffffffu) {
++		return -1;
++	}
++	g_shm_mapped = 1;
++	return 0;
++}
+ 
+ static int
+ g_apm_shm_map(uint32_t src_port)
+ {
++	return g_apm_shm_map_gpr(src_port);
++
+ 	uint8_t pkt[24 + 20];
+ 	uint32_t pkt_size = sizeof(pkt);
+ 	ppnum_t pn;
