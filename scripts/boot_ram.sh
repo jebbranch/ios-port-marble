@@ -23,12 +23,24 @@ fi
 [ -n "$SERIAL" ] || { echo "no device in adb/fastboot" >&2; exit 1; }
 echo "device: $SERIAL"
 
-# Get into the bootloader.  Ignore failures: the phone may already be there.
-adb -s "$SERIAL" reboot bootloader >/dev/null 2>&1 || true
-for _ in $(seq 1 60); do
-  fastboot -s "$SERIAL" getvar product 2>&1 | grep -q "product:" && break
-  sleep 1
-done
+in_fastboot() {
+  fastboot devices 2>/dev/null | awk '{print $1}' | grep -qx "$SERIAL"
+}
+
+# Get into the bootloader.  "fastboot getvar" blocks forever when no device is
+# present, so poll "fastboot devices" instead.  TWRP sometimes ignores
+# "adb reboot bootloader"; retry through its root shell.
+in_fastboot || adb -s "$SERIAL" reboot bootloader >/dev/null 2>&1 || true
+for _ in $(seq 1 30); do in_fastboot && break; sleep 1; done
+if ! in_fastboot && adb -s "$SERIAL" get-state 2>/dev/null | grep -q recovery; then
+  adb -s "$SERIAL" shell reboot bootloader >/dev/null 2>&1 || true
+  for _ in $(seq 1 30); do in_fastboot && break; sleep 1; done
+fi
+if ! in_fastboot; then
+  echo "device $SERIAL is not in fastboot." >&2
+  echo "hold Power+VolDown until the bootloader screen appears, then retry." >&2
+  exit 1
+fi
 
 echo "booting $IMAGE (RAM-only; nothing is flashed)"
 fastboot -s "$SERIAL" boot "$IMAGE"
