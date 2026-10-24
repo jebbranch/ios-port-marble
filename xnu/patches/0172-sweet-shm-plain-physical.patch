@@ -1,0 +1,15 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1355,7 +1355,11 @@
+ 	g_put32(pkt + 16, 0x2000u);
+ 	g_put32(pkt + 20, APM_CMD_SHARED_MEM_MAP_REGIONS);
+ 	g_put32(pkt + 24, APM_SHM_POOL | (1u << 16));
+-	g_put32(pkt + 28, 4u);          /* property_flag, as the vendor sends */
++	/* The vendor sends 4 (IS_OFFSET_MODE), but its userspace hands GPR a
++	 * dma-buf offset and the kernel rewrites the field with the real PA.
++	 * We already have a PA, so clear the bit instead of letting the DSP
++	 * read the address as an offset. */
++	g_put32(pkt + 28, 0u);          /* property_flag: plain physical */
+ 	g_put32(pkt + 32, (uint32_t)g_shm_pa);
+ 	g_put32(pkt + 36, (uint32_t)(g_shm_pa >> 32));
+ 	g_put32(pkt + 40, G_SHM_SIZE);
