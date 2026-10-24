@@ -1,0 +1,28 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -355,6 +355,25 @@
+ 	printf("SWEET I2C: TLMM @%#x scl cfg=%#x sda cfg=%#x\n",
+ 	    SW_I2C_TLMM_PA, cfg_scl, cfg_sda);
+ 
++	/* Check the GENI I2C controller Android uses for these amps.  If ABL
++	 * loaded the I2C microcode into SE15 (0x880000) the hardware path is
++	 * available, and is far more reliable than bit-banging.  Read-only. */
++	{
++		vm_offset_t se15 = ml_io_map(0x00880000u, 0x1000u);
++
++		if (se15) {
++			uint32_t fw = *(volatile uint32_t *)(se15 + 0x068u);
++
++			printf("SWEET I2C: se15 fw=%#x proto=%u status=%#x "
++			    "tx=%#x rx=%#x\n", fw, (fw >> 8) & 0xffu,
++			    *(volatile uint32_t *)(se15 + 0x040u),
++			    *(volatile uint32_t *)(se15 + 0xe24u),
++			    *(volatile uint32_t *)(se15 + 0xe28u));
++		} else {
++			printf("SWEET I2C: se15 map failed\n");
++		}
++	}
++
+ 	/* Leave the bus alone and look at what the bootloader handed us.  The
+ 	 * external I2C pull-ups are a good proxy for the audio I/O rail: if
+ 	 * they are unpowered the lines sit low even with both pins released. */
