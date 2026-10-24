@@ -1,0 +1,276 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -5,13 +5,17 @@
+  * The live DT describes one PMIC arbiter:
+  *   cnfg 0x0c42d000, core 0x0c400000, chnls 0x0c500000, obsrvr 0x0c440000
+  * sweet_keys.c proved the observer layout on this SoC (0x80 bytes per
+- * APID, APID map at core+0x900).  Writes must go through the separate
+- * "chnls" window; its per-APID stride differs between arbiter generations
+- * (0x1000 or 0x10000), so the first write validates the slot by reading the
+- * target register back through that window and comparing it with the
+- * observer value.  If the two agree the write is issued; otherwise nothing
+- * is written.  This keeps a wrong stride from touching the wrong slave.
++ * APID, APID map at core+0x900); the stride is still checked against the
++ * haptics revision byte because a wrong one would read an unrelated slot.
+  *
++ * Writes go through the separate "chnls" window.  Its per-APID stride
++ * differs between arbiter generations (0x1000 or 0x10000), so before the
++ * first write the slot is validated by reading the haptics revision (a
++ * fixed, non-zero byte) back through that window.  Every write also
++ * compares the target register read through chnls with the observer value.
++ * If either check disagrees nothing is issued, so a wrong stride or APID
++ * can never poke another peripheral's registers.
++ *
+  * Writes are restricted to the RTC control block and the haptics blocks.
+  */
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+@@ -30,11 +34,15 @@
+ #define SP_CHNL_SZ 0x00400000u
+ #define SP_NO_APID 0xffffu
+ #define SP_MAX_APID 1024u
++#define SP_HAP_PPID 0x3f0u      /* SID 3, peripheral 0xf0 */
++#define SP_HAP_REV  0xf000u
+ 
+ static vm_offset_t sp_core, sp_obs, sp_cfg, sp_chnl;
+ static IOLock *sp_lock;
+ static unsigned sp_count;
+ static bool sp_attempted, sp_ready;
++/* Observer bytes per APID: 0x80 (proven by keys) or 0x20. */
++static unsigned sp_obs_stride = 0x80u;
+ /* Chosen "chnls" per-APID stride exponent: 12 or 16, 0 until validated. */
+ static unsigned sp_rw_shift;
+ /* A timed-out command may complete late: never reuse that lane this boot. */
+@@ -65,6 +73,62 @@
+ 	return found;
+ }
+ 
++/* One byte through the observer window at an explicit stride. */
++static bool
++sp_obs_read_stride(uint16_t apid, unsigned addr, unsigned stride,
++    uint8_t *out)
++{
++	unsigned off = stride * apid;
++	uint32_t cmd = (1u << 27) | ((addr & 0xffu) << 4);
++	__asm__ volatile("dmb oshst" ::: "memory");
++	*(volatile uint32_t *)(sp_obs + off) = cmd; /* EXT_READL, BC=0 */
++	__asm__ volatile("dsb osh" ::: "memory");
++	for (unsigned i = 0; i < 1000; ++i) {
++		uint32_t status = sp_rd(sp_obs, off + 0x08u);
++		if (status & 1u) {
++			if (status & 0x0eu) {
++				return false;
++			}
++			*out = (uint8_t)sp_rd(sp_obs, off + 0x18u);
++			return true;
++		}
++		delay(1);
++	}
++	return false;
++}
++
++static bool
++sp_obs_read(uint16_t apid, unsigned addr, uint8_t *out)
++{
++	return sp_obs_read_stride(apid, addr, sp_obs_stride, out);
++}
++
++/*
++ * One byte read through the "chnls" window at a candidate stride.  Used only
++ * to prove that a RW slot maps to the APID we think it does.
++ */
++static bool
++sp_chnl_read(uint16_t apid, unsigned addr, unsigned shift, uint8_t *out)
++{
++	unsigned off = apid << shift;
++	uint32_t cmd = (1u << 27) | ((addr & 0xffu) << 4);
++	__asm__ volatile("dmb oshst" ::: "memory");
++	*(volatile uint32_t *)(sp_chnl + off) = cmd;
++	__asm__ volatile("dsb osh" ::: "memory");
++	for (unsigned i = 0; i < 1000; ++i) {
++		uint32_t status = sp_rd(sp_chnl, off + 0x08u);
++		if (status & 1u) {
++			if (status & 0x0eu) {
++				return false;
++			}
++			*out = (uint8_t)sp_rd(sp_chnl, off + 0x18u);
++			return true;
++		}
++		delay(1);
++	}
++	return false;
++}
++
+ int
+ sweet_spmi_init(void)
+ {
+@@ -94,8 +158,26 @@
+ 		return -1;
+ 	}
+ 	sp_ready = true;
+-	printf("SWEET BATTERY: SPMI arb=%#x APIDs=%u\n",
+-	    arb_version, sp_count);
++
++	/*
++	 * Confirm the observer stride with the haptics revision byte.  A wrong
++	 * stride addresses another slot and will not look like revision 1..4.
++	 */
++	uint16_t apid = sp_find_apid(SP_HAP_PPID);
++	uint8_t rev = 0;
++	if (apid != SP_NO_APID) {
++		if (!(sp_obs_read_stride(apid, SP_HAP_REV, 0x80u, &rev) &&
++		    rev >= 1 && rev <= 5)) {
++			uint8_t alt = 0;
++			if (sp_obs_read_stride(apid, SP_HAP_REV, 0x20u, &alt) &&
++			    alt >= 1 && alt <= 5) {
++				sp_obs_stride = 0x20u;
++				rev = alt;
++			}
++		}
++	}
++	printf("SWEET BATTERY: SPMI arb=%#x APIDs=%u obs-stride=%#x "
++	    "hap-rev=%#x\n", arb_version, sp_count, sp_obs_stride, rev);
+ 	return 0;
+ }
+ 
+@@ -117,55 +199,43 @@
+ 		IOLockUnlock(sp_lock);
+ 		return -1;
+ 	}
+-	unsigned off = 0x80u * apid; /* observer, EE 0 */
+-	uint32_t cmd = (1u << 27) | ((addr & 0xffu) << 4);
+-	__asm__ volatile("dmb oshst" ::: "memory");
+-	*(volatile uint32_t *)(sp_obs + off) = cmd; /* EXT_READL, BC=0 */
+-	__asm__ volatile("dsb osh" ::: "memory");
+-	for (unsigned i = 0; i < 1000; ++i) {
+-		uint32_t status = sp_rd(sp_obs, off + 0x08u);
+-		if (status & 1u) {
+-			if (status & 0x0eu) {
+-				IOLockUnlock(sp_lock);
+-				return -1;
+-			}
+-			*out = (uint8_t)sp_rd(sp_obs, off + 0x18u);
+-			IOLockUnlock(sp_lock);
+-			return 0;
+-		}
+-		delay(1);
++	if (!sp_obs_read(apid, addr, out)) {
++		sp_poisoned[apid] = true;
++		printf("SWEET BATTERY: SPMI read failed sid=%u addr=%#x "
++		    "APID=%u disabled\n", sid, addr, apid);
++		IOLockUnlock(sp_lock);
++		return -1;
+ 	}
+-	sp_poisoned[apid] = true;
+-	printf("SWEET BATTERY: SPMI timeout sid=%u addr=%#x APID=%u disabled\n",
+-	    sid, addr, apid);
+ 	IOLockUnlock(sp_lock);
+-	return -1;
++	return 0;
+ }
+ 
+-/*
+- * One byte read through the "chnls" window at a candidate stride.  Used only
+- * to prove that a RW slot maps to the APID we think it does.
+- */
++/* Lock held.  Pick the chnls stride using the fixed haptics revision. */
+ static bool
+-sp_chnl_read(uint16_t apid, unsigned addr, unsigned shift, uint8_t *out)
++sp_detect_rw_shift(void)
+ {
+-	unsigned off = apid << shift;
+-	uint32_t cmd = (1u << 27) | ((addr & 0xffu) << 4);
+-	__asm__ volatile("dmb oshst" ::: "memory");
+-	*(volatile uint32_t *)(sp_chnl + off) = cmd;
+-	__asm__ volatile("dsb osh" ::: "memory");
+-	for (unsigned i = 0; i < 1000; ++i) {
+-		uint32_t status = sp_rd(sp_chnl, off + 0x08u);
+-		if (status & 1u) {
+-			if (status & 0x0eu) {
+-				return false;
+-			}
+-			*out = (uint8_t)sp_rd(sp_chnl, off + 0x18u);
+-			return true;
+-		}
+-		delay(1);
++	uint16_t apid = sp_find_apid(SP_HAP_PPID);
++	uint8_t want = 0, got = 0;
++
++	if (apid == SP_NO_APID || sp_poisoned[apid] ||
++	    !sp_obs_read(apid, SP_HAP_REV, &want) ||
++	    want < 1 || want > 5) {
++		printf("SWEET BATTERY: no haptics ID for RW probe (rev=%#x)\n",
++		    want);
++		return false;
+ 	}
+-	return false;
++	if (sp_chnl_read(apid, SP_HAP_REV, 12, &got) && got == want) {
++		sp_rw_shift = 12;
++	} else if (sp_chnl_read(apid, SP_HAP_REV, 16, &got) && got == want) {
++		sp_rw_shift = 16;
++	} else {
++		printf("SWEET BATTERY: RW slot not verified (want=%02x "
++		    "got=%02x)\n", want, got);
++		return false;
++	}
++	printf("SWEET BATTERY: RW slot verified at stride %#x\n",
++	    1u << sp_rw_shift);
++	return true;
+ }
+ 
+ int
+@@ -180,43 +250,31 @@
+ 		return -1;
+ 	}
+ 	IOLockLock(sp_lock);
++	if (!sp_rw_shift && !sp_detect_rw_shift()) {
++		IOLockUnlock(sp_lock);
++		return -1;
++	}
+ 	uint16_t apid = sp_find_apid((sid << 8) | peripheral);
+ 	if (apid == SP_NO_APID || sp_poisoned[apid]) {
+ 		IOLockUnlock(sp_lock);
+ 		return -1;
+ 	}
+ 
+-	/* Prove the RW slot: read the target register back through chnls. */
+-	unsigned shift = sp_rw_shift;
+-	if (!shift) {
++	/* The target must read the same through both windows. */
++	{
+ 		uint8_t want = 0, got = 0;
+-		IOLockUnlock(sp_lock);
+-		if (sweet_spmi_read(sid, addr, &want) != 0) {
+-			return -1;
+-		}
+-		IOLockLock(sp_lock);
+-		apid = sp_find_apid((sid << 8) | peripheral);
+-		if (apid == SP_NO_APID || sp_poisoned[apid]) {
+-			IOLockUnlock(sp_lock);
+-			return -1;
+-		}
+-		if (sp_chnl_read(apid, addr, 12, &got) && got == want) {
+-			shift = 12;
+-		} else if (sp_chnl_read(apid, addr, 16, &got) && got == want) {
+-			shift = 16;
+-		} else {
+-			printf("SWEET BATTERY: RW slot for sid=%u per=%#x "
+-			    "not verified (want=%02x got=%02x)\n",
++		if (!sp_obs_read(apid, addr, &want) ||
++		    !sp_chnl_read(apid, addr, sp_rw_shift, &got) ||
++		    want != got) {
++			printf("SWEET BATTERY: RW target mismatch sid=%u "
++			    "per=%#x (want=%02x got=%02x), not written\n",
+ 			    sid, peripheral, want, got);
+ 			IOLockUnlock(sp_lock);
+ 			return -1;
+ 		}
+-		sp_rw_shift = shift;
+-		printf("SWEET BATTERY: RW slot verified at stride %#x\n",
+-		    1u << shift);
+ 	}
+ 
+-	unsigned off = apid << shift;
++	unsigned off = apid << sp_rw_shift;
+ 	uint32_t word = 0;
+ 	for (unsigned i = 0; i < len; ++i) {
+ 		word |= (uint32_t)buf[i] << (8 * i);
