@@ -1,0 +1,123 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -73,8 +73,13 @@
+ 	return found;
+ }
+ 
+-/* One byte through the observer window at an explicit stride. */
+-static bool
++/*
++ * One byte through the observer window at an explicit stride.
++ * Returns 0 on success, -1 on a slave/status error and -2 on timeout.  Only
++ * the timeout is sticky; an unimplemented register that NAKs must not take
++ * the whole APID out for the rest of the boot.
++ */
++static int
+ sp_obs_read_stride(uint16_t apid, unsigned addr, unsigned stride,
+     uint8_t *out)
+ {
+@@ -87,17 +92,17 @@
+ 		uint32_t status = sp_rd(sp_obs, off + 0x08u);
+ 		if (status & 1u) {
+ 			if (status & 0x0eu) {
+-				return false;
++				return -1;
+ 			}
+ 			*out = (uint8_t)sp_rd(sp_obs, off + 0x18u);
+-			return true;
++			return 0;
+ 		}
+ 		delay(1);
+ 	}
+-	return false;
++	return -2;
+ }
+ 
+-static bool
++static int
+ sp_obs_read(uint16_t apid, unsigned addr, uint8_t *out)
+ {
+ 	return sp_obs_read_stride(apid, addr, sp_obs_stride, out);
+@@ -166,10 +171,10 @@
+ 	uint16_t apid = sp_find_apid(SP_HAP_PPID);
+ 	uint8_t rev = 0;
+ 	if (apid != SP_NO_APID) {
+-		if (!(sp_obs_read_stride(apid, SP_HAP_REV, 0x80u, &rev) &&
++		if (!(sp_obs_read_stride(apid, SP_HAP_REV, 0x80u, &rev) == 0 &&
+ 		    rev >= 1 && rev <= 5)) {
+ 			uint8_t alt = 0;
+-			if (sp_obs_read_stride(apid, SP_HAP_REV, 0x20u, &alt) &&
++			if (sp_obs_read_stride(apid, SP_HAP_REV, 0x20u, &alt) == 0 &&
+ 			    alt >= 1 && alt <= 5) {
+ 				sp_obs_stride = 0x20u;
+ 				rev = alt;
+@@ -199,10 +204,13 @@
+ 		IOLockUnlock(sp_lock);
+ 		return -1;
+ 	}
+-	if (!sp_obs_read(apid, addr, out)) {
+-		sp_poisoned[apid] = true;
+-		printf("SWEET BATTERY: SPMI read failed sid=%u addr=%#x "
+-		    "APID=%u disabled\n", sid, addr, apid);
++	int r = sp_obs_read(apid, addr, out);
++	if (r != 0) {
++		if (r == -2) {
++			sp_poisoned[apid] = true;
++			printf("SWEET BATTERY: SPMI read timeout sid=%u addr=%#x "
++			    "APID=%u disabled\n", sid, addr, apid);
++		}
+ 		IOLockUnlock(sp_lock);
+ 		return -1;
+ 	}
+@@ -218,7 +226,7 @@
+ 	uint8_t want = 0, got = 0;
+ 
+ 	if (apid == SP_NO_APID || sp_poisoned[apid] ||
+-	    !sp_obs_read(apid, SP_HAP_REV, &want) ||
++	    sp_obs_read(apid, SP_HAP_REV, &want) != 0 ||
+ 	    want < 1 || want > 5) {
+ 		printf("SWEET BATTERY: no haptics ID for RW probe (rev=%#x)\n",
+ 		    want);
+@@ -263,7 +271,7 @@
+ 	/* The target must read the same through both windows. */
+ 	{
+ 		uint8_t want = 0, got = 0;
+-		if (!sp_obs_read(apid, addr, &want) ||
++		if (sp_obs_read(apid, addr, &want) != 0 ||
+ 		    !sp_chnl_read(apid, addr, sp_rw_shift, &got) ||
+ 		    want != got) {
+ 			printf("SWEET BATTERY: RW target mismatch sid=%u "
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -985,6 +985,15 @@
+ 	delay(300000);
+ 	g_hap_wr(0xf04c, 0x00, "stop");
+ 	g_hap_wr(0xf046, 0x00, "disable");
++	{
++		uint8_t fault = 0, hi = 0, lo = 0, irt = 0;
++		(void)sweet_spmi_read(3, 0xf00c, &fault);
++		(void)sweet_spmi_read(3, 0xf009, &hi);
++		(void)sweet_spmi_read(3, 0xf00a, &lo);
++		(void)sweet_spmi_read(3, 0xf010, &irt);
++		printf("SWEET HAP: fault=%#x auto_res=%#x/%#x irt=%#x\n",
++		    fault, hi, lo, irt);
++	}
+ 	if (sweet_spmi_read(3, 0xf046, &v) == 0) {
+ 		printf("SWEET HAP: final en=%#x\n", v);
+ 	}
+@@ -2239,12 +2248,12 @@
+ 	}
+ 	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
+ 
+-	/* Side quest: RTC and haptics, then the SMMU/TBU state. */
++	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
++	g_rtc_set_from_pmic();
++	g_haptics_try();
+ 	g_spmi_dump("rtc", 0, 0x6100, 16);
+ 	g_spmi_dump("hap", 3, 0xf000, 16);
+ 	g_spmi_dump("hap", 3, 0xf100, 16);
+-	g_rtc_set_from_pmic();
+-	g_haptics_try();
+ 	/* 0x151e9000 (lpass_tbu) faults from XNU; do not touch it again. */
+ 	g_mmio_dump("apps_smmu", 0x15000000u, 8);
+ 
