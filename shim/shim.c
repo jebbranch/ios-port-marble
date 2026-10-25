@@ -567,11 +567,13 @@ static void __attribute__((unused)) shim_main_p1(uint64_t dtb)
 
 /* ---- X1: load the SWEETXNU payload and jump to xnu ---- */
 
+extern const uint32_t splash_img[];
+
 #ifndef UFS_DIAG
 void shim_main(uint64_t dtb)
 {
 	stage = "xnu";
-	con_clear(RED);
+	con_image(splash_img, FB_W, FB_H);
 	con_str("SHIM", "marble XNU loader");
 
 	uint64_t mmfr0 = rsr("id_aa64mmfr0_el1");

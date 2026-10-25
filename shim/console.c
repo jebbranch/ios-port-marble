@@ -26,6 +26,20 @@ void con_clear(uint32_t bg)
 	row = 0;
 }
 
+void con_image(const uint32_t *img, int w, int h)
+{
+	for (int y = 0; y < h && y < FB_H; y++) {
+		volatile uint32_t *line = con_fb + y * (FB_STRIDE / 4);
+		const uint32_t *src = img + (long)y * w;
+
+		for (int x = 0; x < w && x < FB_W; x++)
+			line[x] = src[x];
+	}
+	/* Keep status text readable: draw black boxes under the glyphs. */
+	con_bg = BLACK;
+	row = 0;
+}
+
 static void put_char(int col, char ch, uint32_t fg)
 {
 	if (ch < 0x20 || ch > 0x7e)

@@ -16,6 +16,9 @@ SECTIONS
 	. = ALIGN(4096);
 	_sec_stacks = .;
 	. += 8 * 0x1000;
+	. = ALIGN(16);
+	.splash : { *(.splash) }
+	. = ALIGN(4096);
 	_end = .;
 	/DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*) }
 }

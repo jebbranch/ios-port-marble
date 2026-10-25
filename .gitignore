@@ -7,3 +7,4 @@ shim/out-*/
 .DS_Store
 __pycache__/
 *.pyc
+shim/splash.bgra

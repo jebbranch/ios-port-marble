@@ -24,7 +24,24 @@ fi
 
 mkdir -p "$OUT"
 
-for f in start.S shim.c console.c mmu.c fdt.c loader.c; do
+# Boot splash: convert splash.png to raw BGRA (1080x2400) for .incbin.
+if [ ! -f splash.bgra ] || [ splash.png -nt splash.bgra ]; then
+  python3 - <<'PY'
+from PIL import Image
+import numpy as np
+a = np.asarray(Image.open('splash.png').convert('RGB'))
+h, w, _ = a.shape
+out = np.empty((h, w, 4), dtype=np.uint8)
+out[..., 0] = a[..., 2]   # B
+out[..., 1] = a[..., 1]   # G
+out[..., 2] = a[..., 0]   # R
+out[..., 3] = 0xff        # X
+out.tofile('splash.bgra')
+print('splash.bgra: %dx%d, %d bytes' % (w, h, out.size))
+PY
+fi
+
+for f in start.S shim.c console.c mmu.c fdt.c loader.c splash.S; do
   $CC $CFLAGS -DFB_STRIDE=$STRIDE -c "$f" -o "$OUT/${f%.*}.o"
 done
 
@@ -38,7 +55,7 @@ fi
 
 $CC $CFLAGS -fuse-ld=lld -static -T shim.ld -Wl,--build-id=none -Wl,-N \
   "$OUT/start.o" "$OUT/shim.o" "$OUT/console.o" "$OUT/mmu.o" \
-  "$OUT/fdt.o" "$OUT/loader.o" -o "$OUT/shim.elf"
+  "$OUT/fdt.o" "$OUT/loader.o" "$OUT/splash.o" -o "$OUT/shim.elf"
 
 llvm-objcopy -O binary "$OUT/shim.elf" "$OUT/Image"
 SIZE_HEX="$(llvm-nm "$OUT/shim.elf" | awk '$3=="_end"{print $1}')"

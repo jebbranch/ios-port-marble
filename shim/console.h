@@ -13,10 +13,13 @@
 #define WHITE	0xffffffffU
 #define YELLOW	0xffffff00U
 #define GREEN	0xff00ff00U
+#define BLACK	0xff000000U
 
 extern volatile uint32_t *con_fb;
 
 void con_clear(uint32_t bg);
+/* Fill the screen with a w*h BGRA image (stride is FB_STRIDE). */
+void con_image(const uint32_t *img, int w, int h);
 void con_skip(void);
 void con_str(const char *label, const char *s);
 void con_hex(const char *label, uint64_t v);
