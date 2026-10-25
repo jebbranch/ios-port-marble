@@ -53,19 +53,19 @@
  	msg[4] = (uint8_t)(iid & 0xff);
  	msg[5] = (uint8_t)(iid >> 8);
  	msg[6] = (uint8_t)(iid >> 16);
-@@ -345,6 +364,12 @@
- 	}
- 	g_wr(g_desc_off + 4, head);
- 	g_kick();
-+}
-+
-+static void
-+g_send_tx_data(uint32_t iid, const uint8_t *pkt, uint32_t len)
-+{
-+	g_send_tx_data_lcid(g_lcid, iid, pkt, len);
+@@ -348,6 +367,12 @@
  }
  
  static void
++g_send_tx_data(uint32_t iid, const uint8_t *pkt, uint32_t len)
++{
++	g_send_tx_data_lcid(g_lcid, iid, pkt, len);
++}
++
++static void
+ g_send_version(void)
+ {
+ 	g_send(CMD_VERSION, (uint16_t)GLINK_VERSION_1, GLINK_FEATURE_REUSE,
 @@ -392,13 +417,33 @@
  }
  
@@ -101,10 +101,12 @@
  		if (r->in_use || r->size < len) {
  			continue;
  		}
-@@ -409,6 +454,17 @@
+@@ -407,6 +452,17 @@
+ 		}
+ 	}
  	return best;
- }
- 
++}
++
 +static struct g_riid *
 +g_gpr_riid(uint32_t len)
 +{
@@ -114,11 +116,9 @@
 +		r = g_pick_riid_any(len);
 +	}
 +	return r;
-+}
-+
+ }
+ 
  static int
- g_rx_one(void)
- {
 @@ -464,6 +520,19 @@
  			/* The rcid of *our* channel, not of the last OPEN. */
  			g_rcid = p1;
@@ -256,10 +256,12 @@
  static void
  g_dump(const char *tag, const uint8_t *p, uint32_t len)
  {
-@@ -1524,6 +1637,63 @@
+@@ -1522,6 +1635,63 @@
+ 	0x33, 0x43, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00,
+ 	0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
  	0x00, 0x00, 0x00, 0x00,
- };
- 
++};
++
 +/* Vendor device graph 0xb0000002 with a WR_SHARED_MEM_EP (0x07001000,
 + * iid 0x40bd) prepended and wired to SAL input port 2.  The vendor does
 + * this with a second (stream) subgraph and a cross-graph connection; a
@@ -315,11 +317,9 @@
 +	0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0xbd, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x12, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-+};
-+
+ };
+ 
  #define APM_CMD_GRAPH_OPEN                  0x01001000u
- #define APM_CMD_GRAPH_PREPARE               0x01001001u
- #define APM_CMD_GRAPH_START                 0x01001002u
 @@ -1537,7 +1707,18 @@
  #define G_TDM_MODULE_ID                     0x0700100eu
  #define G_INPUT_MODULE_OFF                  216u
@@ -339,13 +339,13 @@
  #define G_VP_TDM_IID                        0x428fu
  #define G_VP_AW_IID                         0x42d3u
  #define G_CDMA_MODULE_OFF                   224u
-@@ -1553,8 +1734,55 @@
+@@ -1553,7 +1734,54 @@
   */
  #define G_SHM_FIXED_PA                      0xa2d00000u
  
 -/* Send one APM command with the payload inlined in the GPR packet. */
 +/* Send a fully built packet and decode its reply. */
- static int
++static int
 +g_apm_xfer(uint8_t *pkt, uint32_t pkt_size, const char *what)
 +{
 +	g_rsp_ready = 0;
@@ -392,10 +392,9 @@
 +
 +/* Send one APM command with the payload inlined behind the 16-byte payload
 + * descriptor (graph and data commands use this form). */
-+static int
+ static int
  g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
      uint32_t plen, uint32_t opcode, const char *what)
- {
 @@ -1580,30 +1808,36 @@
  	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes)\n", what,
  	    src_port, dst_port, pkt_size);
@@ -465,7 +464,7 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1631,32 +1867,211 @@
+@@ -1631,32 +1867,226 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -567,8 +566,10 @@
 +		 *   drivers/iommu/arm/arm-smmu/arm-smmu.c: ID1.NUMPAGENDXB=6
 +		 *     -> numpage = 1 << 7 = 128 pages of 4 KiB, so
 +		 *        ARM_SMMU_CB(n) = numpage + n => CB0 at +0x80000.
-+		 *   CBAR of CB6 aborts from NS (run77): CB0..51 belong to
-+		 *     the hypervisor; Android's own alloc returns 0x34.
++		 *   CBAR stores abort from NS for every bank tried (run77
++		 *     CB6, run79/80 CB52); an untouched CBAR reads 0, which
++		 *     is CBAR_TYPE_S2_TRANS with VMID 0, so we leave it alone
++		 *     and only program the CB window + S2CR.
 +		 *   arm_smmu_write_context_bank(): CBA2R, CBAR, TCR, TTBR0,
 +		 *     SCTLR; S2 domains use fmt AARCH64 => CBA2R.VA64=1,
 +		 *     8-bit VMID lives in CBAR[7:0].
@@ -641,17 +642,30 @@
 +		} else {
 +			printf("SWEET SMMU: S2 tables map failed\n");
 +		}
-+		/* Vendor write order: CBA2R, CBAR, TCR, TTBR0, SCTLR. */
++		/* Vendor order minus CBAR: CBA2R, TCR, TTBR0, SCTLR. */
 +		*(volatile uint32_t *)(v + G_SMMU_CBA2R(G_SMMU_CB)) = 0x1u;
-+		/* Vendor S2: vmid = cbndx + 1 (arm-smmu.c init_domain_context). */
-+		*(volatile uint32_t *)(v + G_SMMU_CBAR(G_SMMU_CB)) =
-+		    (G_SMMU_CB + 1u) & 0xffu;
++		/*
++		 * Do NOT write CBAR.  A CBAR store aborts from NS even with
++		 * sACR.CACHE_LOCK clear (run80: sACR was already 0x1c), while
++		 * CBA2R stores succeed.  We do not need it: CBAR reads back 0
++		 * for an untouched bank, and CBAR_TYPE_S2_TRANS is 0, so the
++		 * bank is already a stage-2 context with VMID 0.  Bail out if
++		 * that ever stops being true.
++		 */
++		if ((*(volatile uint32_t *)(v + G_SMMU_CBAR(G_SMMU_CB)) &
++		    0x30000u) != 0) {
++			printf("SWEET SMMU: CB%u CBAR=%#x not S2, skip\n",
++			    G_SMMU_CB,
++			    *(volatile uint32_t *)(v + G_SMMU_CBAR(G_SMMU_CB)));
++			sweet_log_sync();
++			return;
++		}
 +		*(volatile uint32_t *)(cb + 0x30u) = 0x80003560u; /* VTCR */
 +		*(volatile uint32_t *)(cb + 0x20u) = (uint32_t)G_S2_L1_PA;
 +		*(volatile uint32_t *)(cb + 0x24u) = 0;
 +		*(volatile uint32_t *)(cb + 0x00u) = 0x0a5f0027u; /* SCTLR */
 +		__asm__ volatile("dsb sy" ::: "memory");
-+		/* Route SID 0x1801 to CB6.  SMR first so no stream matches
++		/* Route SID 0x1801 to CB52.  SMR first so no stream matches
 +		 * until the context is fully programmed. */
 +		*(volatile uint32_t *)(v + 0x800 + 4 * slot) =
 +		    0x80000000u | 0x1801u;
@@ -687,7 +701,7 @@
  	sweet_log_sync();
  }
  
-@@ -1696,52 +2111,80 @@
+@@ -1696,52 +2126,80 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -794,7 +808,7 @@
  			return 0;
  		}
  	}
-@@ -1909,7 +2352,7 @@
+@@ -1909,7 +2367,7 @@
  	uint8_t pkt[24 + 16];
  	uint32_t pkt_size = sizeof(pkt);
  
@@ -803,7 +817,7 @@
  		return -1;
  	}
  	memcpy((void *)g_shm_va, payload, len);
-@@ -2029,8 +2472,14 @@
+@@ -2029,8 +2487,14 @@
  	g_put32(pkt + 12, dst_port);
  	g_put32(pkt + 16, token);
  	g_put32(pkt + 20, APM_CMD_DATA_BUFFER_V2);
@@ -820,7 +834,7 @@
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
  	g_rsp_ready = 0;
-@@ -2079,64 +2528,73 @@
+@@ -2079,64 +2543,73 @@
  	}
  }
  
@@ -908,13 +922,6 @@
 -	g_fill_tone(G_PCM_OFF_A);
 -	g_fill_tone(G_PCM_OFF_B);
 -	flush_dcache64((addr64_t)(g_shm_pa + G_PCM_OFF_A), 0x1000, 1);
-+
-+	/* Only the WR module accepts buffers (vendor trace: every
-+	 * DATA_BUFFER_V2 goes to the WR instance; SAL never answers).  Send
-+	 * exactly one probe there and stop guessing. */
-+	if (dst_port == G_VP_WR_IID) {
-+		int r = g_apm_data_buffer(0x2011u, G_VP_WR_IID,
-+		    G_PCM_OFF_A, G_PCM_BYTES, 0);
  
 -	/* The vendor graph buffers are taken by whichever module owns the
 -	 * stream input.  Find it empirically: send one frame to each of the
@@ -923,7 +930,13 @@
 -		static const uint32_t cand[4] = {
 -			G_VP_SAL_IID, 0x48bau, 0x4007u, 0x418eu
 -		};
--
++	/* Only the WR module accepts buffers (vendor trace: every
++	 * DATA_BUFFER_V2 goes to the WR instance; SAL never answers).  Send
++	 * exactly one probe there and stop guessing. */
++	if (dst_port == G_VP_WR_IID) {
++		int r = g_apm_data_buffer(0x2011u, G_VP_WR_IID,
++		    G_PCM_OFF_A, G_PCM_BYTES, 0);
+ 
 -		for (int i = 0; i < 4; i++) {
 -			int r = g_apm_data_buffer(0x2011u, cand[i],
 -			    G_PCM_OFF_A, G_PCM_BYTES, 0x40u + (uint32_t)i);
@@ -943,7 +956,7 @@
  		}
  	}
  	printf("SWEET GLINK: pcm tone start (dst=%#x)\n", dst_port);
-@@ -2332,8 +2790,11 @@
+@@ -2332,8 +2805,11 @@
  	uint32_t v;
  	int rc;
  
@@ -957,7 +970,7 @@
  	g_put32(mf + 0, 1);
  	g_put32(mf + 4, 0x09001000);
  	g_put32(mf + 8, 18);
-@@ -2342,14 +2803,14 @@
+@@ -2342,14 +2818,14 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 2;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2;
@@ -976,7 +989,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2428,9 +2889,32 @@
+@@ -2428,9 +2904,32 @@
  	const uint32_t port = 0x2010u;
  	uint8_t tdm_payload[sizeof(g_graph_open_payload)];
  
@@ -1012,7 +1025,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2518,9 +3002,148 @@
+@@ -2518,9 +3017,148 @@
  		return;
  	}
  	printf("SWEET GLINK: graph_open failed on every payload\n");
@@ -1161,7 +1174,7 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2587,6 +3210,7 @@
+@@ -2587,6 +3225,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
