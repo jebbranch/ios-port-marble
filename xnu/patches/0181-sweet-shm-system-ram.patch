@@ -1,0 +1,165 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1282,11 +1282,27 @@
+ 		printf("SWEET GLINK: %s: no response\n", what);
+ 		return -1;
+ 	}
+-	if (g_rsp_len >= 32) {
+-		uint32_t status = g_le32(g_rsp + 28);
++	if (g_rsp_len >= 28) {
++		uint32_t hop = g_le32(g_rsp + 20);      /* packet opcode */
++		uint32_t op = g_le32(g_rsp + 24);
++		uint32_t status;
+ 
+-		printf("SWEET GLINK: %s rsp op=%#x status=%#x\n", what,
+-		    g_le32(g_rsp + 24), status);
++		/* APM_CMD_RSP_SHARED_MEM_MAP_REGIONS is short: 24-byte header
++		 * plus a bare 4-byte mem_map_handle.  It is a success reply,
++		 * not a GPR basic response. */
++		if (g_rsp_len == 28 || hop == 0x02001001u) {
++			op = APM_CMD_SHARED_MEM_MAP_REGIONS;
++			status = 0;
++		} else if (g_rsp_len >= 32) {
++			status = g_le32(g_rsp + 28);
++		} else {
++			printf("SWEET GLINK: %s rsp %u bytes hop=%#x w24=%#x\n",
++			    what, g_rsp_len, hop, op);
++			sweet_log_sync();
++			return -1;
++		}
++		printf("SWEET GLINK: %s rsp op=%#x status=%#x hop=%#x len=%u\n",
++		    what, op, status, hop, g_rsp_len);
+ 		sweet_log_sync();
+ 		return status == 0 ? 0 : -1;
+ 	}
+@@ -1302,6 +1318,8 @@
+  * and the vendor's kprobe trace agree byte for byte). */
+ static vm_offset_t g_shm_va;
+ static uint64_t    g_shm_pa;
++static uint64_t    g_self_pa;		/* page proven real by g_phys_selftest */
++static int         g_shm_offset_mode = 1;
+ static uint32_t    g_shm_handle;
+ static int         g_shm_mapped;
+ 
+@@ -1384,14 +1402,29 @@
+ 		printf("SWEET PHYS: mirror=%#x %s\n", v,
+ 		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
+ 	}
+-	kmem_free(kernel_map, va, G_SHM_SIZE);
++	/* Never free this page: ml_io_map's kernel PTEs cannot be removed, so
++	 * kmem_free here trips pmap_assert_free (run63).  Keep it as the
++	 * high-bank SHM candidate instead. */
++	g_self_pa = pa;
+ 	sweet_log_sync();
+ }
+ 
+ static int
+ g_apm_shm_map_gpr(uint32_t src_port)
+ {
+-	static const uint64_t addrs[] = { 0xa2d00000u };
++	/* Every address probed so far was inside a Qualcomm carve-out (smem,
++	 * ADSP firmware, splash, hyp) or above 4 GiB.  Android's audio
++	 * buffers live in plain System RAM below 4 GiB; test exactly that,
++	 * plus the page the self-test proved is real (high bank).
++	 * flag 4 = offset mode (what the vendor GSL uses), 0 = PA mode. */
++	static const uint64_t low[] = {
++		0xa2e00000u,	/* first System RAM page after the ADSP carve-out */
++		0x86000000u,	/* System RAM 0x85e00000-0x87ffffff */
++		0x80640000u,	/* System RAM right after the hyp carve-out */
++	};
++	static const uint32_t flags[] = { 4u, 0u };
++	uint64_t addrs[4];
++	unsigned naddr = 0;
+ 	uint8_t body[20];
+ 
+ 	if (g_shm_mapped) {
+@@ -1399,37 +1432,47 @@
+ 	}
+ 	g_smmu_probe();
+ 	g_phys_selftest();
+-	for (unsigned i = 0; i < sizeof(addrs) / sizeof(addrs[0]); i++) {
++	for (unsigned i = 0; i < sizeof(low) / sizeof(low[0]); i++) {
++		addrs[naddr++] = low[i];
++	}
++	if (g_self_pa) {
++		addrs[naddr++] = g_self_pa;
++	}
++	for (unsigned i = 0; i < naddr; i++) {
+ 		vm_offset_t va = ml_io_map((vm_offset_t)addrs[i], G_SHM_SIZE);
+ 
+ 		if (!va) {
+ 			printf("SWEET GLINK: shm: map %#llx failed\n", addrs[i]);
+ 			continue;
+ 		}
+-		/* All eight pool ids rejected every DDR address; keep one probe
+-		 * so the map path stays exercised, but do not stall the boot. */
+-		for (unsigned p = 3; p < 4; p++) {
++		for (unsigned f = 0; f < 2; f++) {
+ 			memset(body, 0, sizeof(body));
+-			g_put32(body + 0, p | (1u << 16));
+-			g_put32(body + 4, 0u);
++			g_put32(body + 0, 3u | (1u << 16));
++			g_put32(body + 4, flags[f]);
+ 			g_put32(body + 8, (uint32_t)addrs[i]);
+ 			g_put32(body + 12, (uint32_t)(addrs[i] >> 32));
+ 			g_put32(body + 16, G_SHM_SIZE);
+-			printf("SWEET GLINK: shm_map_gpr pool=%u pa=%#llx\n",
+-			    p, addrs[i]);
++			printf("SWEET GLINK: shm_map pool=3 pa=%#llx flag=%u\n",
++			    addrs[i], flags[f]);
+ 			sweet_log_sync();
+ 			if (g_apm_cmd(src_port, 1, body, sizeof(body),
+ 			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
+ 				continue;
+ 			}
+-			g_shm_handle = g_le32(g_rsp + 32);
+-			printf("SWEET GLINK: shm handle=%#x\n", g_shm_handle);
++			g_shm_handle = g_le32(g_rsp + 24);
++			printf("SWEET GLINK: shm handle=%#x len=%u\n",
++			    g_shm_handle, g_rsp_len);
++			sweet_log_sync();
+ 			if (g_shm_handle == 0 || g_shm_handle == 0xffffffffu) {
+ 				continue;
+ 			}
+ 			g_shm_va = va;
+ 			g_shm_pa = addrs[i];
++			g_shm_offset_mode = (flags[f] & 4u) != 0;
+ 			g_shm_mapped = 1;
++			printf("SWEET GLINK: shm mapped pa=%#llx mode=%s\n",
++			    g_shm_pa, g_shm_offset_mode ? "offset" : "pa");
++			sweet_log_sync();
+ 			return 0;
+ 		}
+ 	}
+@@ -1719,8 +1762,14 @@
+ 	g_put32(pkt + 12, dst_port);
+ 	g_put32(pkt + 16, token);
+ 	g_put32(pkt + 20, APM_CMD_DATA_BUFFER_V2);
+-	g_put32(pkt + 24 + 0, off);             /* offset inside the region */
+-	g_put32(pkt + 24 + 4, 0);
++	{
++		/* Offset mode: buf_addr is an offset inside the mapped region.
++		 * PA mode: the DSP wants the physical address itself. */
++		uint64_t a = g_shm_offset_mode ? off : (g_shm_pa + off);
++
++		g_put32(pkt + 24 + 0, (uint32_t)a);
++		g_put32(pkt + 24 + 4, (uint32_t)(a >> 32));
++	}
+ 	g_put32(pkt + 24 + 8, g_shm_handle);
+ 	g_put32(pkt + 24 + 12, len);
+ 	g_rsp_ready = 0;
+@@ -1774,14 +1823,6 @@
+ {
+ 	/* The vendor maps the PCM region from 0x2002 and feeds buffers from
+ 	 * the stream port 0x2011; graph commands stay on 0x2010. */
+-	/* Which physical ranges can the ADSP map at all?  The vendor's
+-	 * buffers live around 0x1FFE8000 (inside the 28 MB audio CMA pool);
+-	 * probe that, the pool base, and the 4 GB boundary.  Mapping alone
+-	 * touches no data. */
+-	(void)g_apm_map_probe(0x9fd00000u, 0u, 0x4000u, "adsp_carveout");
+-	(void)g_apm_map_probe(0x1ffe8000u, 0u, 0x5000u, "vendor_pa");
+-	(void)g_apm_map_probe(0x1fe00000u, 0u, 0x4000u, "audio_cma_base");
+-	(void)g_apm_map_probe(0x00000000u, 0x1u, 0x4000u, "ddr_4g");
+ 	if (g_apm_shm_map(0x2002u) != 0 || g_shm_va == 0 || g_shm_pa == 0) {
+ 		printf("SWEET GLINK: pcm: no shared memory, tone skipped\n");
+ 		sweet_log_sync();
