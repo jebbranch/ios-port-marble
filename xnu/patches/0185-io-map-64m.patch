@@ -1,0 +1,18 @@
+--- a/osfmk/arm/io_map.c
++++ b/osfmk/arm/io_map.c
+@@ -62,7 +62,14 @@
+ 
+ extern vm_offset_t virtual_space_start;     /* Next available kernel VA */
+ 
+-#define IO_MAP_SIZE            (8ul << 20)
++/*
++ * marble: 8 MiB is not enough.  SPMI's chnls window alone takes 4 MiB and
++ * the driver set (keys, touch, i2c, usb, ufs, audio) fills the rest, so a
++ * plain 4 KiB ml_io_map() started failing with KERN_NO_SPACE once the GUI
++ * came up (run83, and again on the Siri screen).  This submap is permanent
++ * kernel VA, never backed unless mapped, so 64 MiB costs nothing.
++ */
++#define IO_MAP_SIZE            (64ul << 20)
+ 
+ __startup_data static struct mach_vm_range io_range;
+ static SECURITY_READ_ONLY_LATE(vm_map_t) io_submap;
