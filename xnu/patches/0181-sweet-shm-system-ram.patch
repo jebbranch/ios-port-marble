@@ -504,7 +504,7 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1631,32 +1883,457 @@
+@@ -1631,33 +1883,473 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -658,16 +658,28 @@
 +				unsigned i1 = (G_IPA_BASE >> 30) & 0x3u;
 +				unsigned i2 = (G_IPA_BASE >> 21) & 0x1ffu;
 +
++				int s1empty = 0;
++
++				(void)PE_parse_boot_argn("sweets1empty", &s1empty,
++				    sizeof(s1empty));
 +				for (unsigned i = 0; i < 512; i++) {
 +					l1[i] = 0;
 +					l2[i] = 0;
 +				}
-+				l1[i1] = (uint64_t)G_S2_L2_PA | 0x3ull;
-+				l2[i2] = ((uint64_t)G_IPA_BASE & ~0x1fffffull) |
-+				    0x703ull;
++				/* sweets1empty=1 installs a deliberately empty
++				 * table: every access must then be terminated
++				 * at the SMMU (CFCFG=0) instead of reaching
++				 * DDR.  If the machine still dies, the death is
++				 * not on the apps-smmu path at all. */
++				if (!s1empty) {
++					l1[i1] = (uint64_t)G_S2_L2_PA | 0x3ull;
++					l2[i2] = ((uint64_t)G_IPA_BASE &
++					    ~0x1fffffull) | 0x703ull;
++				}
 +				__asm__ volatile("dsb sy" ::: "memory");
-+				printf("SWEET SMMU: s1 tables l1[%u]=%#llx "
-+				    "l2[%u]=%#llx\n", i1,
++				printf("SWEET SMMU: s1 tables%s l1[%u]=%#llx "
++				    "l2[%u]=%#llx\n", s1empty ? " (EMPTY)" : "",
++				    i1,
 +				    (unsigned long long)l1[i1], i2,
 +				    (unsigned long long)l2[i2]);
 +			}
@@ -691,25 +703,28 @@
 +			 * so only SID bits [3:0] are significant and the DSP
 +			 * may present any of 0x1800..0x180f.  An SMR with a
 +			 * MASK field cannot be written from NS here (run69,
-+			 * run82), so cover the whole range with 16 exact
-+			 * entries instead of betting on 0x1801 alone (v40).
++			 * run82), so cover the range with exact entries.
++			 * ★ START AT 0x1801: writing SID 0x1800 aborts the
++			 * store (run70, and again in run103) - never include
++			 * it.
 +			 */
 +			if (free_slot >= 0) {
 +				unsigned n = 0;
 +
-+				for (; n < 16 &&
++				for (; n < 15 &&
 +				    free_slot + (int)n < 112; n++) {
 +					int sl = free_slot + (int)n;
 +
 +					*(volatile uint32_t *)(v + 0x800 +
-+					    4 * sl) = 0x80000000u | 0x1800u | n;
++					    4 * sl) = 0x80001800u |
++					    (1u + n);
 +					__asm__ volatile("dsb sy" ::: "memory");
 +					*(volatile uint32_t *)(v + 0xc00 +
 +					    4 * sl) = (uint32_t)cbn & 0xffu;
 +					__asm__ volatile("dsb sy" ::: "memory");
 +				}
 +				printf("SWEET SMMU: s1 smr[%d..%d] "
-+				    "0x1800..0x180f -> cb%u last=%#x\n",
++				    "0x1801..0x180f -> cb%u last=%#x\n",
 +				    free_slot, free_slot + (int)n - 1, cbn,
 +				    *(volatile uint32_t *)(v + 0x800 + 4 *
 +				    (free_slot + (int)n - 1)));
@@ -803,7 +818,7 @@
 +		}
 +	}
 +	printf("SWEET SMMU: stage-2 programming skipped (layout unknown)\n");
-+	sweet_log_sync();
+ 	sweet_log_sync();
 +	return;
 +	/* The ADSP audio SID (msm-audio-ion: iommus = <&apps_smmu 0x1801>)
 +	 * has no SMR in a fastboot-booted XNU.  Give it a stage-2 identity
@@ -969,10 +984,11 @@
 +		printf("SWEET SMMU: USFCFG cleared %#x -> %#x\n", cr0,
 +		    *(volatile uint32_t *)(v + 0x00));
 +	}
- 	sweet_log_sync();
++	sweet_log_sync();
  }
  
-@@ -1687,7 +2364,7 @@
+ /* Prove whether the page pmap_find_phys reports is a real DRAM address:
+@@ -1687,7 +2379,7 @@
  	printf("SWEET PHYS: va=%#llx pa=%#llx\n", (uint64_t)va, pa);
  	*(volatile uint32_t *)va = 0x5a5a1234u;
  	__asm__ volatile("dsb sy" ::: "memory");
@@ -981,7 +997,7 @@
  	if (!mirror) {
  		printf("SWEET PHYS: mirror map failed\n");
  	} else {
-@@ -1696,52 +2373,110 @@
+@@ -1696,52 +2388,110 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -1084,10 +1100,9 @@
  			sweet_log_sync();
 -			if (g_apm_cmd(src_port, 1, body, sizeof(body),
 -			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
--				continue;
 +			if (g_apm_shm_map_flat(src_port, pa[i], flags[f],
 +			    "shm_map") != 0) {
-+				continue;
+ 				continue;
  			}
 -			g_shm_handle = g_le32(g_rsp + 32);
 -			printf("SWEET GLINK: shm handle=%#x\n", g_shm_handle);
@@ -1118,7 +1133,7 @@
  			return 0;
  		}
  	}
-@@ -1761,7 +2496,7 @@
+@@ -1761,7 +2511,7 @@
  		return 0;
  	}
  	if (!g_shm_va) {
@@ -1127,7 +1142,7 @@
  		if (g_shm_va) {
  			g_shm_pa = G_SHM_FIXED_PA;
  			printf("SWEET GLINK: shm: fixed pa=%#llx size=%#x\n",
-@@ -1909,7 +2644,7 @@
+@@ -1909,7 +2659,7 @@
  	uint8_t pkt[24 + 16];
  	uint32_t pkt_size = sizeof(pkt);
  
@@ -1136,13 +1151,10 @@
  		return -1;
  	}
  	memcpy((void *)g_shm_va, payload, len);
-@@ -2012,7 +2747,44 @@
+@@ -2015,6 +2765,43 @@
+ 	}
+ }
  
- 		p[2 * i] = v;
- 		p[2 * i + 1] = v;
-+	}
-+}
-+
 +/*
 + * SMMU fault snapshot.  Read BEFORE touching the GLINK FIFO after a
 + * DATA_BUFFER, because a stalled DSP can hang that read and we would lose
@@ -1156,7 +1168,7 @@
 +		printf("SWEET SMMU: %s no gr window\n", tag);
 +		sweet_log_sync();
 +		return;
- 	}
++	}
 +	printf("SWEET SMMU: %s GFSR=%#x FSYNR0=%#x FSYNR1=%#x FSYNR2=%#x\n",
 +	    tag, *(volatile uint32_t *)(g_gr_win + 0x48u),
 +	    *(volatile uint32_t *)(g_gr_win + 0x50u),
@@ -1178,10 +1190,12 @@
 +		}
 +	}
 +	sweet_log_sync();
- }
- 
++}
++
  static int
-@@ -2027,15 +2799,87 @@
+ g_apm_data_buffer(uint32_t src_port, uint32_t dst_port, uint32_t off,
+     uint32_t len, uint32_t token)
+@@ -2027,15 +2814,87 @@
  	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
  	g_put32(pkt + 8, src_port);
  	g_put32(pkt + 12, dst_port);
@@ -1273,7 +1287,7 @@
  	for (unsigned i = 0; i < 100; i += 5) {
  		g_drain(0);
  		if (g_rsp_ready) {
-@@ -2073,72 +2917,94 @@
+@@ -2073,72 +2932,94 @@
  		if (w36 != 0 && dbg++ < 4) {
  			printf("SWEET GLINK: data_buffer: dst=%#x done status=%#x "
  			    "w28=%#x w32=%#x\n", dst_port, w36, w28, w32);
@@ -1415,7 +1429,7 @@
  	printf("SWEET GLINK: pcm tone start (dst=%#x)\n", dst_port);
  
  	for (int n = 0; n < 2000; n++) {
-@@ -2332,24 +3198,31 @@
+@@ -2332,24 +3213,31 @@
  	uint32_t v;
  	int rc;
  
@@ -1456,7 +1470,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2361,12 +3234,34 @@
+@@ -2361,12 +3249,34 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 3;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2; mf[30] = 3;
@@ -1495,7 +1509,7 @@
  	g_put32(mf + 0, 96000);
  	g_put32(mf + 4, 32u | (3u << 16));
  	g_put32(mf + 8, 1);
-@@ -2428,9 +3323,32 @@
+@@ -2428,9 +3338,32 @@
  	const uint32_t port = 0x2010u;
  	uint8_t tdm_payload[sizeof(g_graph_open_payload)];
  
@@ -1531,7 +1545,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2518,9 +3436,153 @@
+@@ -2518,9 +3451,153 @@
  		return;
  	}
  	printf("SWEET GLINK: graph_open failed on every payload\n");
@@ -1685,17 +1699,17 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2533,6 +3595,9 @@
+@@ -2533,6 +3610,9 @@
  		return;
  	}
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v40 (sid 0x1800..0x180f)\n");
++	printf("SWEET AUDIO: build v41 (empty s1, sid 0x1801..0x180f)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
-@@ -2587,6 +3652,7 @@
+@@ -2587,6 +3667,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
