@@ -16,11 +16,27 @@ userdata、不改 GPT。测试结束内核自己复位，手机回到 TWRP/Andro
 | UFS 读写、HFS+ root（userdata 尾部） | ✅ |
 | 触摸 / 按键 / RTC | ✅（触摸有已知限制） |
 | USB（枚举 / 部分传输） | 🟡 |
-| ADSP（PAS + GLINK + AudioReach APM） | ✅ GLINK 通、图可 open/start |
-| 音频（TDM → 功放） | 🟡 调试中：TDM 图 START 成功；PCM 共享内存映射被 ADSP 拒绝；AW882xx I2C 无 ACK |
+| ADSP（PAS + GLINK + AudioReach APM） | ✅ GLINK 通、图可 open/prepare/start、TDM 参数全 status 0 |
+| 音频（TDM → 功放） | 🔴 **卡在"DSP 读主机内存"**：只要 DSP 真的去读共享内存，整机在几毫秒内冻结（详见下文） |
+| 电池（pmic_glink） | 🟡 协议通、字段待校准 |
+| 震动（PM8350B） | ✅ 电源键触发，真机验证 |
 | Wi-Fi / BT / GPU | ⬜ 未开始 |
 
-音频进展与下一步见 **[docs/audio-status.md](docs/audio-status.md)**。
+## 音频当前卡点（一句话）
+
+控制面全通，**所有成功的命令都有一个共同点：DSP 不需要读内存**（参数内联在
+GPR 包里）。一旦让 DSP 去读主机上的共享内存——DATA_BUFFER，或把 GRAPH_OPEN
+改成厂商那种"图放共享内存"的形态——整机就在几毫秒内冻结，且不是一次可记录的
+fault。
+
+已确认**不影响**结果的四个维度：apps-smmu 配置有无、S1 页表正确与否、
+`CFCFG` 的 stall/terminate、buffer 物理地址。完整证据、失败记录和下一步见
+**[docs/audio-status.md](docs/audio-status.md)**（结论快照）、
+**[docs/status-log.md](docs/status-log.md)**（逐轮时间线）、
+**[docs/handoff.md](docs/handoff.md)**（上手流程）。
+
+厂商 GPR 报文格式见 **[docs/vendor-gpr-packets.md](docs/vendor-gpr-packets.md)**，
+抓包原始数据在 `docs/traces/`，解码用 `scripts/parse_gpr_trace.py`。
 
 ## 仓库不包含什么（重要）
 

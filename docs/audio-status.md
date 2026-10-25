@@ -1,273 +1,336 @@
-# Marble XNU 出声 — 阶段状态（2026-10-24 12:20）
+# Marble XNU 出声 — 当前状态（2026-10-25 21:35，build v47）
 
-## 目标
-RAM-only `fastboot boot` 引导 XNU，让 Redmi Note 12 Turbo（marble，序列号 2aa26095）的
-扬声器真正出声。
-
-## 一、已验证通过（真机）
-1. **ADSP PAS + GLINK + PRM**：Q6 释放、`adsp_apps` 通道建立、LPASS core 投票成功。
-2. **LPASS 时钟**：VA_CORE_MCLK 0x307 @19.2 MHz、RX_CORE_MCLK 0x30e @22.5792 MHz，
-   `clock_attri=1` 后 status 0。
-3. **AudioReach 图**：
-   - `GRAPH_OPEN` → **status 0**（344 字节 wire 载荷；关键修正：capability id
-     `0x0b001001`、heap=2、`0x0800124d`=2）
-   - `GRAPH_PREPARE` → **status 0**
-   - SET_CFG 被接受：SAL `0x08001016`/`0x0800101e`、CDMA `0x08001017`
-     (48 kHz/16 bit/2ch/**data_format=1**)、`0x08001018`、`0x08001176`
-4. **自动复位**：`sweetreboot=1` 的 PSCI SYSTEM_RESET 有效，探测跑完自动回 Android。
-5. **kprobe 抓包**：24 字探针 + “系统音效触发播放”能完整抓到厂商报文。
-
-## 二、当前唯一阻塞（DSP 侧）
-`GRAPH_START` → status 1。原因收敛到 **CODEC_DMA 接口参数**：
-
-| 参数 | 结果 |
-|---|---|
-| `0x0800101B`（厂商 hw ep 用，28 B） | **status 3**（本模块不认这个参数族） |
-| `0x08001063` 值 `{3,1,3}` / `{3,0,3}` | status 1 |
-| `0x08001063` 值矩阵（0121 在测） | `lpaif_type`∈{0,3} × `intf_index`∈{2,1,0} |
-
-0102/0121 的推断来源：厂商 `0x0800101B` 前两个字是 `{0, 2}`，
-即 `lpaif_type=0`、`intf_index=2`；而 0x08001063 是上游格式的同一语义。
-
-## 三、当前阻塞（功放侧 I2C）
-- TLMM 基址已修正：**0x0f100000**（GPIO56/57 = 0x0f138000/0x0f139000）。
-- 复位按厂商 `aw882xx_hw_reset` 反汇编改成 **raw 0 → 延时 → raw 1 → 延时**。
-- **全地址扫描 0 设备应答**（复位释放/复位两种状态都试过）。
-- Android 内同一总线同一地址工作正常：dmesg `aw882xx 2032 detected`（bus 2, 0x34/0x35）。
-- 0121 新增：25 kHz 慢速总线、SDA 驱动电平回读、`spksw` GPIO52 拉高。
-  电平回读结果将区分：
-  - `driven low` 仍读 1 → bit-bang/引脚问题 → 改用 GENI SE I2C 控制器；
-  - `driven low` 读 0 → 总线正常、功放不响应 → 查功放供电/复位/spksw。
-
-## 四、可直接复用的参数
-- 简单图：sg `0xb000013d`、container `0xe00001b8`、SAL iid `0x483f`、
-  CODEC_DMA iid `0x4840`。
-- 厂商真图：sg `0xb00000d5`、container `0xe0000122`、
-  模块 `0x4587/0x4763/0x42d4/0x4308`，wire 载荷 440 B（源码里已内置备用）。
-- 厂商 hw ep：`0x08001017` `{96000,32,2,1}`；
-  `0x0800101B` `{0,2,0x00010001,3,0x00200004,0,1}`。
-- 厂商 SAL 媒体格式：`0x0800100C`
-  `{fmt=1, PCM, 18, 48000, 24bit, ...}`。
-- I2C：GPIO56/57；复位 GPIO1/GPIO120（0x0f101000/0x0f178000）；
-  spksw GPIO52（0x0f134000）。
-
-## 五、目录
-```
-src/       当前工作源码（sweet_glink.c, sweet_i2c.c）
-patches/   0113..0121（与 git 仓库同步的副本）
-traces/    真机 kprobe 抓包（trace_ui.txt 含 0x0800101B 完整 28 B）
-logs/      ring-run11..15、CI/镜像构建日志、AGM 库清单
-images/    最近验证过的引导镜像（0120）与当时内核
-tools/     PlayTone.java / player.jar / tone.wav（AudioTrack 测试音）
-STATUS.md  本文件
-```
-
-## 六、下一步
-1. 看 0121 结果：
-   - 有任一 `0x08001063` 组合返回 0 → START 应通过 → 观察 `pcm tone` 是否被 DSP 消费。
-   - 若全失败 → 切换到厂商真图 `0xb00000d5`，按 `0x4308`/`0x42d3` 的厂商参数配置；
-     若仍失败，需要补图级 SET_CFG（厂商在 GRAPH_OPEN 后发过 264 B 的共享内存校准块，
-     尚未抓到内容）。
-2. 功放：按 0121 的电平回读决定是修 bit-bang 还是查供电。
-3. 若供电缺失，用 RPMh 投票候选 1.8 V 轨（pm8350_l7 / pm8350c_l10 等）。
-
-## 七、复现命令
-- 编译：`git push` → GitHub Actions `xnu` → release `kernel-latest`
-- 取内核建镜像：`bash work/xnu/marble/fetch_and_build_adsp.sh`
-  → `cd work/xnu/marble && bash mkimage.sh sweetreboot=1`
-- 引导：`adb reboot bootloader; fastboot boot /tmp/shim-iosroot-adsp.img`
-- 拉 ring：`tools/pull_ring_after_boot.sh <编号>`（Android 起来后自动 dd userdata 尾部）
+> 目标：给 Redmi Note 12 Turbo（marble，序列号 **2aa26095**）RAM-only 引导
+> XNU/iOS 16，让扬声器真的出声。**只做 `fastboot boot`，不刷分区、不动 GPT。**
+> 时间线见 `STATUS.md`；上手流程见 `HANDOFF.md`。
+> 本文件只写**有证据的结论**；推测必须标「假设」。
 
 ---
 
-# 2026-10-24 13:10 更新（TDM 线）
+## 〇、一句话现状
 
-## 已确认
-- 扬声器走 **TDM-LPAIF-RX-TERTIARY**：`96 kHz / 2ch / 32 bit`（resourcemanager 的
-  `PAL_DEVICE_OUT_SPEAKER` → `TDM-LPAIF-RX-TERTIARY-VIRT-0`）。
-- `0x0800101B` = **PARAM_ID_TDM_INTF_CFG**；`0x0700100e` = TDM_SINK；
-  `0x0700100f` = TDM_SOURCE；`0x07001000` = WR_SHARED_MEM_EP。
-- 0122：把图端点换成 TDM_SINK，图打开/全部 TDM 配置/PREPARE 均 status 0；
-  SAL 的 `0x0800100C` 返回 **status 3 (EUNSUPPORTED)**；START 仍 1。
-- 0123：输入端换成 **WR_SHARED_MEM_EP**，96k/32 媒体格式 **status 0**；
-  START 仍 1。
-- 厂商真实播放图（从 AGM 服务内存提取，见 `traces/vendor-graph-notes.md`）：
-  - 0xb0000002（带 AW 模块，3ch TDM）：SAL(0x4012) → 0x48ba → AW(0x42d3) →
-    0x418e → 0x4006 → 0x4007 → TDM(0x428f)
-  - 0xb0000052（6 模块，无 AW）：SAL → 0x07001015 → 0x07001011 →
-    0x07001098 → 0x0700101a → TDM(0x42db)
-- I2C：外部上拉在线、SDA 驱动正常；0x34/0x35 仍无 ACK（spksw 低/高都试过）。
+iOS 能起，**GUI 已经真正显示过**（Siri 欢迎页）；音频控制面全通，数据面
+卡在「DSP 读主存那一步」；电源协议打通但字段待校准；震动已真机验证。
 
-## 正在做（0125，构建中）
-- 给 **TDM sink** 补发输入媒体格式 `0x0800100C`（96k/32/2）
-- 补 **HW_INTF_CLK_CFG 0x0800113C** = 12.288 MHz
-- 同时包含 0124：在 ADSP 启动 **之前**（60s 等待前）探测功放，
-  用于判断无 ACK 是否是 ADSP/PMIC 状态造成
+---
 
-## 下一步（若 0125 仍 START=1）
-切换到厂商图 0xb0000002（载荷已提取为紧凑格式，需转 wire 格式），
-按厂商 iid 配置 SAL/TDM/AW，再试 PREPARE/START。
+## 一、已验证可用（真机）
 
-## 0126（已推送 7d8d2db，CI 构建中）
-- 直接改用厂商图 **0xb0000002**（wire 载荷 712 B，`traces/agm-graph-b0000002-compact.bin` 转出）
-- 图内 iid：SAL 0x4012 / AW 0x42d3 / TDM 0x428f；容器 capability 0x0b001001，heap 1
-- 配置：SAL MF 96k/32/2（回退 48k/24/2）、TDM MF 96k/32/3（mask=7）、
-  HW_EP_MF 96k/32/3、frame=1、power=0、clk 12.288 MHz、
-  AW param 0x10013D2A = {0, 0x10013D1B, 1, 0, 0, 0, 0x632B}
-- 顺序：厂商图优先，失败再落回 WR 简单图、CDMA
-- 源码/补丁已归档：`src/`、`patches/0126-sweet-vendor-playback-graph.patch`
+| 环节 | 证据 |
+|---|---|
+| XNU 8796 arm64 引导 | shim + 16K 页 + ADT |
+| **GUI / SpringBoard / Siri 欢迎页** | `KEEPALIVE=1` + 单核 + 无 `sweetpcm` 时出现 |
+| ADSP PAS 固件加载 + Q6 释放 | `pas_init_image`/`pas_mem_setup` = 0 |
+| GLINK `adsp_apps` 通道 + GPR | VERSION/OPEN/OPEN_ACK + intent 全通 |
+| LPASS 时钟 | PRM 投票 status 0；clk 0x307/0x30e ok |
+| AudioReach 图 open/prepare/start | status 0（含 WR 合并图） |
+| TDM 配置 | `tdm_intf\|ep_mf\|frame\|power\|clk` = 0；**`tdm_rate`/`tdm_cfg` = 0**（v39 修好，见 §2.8） |
+| AW882xx I2C 初始化 | 两片 0x2032，profile 44/44 |
+| SHM_MAP | 44B 包，`pa=0xa2e00000`，`status=0`，handle `0xb0e15558` |
+| 开机图（PSD） | 1080x2400 |
+| **震动（电源键触发）** | 用户实测按电源键有震动 ⇒ 0183 成立 |
+| 电池图标不再谎报充电 | 0182：无采样时报 battery-only |
 
-## 0126 结果（ring-run20，2026-10-24 13:24）
-- 厂商图 `0xb0000002` 走 **shm** 发 GRAPH_OPEN：**status=1 EFAILED**（payload 712 B 已按
-  16 B 段头 + 8 字节对齐重建，与已验证的简单图 344 B 结构逐字节同构；严格解析 compact
-  680 B 得 5 段，重建结果与发送内容完全一致 → payload 本身没问题）
-- 失败后自动回退 tdm-inline：open/prepare 0、START 仍 1
-- 新发现：`g_apm_cmd` 内联缓冲只有 512 B；厂商图 712 B 只能走 shm。而 shm 映射是
-  `SHM_MAP(src=0x2002)`、GRAPH_OPEN 却从 `src=0x2010` 发 → **句柄与客户端端口不一致**
+---
 
-## 0127（已推送 e529bf7，CI 构建中）
-1. 内联缓冲 512→1024，厂商图先**内联**直发（简单图内联一直能开）
-2. 内联失败再用 shm，但 `SHM_MAP(src=0x2010)` 与命令同端口
-3. 保留 tdm-inline 回退；内核标记 `graph_open/vp-inline`、`vp-shm`
+## 二、音频卡点：DSP 读主存（当前唯一硬阻塞）
 
-## 0127 结果（ring-run21）—— 厂商图打通控制面，panic 是自家 bug
-- **`graph_open/vp-inline` status=0**：712 B 内联直发成功（问题确实在 shm 端口/路径）
-- TDM 全部配置 0（`0x0800100C` 仍 3=EUNSUPPORTED）、AW cfg 0、PREPARE 0、START 已发出
-- panic：`far=0x4000`、x0=0x4012。根因 = `g_audio_tone()` 在 PCM shm **未映射**时
-  直接写 `g_shm_va + G_PCM_OFF_A(0x4000)` → 空指针偏移 0x4000
-- 即 START 很可能已成功，崩溃发生在随后的 tone 填充
+控制面、共享内存映射、图启动全部成功；**第一次 `DATA_BUFFER_V2` 之后 DSP
+挂死，APM 不回包，随后总线卡死**（连函数自带的 100 ms 超时打印都出不来）。
 
-## 0128（f8e3f75，CI 构建中）
-1. `g_audio_tone()` 开头先 `g_apm_shm_map(src_port)`，失败则跳过（不再空写）
-2. 每条 APM 响应后 `sweet_log_sync()`，START 的 status 一定落盘
-3. START 成功打印 `vendor graph started` 并同步
+### 2.1 apps-smmu 事实（厂商源码 + 真机回读，均已核对）
 
-## 功放 I2C 无 ACK 的根因（2026-10-24 14:00 发现，0129 修复）
-- Android 侧事实：i2c@880000 = **SE15，GPIO56/57，qup15**；@34 复位 GPIO1、IRQ 88、
-  spksw 52；@35 复位 GPIO120、IRQ 63；驱动 2.89 s 读到 chipid **2032**
-- 播放 3 s 1 kHz 时 regulator_summary **无任何功放电源轨变化** → 功放供电硬连/常开，
-  XNU 不缺电（排除了 PMIC 假设）
-- **真正 bug**：`sweet_i2c.c` 的复位序列用了 `delay(2)`/`delay(5)`。XNU 的
-  `delay()` 单位是**微秒**，厂商是 msleep(1~2 ms) → 复位释放后 5 µs 就开始扫描，
-  芯片 I2C 模块根本没起来
-- 0129：低电平 2 ms、释放后等 10 ms
+| 项 | 值 / 结论 | 来源 |
+|---|---|---|
+| 基址 | `0x15000000`，DT `reg` 1 MiB；`tcu-base=0x151ce000` | 本机 DT |
+| 属性 | `compatible=qcom,qsmmu-v500`，`#iommu-cells=2` | 本机 DT |
+| ID0 / ID1 | `0x4c017e71` / `0x6000004b` | ring |
+| numpage | ID1.NUMPAGENDXB=6 ⇒ 128 页 ⇒ CB(n)=`0x80000+0x1000n` | `arm-smmu.c` |
+| 可读区 | `0x0..0x3FFF`（GR0/GR1+2页）、`0x80000..0x8F000` | 实测 |
+| **空洞** | **`0x15004000` 读就外部中止**（ESR 0x96000010） | run86 |
+| CBAR(0..5) | `0x1f000` → **Type=1 = S1 翻译 + stage-2 BYPASS** | run87 |
+| CBAR(6..) | `0` → Type=0（S2 翻译），但同页 SCTLR/VTCR 值形似指令 | run87 |
+| CB0..5 SCTLR | `0xa9f00e0` / `0xe0`，VTCR=0，VTTBR=0（未启用翻译） | run87 |
+| sACR | `0x1c` ⇒ **CACHE_LOCK(bit26) 本来就是 0**，不是拦路者 | run80 |
+| sCR0 | `0x200406` ⇒ **USFCFG(bit10)=1 且清不掉**（未匹配流会被拦） | run81 |
 
-## 0128 结果（ring-run22）—— 厂商图 START 成功！
-- open 0、TDM/AW 配置全过（SAL 0x0800100C 两种采样率都 3=EUNSUPPORTED）、
-  PREPARE 0、**graph_start status=0**、`vendor graph started`
-- PCM shm 以 0x2010 映射成功（handle 0x100100c）
-- 但 `pcm buffer 0 not consumed`（DATA_BUFFER_V2 → 0x4012 被拒或 DONE 解析不对）
+### 2.2 写入能力（这是全部关键）
 
-## 0130（e9a98a6，CI 构建中，含 0129）
-- DATA_BUFFER_V2 原始响应打印（no rsp / op / w24..w36），只打前 4 次
-- tone 前向 **0x4012(SAL) / 0x48ba / 0x4007 / 0x418e** 各发一帧探测，
-  第一个回 DONE 的端点作为 tone 目标
+| 操作 | 结果 | 证据 |
+|---|---|---|
+| `SMR[n] = VALID\|0x1801`（MASK=0，n=0x4d） | ✅ 可写，回读一致 | run77/81 |
+| `SMR` 带任何 MASK≠0（`0x800f1800`/`0x800f1801`） | ❌ 写即中止 | run69/82 |
+| `SMR` 用 SID `0x1800` | ❌ 写即中止 | run70 |
+| `S2CR[n] = type0\|cbndx`（0x3/0x6/0x34） | ✅ 可写，回读一致 | run74/81 |
+| `S2CR = 0x10000`（BYPASS） | ❌ 回读变成 `0x20000`（FAULT） | run71/73 |
+| `CBAR(n)` 写（CB6/CB52） | ❌ 外部中止（读正常） | run77/79/80 |
+| `CBA2R(n)` 写 | ✅（回读 0x1） | run77+ |
+| CB 窗口 `VTCR/VTTBR0/SCTLR` 写（`0xB4000`） | ✅ 四个回读全等 | run81 |
+| 写 `sACR` | ✅ 但值本来就对 | run80 |
 
-## 0130 结果（ring-run23）
-- 功放：复位延时改 2 ms/10 ms 后**仍无 ACK**（0x34/0x35 都不应答）→ 延时不是全部原因
-- DATA_BUFFER：四个候选端点全部 **no rsp**
-- ★ 从 kprobe `gpr_send_pkt` 探头字（trace_ui.txt）解出厂商真实报文：
-  - **DATA_BUFFER_V2: src=0x2011**、dst=模块 iid、token 0/1、**44 B 负载**
-    （{offset,0,handle,size, 7×0}）、pkt_size=0x44
-  - **SHM_MAP: src=0x2002**（0x0100100C）
-  - 图形命令（open/prepare/start/set_cfg）: 0x2010
-  - 我们一直从 0x2010 发数据 → DSP 不认
+### 2.3 DT 里的 SID 语义
 
-## 0131（4c20595，CI 构建中）
-- PCM 缓冲改从 **0x2011** 发；SHM_MAP 改用 **0x2002**
-- 保留 44 B 厂商负载格式；DONE 事件打印 w16..w36，opcode 允许落在任一槽
+```
+/soc/spf_core_platform/qcom,msm-audio-ion
+  iommus              = <&apps_smmu 0x1801 0x0>    (#iommu-cells = 2)
+  qcom,smmu-sid-mask  = 0xf
+```
+⇒ 官方语义是「匹配时忽略 SID 低 4 位」，但**本机 SMR 写不进 MASK**
+⇒ 只能精确匹配 `0x1801`（**这就是 2.2 里那条矛盾的根源**）。
 
-## 0131 结果（ring-run24，从 recovery 直读 userdata，验证可行！）
-- 数据缓冲改 0x2011 + SHM_MAP 0x2002 后 **仍然 no rsp**
-- ★ 发现真正的 handle 解析 bug：SHM_MAP 响应负载 = {echoed opcode, handle}，
-  我们读 +24（=0x0100100C，正好是命令码）当 handle；真实 handle 在 **+28**
-  - 日志 `handle=0x100100c` 与命令码完全一致，铁证
-  - 假 handle 让 DATA_BUFFER 被 DSP 静默丢弃（也解释 0126 shm GRAPH_OPEN status=1）
+### 2.4 已经试过的四种配置，挂死表现完全一样
 
-## recovery 直读（2026-10-24 14:18 实测）
-- recovery 的 adbd 是 **root**，`/dev/block/sda33` 可读，XNU 结束后无需等 Android：
-  `adb exec-out "dd if=/dev/block/sda33 bs=4096 skip=58771962 count=1025"` → 解 ring
-- 当前设备在 XNU 结束后会落到 recovery（连续两次），拉日志更快了
+| 配置 | 结果 |
+|---|---|
+| `S2CR=0x20000`（FAULT） | 挂死 | run68/71/73 |
+| `S2CR=0x3`（bootloader 的 CB3） | 挂死 | run75 |
+| 自建 CB52 + 两级页表（翻译，回读全对） | 挂死 | run81 |
+| `sweetcb=0`：引到 **stage-2 bypass** 的 CB0 | 挂死 | run88 |
 
-## 0132（cf70d34，CI 构建中）
-- `g_shm_handle = le32(rsp+28)`，并校验 +24 是命令码回显
+四种互不相同的 SMMU 配置表现一模一样 ⇒ 只有两种解释：
 
-## 0132 结果（ring-run25）
-- handle 改读 +28 后得到 `{echo=0x0100100C, 0x1, 0x1}` → **map 本身失败（status=1）**
-- 关键差异：我们分配到的 PA = **0x8459D8000（约 35 GB，高 DDR 区）**；
-  厂商 SHM_MAP 的 PA = **0x1FFE8000 / 0x1FFE0000（约 5 GB）**，size=0x5000
-- 厂商请求结构与我们完全一致（pool=3, regions=1, flag=4），差别只在地址/大小
-- 结论：ADSP 无法映射这么高的物理地址
+1. **DSP 的 SID 根本不在我们写的 SMR 上**（`sCR0.USFCFG=1`，未匹配即 fault），
+   那么配什么 bank 都无效；
+2. **卡点不在 SMMU**（在 WR 数据通路 / GPR 语义上）。
 
-## 0133（构建中）
-- `kmem_alloc_contig` 传 `max_pnum=0x200000`（< 8 GB），失败再回退无限制
-- 区域大小 0x10000 → **0x5000**（厂商同款；PCM 最高用到 0x4C80）
-- SHM_MAP 校验 +28 的 status，非 0 直接报错
+另外：`cbm6/cbm7` 的 SCTLR/VTCR 每轮都在变（0x201d2716↔0x201d2516、
+0x1d00↔0x1c00）⇒ 那段地址是易变数据，**不是稳定寄存器**，
+进一步说明 CB6+ 不可依赖。
 
-## 0133 结果（ring-run26）
-- 区域缩到 0x5000 后 PA 仍是 **0x844AEC000（33 GB）** → 低地址分配失败后走了回退
-- SHM_MAP 仍 status=1
-- ★ 对比厂商报文发现唯一剩余差异：**SHM_MAP 的域字 = 0x10302**（bit16 =
-  `src_port_valid`），其他所有命令都是 0x302；厂商只对 SHM_MAP 置这一位
+### 2.5 ★ 修正（外部评审指出，已核对）
 
-## 0134（构建中）
-- SHM_MAP 包头置 `0x10000`（src_port_valid）
+1. **run90 作废**：`0xd0c00000` **不在** ADSP carve-out 内。
+   区域 = `[0x9fd00000, 0x9fd00000+0x03100000) = [0x9fd00000, 0xa2e00000)`，
+   我算成了 0xd0…，越界 783 MiB。所以"换成 DSP 必然可访问的内存也不行"
+   **没有得到证明**。
+2. **`DATA_BUFFER_V2` 的地址语义可疑**：上游 AudioReach 结构的前两个
+   payload 字是 `buf_addr_lsw/msw`（地址），不是 offset。我们发的是
+   `{0 或 0x800, 0, handle, size}` —— 如果固件按地址解释，DSP 会去读
+   物理地址 0 / 0x800，必然出错。**这能一致地解释所有冻结**。
+3. **`S2CR.Type=0` + `CBAR.Type=1` 并非非法组合**，且 CB0 的 `SCTLR.M=0`
+   意味着 S1 翻译未启用。所以"四种配置表现一样"不能推出 SMMU 配法错。
 
-## 0135 结果（ring-run28）
-- 单页 4 KB + 厂商偏移 0/0x800 + src_port_valid：SHM_MAP 仍 **status=1**
-- 分配 PA 仍 **0x844AE0000（约 35 GB）** → `max_pnum=0x200000`（4 KB 页 = 8 GB）
-  的约束分配失败后走了回退；说明**低位没有空闲连续页**
-- 页大小确认：XNU 在此端口用 **4 KB 页**（4 KB 分配有效）
+### 2.6 v31：按评审建议改的两个实验
 
-## 0136（e042a45，构建中）
-1. `map_probe`：直接映射 ADSP carveout **0x9FD00000**（2.68 GB，DT 的
-   adsp_region，49 MB），只建映射不写数据 → 判断 SHM_MAP 是否只是受地址窗口限制
-2. 分配改为**递增上限扫描**：1/2/4/6/8/12 GB，取第一个成功并打印 PA
-3. 之后照常映射我们自己的缓冲区并发 tone
+| 开关 | 内容 | 判据 |
+|---|---|---|
+| `sweetpamode=1` | `DATA_BUFFER` 的地址字段改发 **`g_shm_pa + off`**（真地址）| 不再冻结 ⇒ 根因是地址语义，不是 SMMU |
+| 默认 | 发送后、**读 GLINK FIFO 之前**先快照 `sGFSR` / `sGFSYNR0/1/2`，以及 CB0..5 的 `FSR/FAR/FSYNR0` | `GFSR.USF=1` ⇒ 没有 SMR 匹配，`GFSYNR1[14:0]` 就是 DSP 真正的 SID；某个 CB 有 `FSR` ⇒ 事务进了上下文但翻译失败 |
 
-## 2026-10-24 归档与仓库化
-- /tmp 里的本项目产物已全部迁入本目录：
-  `images/`（21 个镜像）、`kernels/`、`logs/`（含 raw ring gzip）、
-  `logs/build/`、`dumps/`、`refs/`（AudioReach/AW882xx/qdsp6/构建树）、
-  `src-history/`、`patches/`
-- 后续实验不再写 /tmp：构建与拉日志脚本都使用本目录/仓库内路径
-- GitHub `jebbranch/ios-port-marble` 已补充：
-  `shim/`（shim 源码）、`scripts/`（fetch_kernel / mkimage / boot_ram /
-  pull_logs / extract_adsp_fw）、`docs/`（audio-status / sound-plan /
-  vendor-graph / sweetlog），README 重写为“克隆→构建→部署”全流程
-- recovery（TWRP）adbd 为 root，XNU 结束后可直接 dd userdata 尾部，
-  不必等 Android 启动
+先跑 `sweetpamode=1`；无论结果如何，fault 快照都会给出上面二选一的证据。
 
-## 0137–0139：SHM_MAP 的失败形态已经清楚
-- 高位地址（XNU 只能分配到的 ~35 GB）：APM 立即回 `GPR_BASIC_RSP_RESULT`
-  `status=1`（拒绝）
-- 厂商自己的 DMA 地址 0x1FFE8000、SMEM 0x80900000、SPU 共享区
-  0x8BB80000/0x8BBE0000：**完全没有响应**，但前后 SPF 状态查询都正常
-  → APM 没有重启，是 map 请求本身卡住
-- 因此不是端口、令牌或报文格式的问题；剩下两个方向：
-  1. AP 侧需要先建立 LPASS 的 SMMU/上下文（XNU 没有 SMMU 驱动）；
-  2. 调用顺序要按厂商来（厂商在 GRAPH_OPEN 前映射 PCM 缓冲）
+### 2.7 ★★★ 顺序纠正：BADPARAM 是安全刹车，不是 bug
 
-## 0140：SMMU 现场与侧线（ring-run33）
-- `apps_smmu @0x15000000` 可读：IDR0 `0x00200406`，+0x10 `0x0000001c`
-- **`lpass_tbu @0x151e9000` 一读就 fault**：XNU 不能直接访问 TBU 寄存器，
-  日志停在那一行，后面的 GLINK 初始化没有执行
-- 同时发现侧线（RTC/触觉）**从未真正工作**：`sweet_spmi.c` 仍在用 0093
-  之前的旧基址，init 读到 `arb=0x08000100 APIDs=0`，所有 SPMI 读都失败
-- 现场 DT 的正确窗口：`cnfg 0x0c42d000, core 0x0c400000,
-  chnls 0x0c500000, obsrvr 0x0c440000`；observer 每 APID 0x80 字节
-  （keys 驱动已经用这个布局工作）
+把三次实验按「参数是否合法」重排（一手证据，run93/96/97/98/99/100/101）：
 
-## 设备内核版本
-- 本机 Android 内核是 **5.10**（不是 5.15）。厂商参考源码用
-  `MiCode/Xiaomi_Kernel_OpenSource` 的 **`marble-s-oss`** 分支；
-  5.15 的 msm 代码只能当旁证。
+| 实验 | flag | 地址 | 参数合法？ | 结果 |
+|---|---|---|---|---|
+| A | 4 = offset | 偏移 0 / 0x800 | ✅ | **整机挂死** |
+| B | 4 = offset | 绝对 `0xa2e00000` | ❌ 远超 4096 区域 | `BADPARAM`，**安全** |
+| C | 0 = PA | 绝对 `0xa2e00000` | ✅ | **整机挂死** |
 
-## 0141–0142：RTC 与触觉
-- 0141：修正 SPMI 基址；读 PMK8350 `0x6148`（4 字节小端 Unix 秒），
-  值在 2020–2050 才调用 `clock_set_calendar_microtime()`
-- 0141：PM8350B（HAP520）直驱：VMAX 3600 mV、sine、
-  T_LRA=5882 us、DIRECT_PLAY 满幅 300 ms
-- 0142：写通道（chnls）步长先用**触觉 revision 字节**验证，
-  且每次写都要求目标寄存器经 observer 与 chnls 读到相同值，
-  否则一个字节都不写（避免错误步长误写其他 PMIC 外设）
+两种「正确形式」都挂死，唯一安全的是**参数非法**那次。
+⇒ **在 DSP 能安全读内存之前，不可能拿到 status=0**——参数改「对」就等于挂死。
+所以工作顺序必须倒过来：先解决可达性，再谈参数。
+
+另一个一手结论（run92 复核）：**MAP + PREPARE + START 是安全的**，
+同一块区域、同一个 flag=4，只要不发 `DATA_BUFFER` 就正常走完并复位。
+⇒ 挂死只发生在带合法 offset 的数据帧之后，**不是图启动引起的**。
+
+### 2.8 TDM 闭环（v39，run101 已验证）
+
+之前每轮 `tdm_mf = 0x3 (EUNSUPPORTED)` 的原因：**我们对 TDM 端点发了通用
+media format `0x0800100C`，而厂商用的是 TDM 专用的一对参数**
+`0x08001017`（12B `{96000, 0x30020, 1}`）+ `0x0800101B`（28B
+`{0,2,0x10001,7,0x200004,0,1}`）。改发这两个之后全部 `status=0`。
+**这条已闭环。**
+
+### 2.9 ★ SMR 表全貌与「没有空闲 CB」
+
+每轮 probe 都打印，12 轮完全一致：
+
+| SMR | SID | mask | → CB |
+|---|---|---|---|
+| 0 | `0x0e0` | 0 | CB0 |
+| 1 | `0x4a0` | 0 | CB1 |
+| 2 | `0x0c0` | 0 | CB2 |
+| 3 | `0x2800` | `0x402` | CB3 |
+| 4 | `0x000` | 0 | CB4 |
+| 5 | `0x584` | `0x11` | CB5 |
+
+槽位 6..112 全空。推论：
+
+1. **bootloader 没有配 0x1801**，那条是我们自己写进 slot 0x4d 的。
+2. **CB0..5 全被占用**，没有空闲 context bank；CBAR≥6 又写不进去
+   ⇒ 「新建一个 CB」彻底不可行。
+3. 把 0x1801 引到 CB5 等于与原生 SID `0x584` **共享同一个 bank**，
+   开 S1 翻译会同时改变后者的行为（未评估的风险）。
+4. DT 的 `qcom,smmu-sid-mask = 0xf` 只忽略 SID 低 4 位 ⇒ 真实 SID 可能是
+   `0x1800..0x180f` 任意一个，**只写精确 0x1801 很可能根本不匹配**。
+   v40 补全 16 个。
+
+### 2.10 ★ 新工具：SHM_MAP 是无风险的地址探针
+
+`SHARED_MEM_MAP_REGIONS` 只做登记、不搬数据 ⇒ 用返回的 status 就能安全地
+探出 DSP 认可的内存窗口（run102 实测）：
+
+| 地址 | flag=4 | flag=0 |
+|---|---|---|
+| `0xa2d00000`（`adsp_region` 内） | 拒绝 | 拒绝 |
+| `0x8ea6dc000`（64 位，XNU 的页） | 拒绝 | 拒绝 |
+| `0xa2e00000`（System RAM 起点） | 接受 | 接受 |
+| `0x11ffe8000`（厂商 IOVA） | 接受 | 拒绝 |
+
+⇒ DSP 的合法窗口 ≈ **32 位、非保留的 System RAM**。
+DT 复核：`adsp_region = <0 0x9fd00000 0 0x03100000>` 且 `no-map`
+⇒ `[0x9fd00000, 0xa2e00000)` 半开，`0xa2e00000` **不在** carve-out 内。
+`adsp_heap_region`(12 MiB) / `audio_cma_region`(28 MiB) 都是
+`shared-dma-pool` + `reusable`，由内核启动时动态分配，**XNU 下不存在**，
+不能拿来当目标地址。
+
+### 2.11 ★★★ 厂商报文逐字段比对（534 个包全解，2026-10-25 21:30）
+
+> ⚠ 以前的解析把 `p0..p23` 的**十进制**当成了十六进制，所以"找不到 opcode"。
+> 重解后全部可读，以下是一手数据。
+
+GPR 头布局（与实现一致）：`w0=(cmd<<4)|(len<<8)`、`w1=domains`、`w2=src`、
+`w3=dst`、`w4=token`、`w5=opcode`、`w6/w7=addr lsw/msw`、`w8=handle`、`w9=size`。
+
+| 命令 | 形态 | 关键字段 |
+|---|---|---|
+| `SHM_MAP` `0x0100100c` | 44B，**无描述符**，正文从 w6 起 | pool=3\|cnt1, flag=4, addr=`0x1ffe8000`/msw=1, **size=`0x5000`** |
+| `GRAPH_OPEN` `0x01001000` | **40B，图在共享内存里** | addr=0, handle, size=`0x1f0`(流图)/`0xb38`(设备图) |
+| **APM 级 `SET_CFG`(dst=1)** | **40B，参数在共享内存里** | addr=`0x400`/`0x1000`/0, handle, size=`0x108`/`0xb0`/`0x70` |
+| **模块级 `SET_CFG`(dst=模块 iid)** | 72/88B，**内联 handle=0** | **与我们一致 ✓** |
+| `DATA_BUFFER_V2` `0x0400100a` | 68B | src `0x2011` → dst **`0x40bd`**，token **0/1**，buf **偏移 0/0x800**，size `0x480` |
+
+**同一个 handle 承载全部内容**：所有 `GRAPH_OPEN` 与全部 479 个 `DATA_BUFFER`
+都用 `handle=0xb0d890e8`。区域偏移分配：`0x0` 图定义、`0x400`/`0x1000` APM
+参数块、`0x0`/`0x800` PCM buffer（GRAPH_OPEN 之后复用）。⇒ 区域必须 ≥ `0x5000`。
+
+**我们的差异**：
+
+| 项 | 厂商 | 我们 | 判定 |
+|---|---|---|---|
+| 区域大小 | `0x5000` | `G_SHM_SIZE = 0x1000` | ❌ 太小，装不下图的布局 |
+| 区域地址 | `0x1_1FFE8000`（33 位 IOVA） | `0xa2e00000`（物理） | ⚠ 待定 |
+| **APM 级命令（dst=1）** | **40B 描述符形态** | **内联 payload，handle=0** | ★ 结构性差异 |
+| 模块级 SET_CFG | 内联 handle=0 | 内联 handle=0 | ✓ |
+| DATA_BUFFER | 见上 | 同 | ✓ |
+
+DSP 对两种形态**都回 status=0**，所以"成功"不能证明它按我们的意图解析了。
+**若 APM 把内联的图当成"区域 offset=0 处的内容"，它看到的图与我们的设计
+完全不是一回事**——这是一个能解释"控制面全通但数据面必挂"的结构性嫌疑。
+
+---
+
+## 三、别再试的死路（省后来者的时间）
+
+1. `S2CR` 写 BYPASS（0x10000）—— 硬件改成 FAULT。
+2. `SMR` 带 MASK（任何非零）—— 写就中止。run69/82 两次踩到。
+3. `SMR` 用 SID `0x1800` —— 写就中止（那是安全世界的）。
+4. 写 `CBAR(n)`（n=0/6/52 都试过）—— 读正常、写中止。
+   ⚠️ 严谨说法：只证明**这三次访问**失败，不能断言任何视图下都不可写。
+5. **逐页扫 SMMU 寄存器块** —— `0x15004000` 是洞，读就 panic。
+6. 在安卓里用 kprobe `@0x15000934:u32` 读 SMMU —— 线性映射读不到
+   ioremap 的设备内存，全 0。
+7. 用 bootloader 的 CB3 直接跑数据面（`S2CR=0x3`）—— DSP 冻结（run75）。
+7b. 把音频流引到 **stage-2 bypass** 的 CB0（`sweetcb=0`）—— 同样冻结（run88）。
+    四种配置（fault / CB3 / 自建翻译 / bypass）表现完全一致。
+8. `cpus>1` —— `pe_init_fiq` 在次核上写未映射地址，必 panic（未修）。
+
+---
+
+## 四、电源（充电）
+
+- **充电由 ADSP/PMIC 固件管**，不是 SPMI 寄存器：安卓 dmesg 的
+  `BATTERY_CHG: [ADSP] fg_update_status:: ssoc/vbat/ibat`。
+- 通道现成：ADSP 每轮启动都发 `OPEN PMIC_RTR_ADSP_APPS`（rcid=6）。
+- XNU 客户端（`sweetbatt=1`）：开 LCID 2 → 回 OPEN_ACK → advertise 128B
+  intent → 发 24B `GET_PROP`（owner `0x800A`, type=1）：
+  `op=0x30` 读状态(0)/电量(4)/电压µV(7)/电流µA(9)/温度(13)，
+  `op=0x32` 读 USB 在线(0)。
+- **已实测**（run84）：`ack=1 remote=1 rcid=6`，6 个请求都有回应，
+  但**全部解析成 `prop=0 value=1`** ⇒ 响应字段偏移不对。
+  v25 起对前两条回应做**原始 hexdump**，下一轮就能定字段。
+- **只读**：真正充电要给 battmgr 发 SET_PROP（`0x31`/`0x33`），尚未实现。
+
+## 五、震动
+
+- 硬件：PM8350B（SPMI SID 3），`0xf066` 清故障 → `0xf046=0x80` 使能 →
+  `0xf04c=0x81` play；hBoost 走 SDAM `sdam@9d00`（PBS_ARG 0x42 / TRIG 0xe5）。
+- 已接线：电源键按下 → `sweet_hid_key(0,1)` → `sweet_haptics_kick()`
+  （带重入保护）。**用户实测有震动 ⇒ 已验证**。
+- 缺的是**系统级触感**（键盘等）：要走 Apple 的 haptics 栈，未做。
+
+---
+
+## 六、稳定性 / 环境（血泪规则）
+
+1. **`ml_io_map` 是一次性共享池**：`osfmk/arm/io_map.c` 的 `IO_MAP_SIZE`
+   已由 0185 调到 **64 MiB**（原来 8 MiB，SPMI 一个窗口就吃 4 MiB，
+   GUI 起来后必然 KERN_NO_SPACE panic）。新代码仍优先用
+   `g_map_win()`（`kmem_alloc(kernel_map)`+`pmap_map`）。
+2. **低区 PA 能映射读，但绝不能 `flush_dcache64`**（`phystokv_range()` 只认
+   ADT 银行 0x840000000+）。用 `dsb sy`。
+3. **默认启动不碰 SMMU**：所有 CB 相关写入都在 `sweetpcm=1` 之后。
+4. **多核 panic 是已知未修 bug**：`arm_init_cpu → pe_init_fiq` 写
+   `0xfffffe000d514008`（次核 pmap 未映射）。交互用 `cpus=1`。
+5. **触摸是 GPIO 软件模拟 SPI**，每轮 `mt_wait(2)` → 天生延迟、易丢帧。
+6. **功放开机即初始化且未静音**，无流时有爆音（按键/触摸可闻）。
+7. **`tdm_mf` 返回 0x3**（其余 TDM 配置都 0）—— 从未查过，可能是隐患。
+8. **build tag**：每次改动必须改 `SWEET AUDIO: build vNN (...)`，
+   看门狗用它校验产物（marker 必须出现在二进制里，注释会被剥掉）。
+9. `mkimage.sh`：`KEEPALIVE=1` 去掉 `sweetreboot=1`；`CPUS=n` 覆盖 `cpus=1`。
+
+---
+
+## 七、GPR/APM 协议速查
+
+| 命令 | 长度 | 关键字段 |
+|---|---|---|
+| GRAPH_OPEN（共享内存） | 40 | hdr24 + descriptor16（lsw/msw/handle/size）|
+| DATA_BUFFER_V2 | 68 | **dst = WR iid `0x40bd`**，src `0x2011`，token 0/1 |
+| SHARED_MEM_MAP_REGIONS | 44 | hdr24 + `{pool=3\|count=1, flag=4, addr, size}` @+24 |
+| SET_CFG media format | 30 | `0x0800100C` → **WR 实例**，96k/32/2 |
+
+- domain 字：普通命令 `0x00000302`；MAP/UNMAP 额外置 `0x10000`。
+- MAP 成功应答 `0x02001001`，payload 4B handle @+24（包长 28）。
+- 顺序必须 **OPEN → SHM_MAP → SET_CFG → PREPARE → START**。
+
+## 八、关键地址
+
+- XNU 管理内存：ADT 银行 `0x840000000 + 0x100000000`（33–37 GB）。
+- 低 4 GB 普通 RAM 例：`0xa2e00000`（PCM 页）；S2 页表放
+  `0xa3000000`（L1）/`0xa3001000`（L2）。
+- 厂商 IOVA `0x1_1FFE8000` 是 SMMU 虚拟地址，不是物理地址。
+- SMMU：`0x15000000`；GR1 `+0x1000`（CBAR(n)=`+0x1000+4n`，
+  CBA2R(n)=`+0x1800+4n`）。CB 页按厂商算式是 `+0x80000+0x1000n`：
+  CB0..5 已证实（CBAR 读得到值），**CB6 及以上未证实**（同页其它寄存器
+  读出的值像指令），所以别再假设 CB52 存在。
+
+---
+
+## 九、下一步（按优先级）
+
+> ★ 顺序已改：**先解决可达性，再谈参数**。理由见 §2.7。
+
+1. **★ 按厂商布局改造共享内存**（见 §2.11，当前最高优先级）：
+   区域 `0x1000 → 0x5000`；图写进 offset 0；APM 级命令改成
+   40 字节 `{offset, 0, handle, size}` 的描述符形态。
+2. **拿活系统地面真值**：进 Android 读真实音频 buffer 的物理地址
+   （`/proc/iomem`、`dma_buf`），替代硬猜的 `0xa2e00000`。
+3. **电池字段**：`sweetbatt=1` 跑一轮，看 v25 的原始 hexdump，
+   对照安卓 `/sys/class/power_supply/battery/uevent`。
+4. 功放静音（无流时不爆音）—— 与音频数据面解耦，可先做。
+5. 用户态 bug（空密码仍要求设置、部分 app 打不开）—— 用户要求**暂缓**。
+6. 多核 panic —— 独立课题，需查 `pe_init_fiq` 的 per-CPU 映射。
+
+## 十、约束（务必保持）
+
+- 只操作序列号 **2aa26095**；绝不碰新的 12+1TB 主机。
+- 不刷 boot/vendor_boot，不改 GPT；只用 `fastboot boot`。
+- 不把 Apple/Qualcomm/小米的专有二进制上传公开仓库。
+- 补丁先在 `../ci-src/xnu-xnu-8796.141.3/` 上 `git apply --check` 再推；
+  CI 应用失败只打 warning，**必须用 build tag / marker 校验产物**。
+- 发 GPR 包前先在 `traces/` 找同 opcode 的包逐字段照抄，不要盲试 IID。
