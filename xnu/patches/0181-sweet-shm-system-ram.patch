@@ -40,12 +40,10 @@
  static void
  g_wait(unsigned ms)
  {
-@@ -174,6 +193,21 @@
- 	pmap_map(win, (vm_offset_t)base, (vm_offset_t)(base + span),
- 	    VM_PROT_READ | VM_PROT_WRITE, VM_WIMG_IO);
+@@ -176,6 +195,21 @@
  	return win + off;
-+}
-+
+ }
+ 
 +/* ml_io_map() draws from a permanent, system-wide 8 MiB io_submap that
 + * SPMI already half fills, and an exhausted submap panics with
 + * KERN_NO_SPACE (run76, run83).  Use a kernel_map window instead: allocate
@@ -59,9 +57,11 @@
 +		return 0;
 +	}
 +	return g_win_map(w, pa, size);
- }
- 
++}
++
  static void
+ g_win_free(vm_offset_t win, vm_size_t size)
+ {
 @@ -307,7 +341,8 @@
  
  /* Send a GLINK data message (16-byte header + payload). */
@@ -83,19 +83,19 @@
  	msg[4] = (uint8_t)(iid & 0xff);
  	msg[5] = (uint8_t)(iid >> 8);
  	msg[6] = (uint8_t)(iid >> 16);
-@@ -345,6 +380,12 @@
- 	}
- 	g_wr(g_desc_off + 4, head);
- 	g_kick();
-+}
-+
-+static void
-+g_send_tx_data(uint32_t iid, const uint8_t *pkt, uint32_t len)
-+{
-+	g_send_tx_data_lcid(g_lcid, iid, pkt, len);
+@@ -348,6 +383,12 @@
  }
  
  static void
++g_send_tx_data(uint32_t iid, const uint8_t *pkt, uint32_t len)
++{
++	g_send_tx_data_lcid(g_lcid, iid, pkt, len);
++}
++
++static void
+ g_send_version(void)
+ {
+ 	g_send(CMD_VERSION, (uint16_t)GLINK_VERSION_1, GLINK_FEATURE_REUSE,
 @@ -392,13 +433,33 @@
  }
  
@@ -270,11 +270,10 @@
  
  	if (!v) {
  		printf("SWEET MMIO: %s: map failed\n", tag);
-@@ -1121,7 +1232,25 @@
- SYSCTL_PROC(_kern, OID_AUTO, sweetvibe,
+@@ -1122,6 +1233,24 @@
      CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, 0, 0,
      sweet_vibe_sysctl, "I", "trigger the PM8350B haptics engine");
-+
+ 
 +/*
 + * Called from the key driver so a physical key press produces haptic
 + * feedback.  The haptics sequence sleeps ~300 ms; sweet_keys polls from its
@@ -285,7 +284,7 @@
 +sweet_haptics_kick(void)
 +{
 +	static volatile int busy;
- 
++
 +	if (__atomic_exchange_n(&busy, 1, __ATOMIC_ACQ_REL) != 0) {
 +		return;
 +	}
@@ -296,10 +295,12 @@
  static void
  g_dump(const char *tag, const uint8_t *p, uint32_t len)
  {
-@@ -1524,6 +1653,63 @@
+@@ -1522,6 +1651,63 @@
+ 	0x33, 0x43, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00,
+ 	0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
  	0x00, 0x00, 0x00, 0x00,
- };
- 
++};
++
 +/* Vendor device graph 0xb0000002 with a WR_SHARED_MEM_EP (0x07001000,
 + * iid 0x40bd) prepended and wired to SAL input port 2.  The vendor does
 + * this with a second (stream) subgraph and a cross-graph connection; a
@@ -355,11 +356,9 @@
 +	0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0xbd, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x12, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-+};
-+
+ };
+ 
  #define APM_CMD_GRAPH_OPEN                  0x01001000u
- #define APM_CMD_GRAPH_PREPARE               0x01001001u
- #define APM_CMD_GRAPH_START                 0x01001002u
 @@ -1537,7 +1723,18 @@
  #define G_TDM_MODULE_ID                     0x0700100eu
  #define G_INPUT_MODULE_OFF                  216u
@@ -505,7 +504,7 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1631,33 +1883,437 @@
+@@ -1631,32 +1883,457 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -687,13 +686,34 @@
 +			re_ttbr = *(volatile uint32_t *)(cbw + 0x20u);
 +			re_tcr = *(volatile uint32_t *)(cbw + 0x30u);
 +			re_mair = *(volatile uint32_t *)(cbw + 0x38u);
++			/*
++			 * The audio-ion DT carries qcom,smmu-sid-mask = 0xf,
++			 * so only SID bits [3:0] are significant and the DSP
++			 * may present any of 0x1800..0x180f.  An SMR with a
++			 * MASK field cannot be written from NS here (run69,
++			 * run82), so cover the whole range with 16 exact
++			 * entries instead of betting on 0x1801 alone (v40).
++			 */
 +			if (free_slot >= 0) {
-+				*(volatile uint32_t *)(v + 0x800 + 4 * free_slot) =
-+				    0x80000000u | 0x1801u;
-+				__asm__ volatile("dsb sy" ::: "memory");
-+				*(volatile uint32_t *)(v + 0xc00 + 4 * free_slot) =
-+				    (uint32_t)cbn & 0xffu;
-+				__asm__ volatile("dsb sy" ::: "memory");
++				unsigned n = 0;
++
++				for (; n < 16 &&
++				    free_slot + (int)n < 112; n++) {
++					int sl = free_slot + (int)n;
++
++					*(volatile uint32_t *)(v + 0x800 +
++					    4 * sl) = 0x80000000u | 0x1800u | n;
++					__asm__ volatile("dsb sy" ::: "memory");
++					*(volatile uint32_t *)(v + 0xc00 +
++					    4 * sl) = (uint32_t)cbn & 0xffu;
++					__asm__ volatile("dsb sy" ::: "memory");
++				}
++				printf("SWEET SMMU: s1 smr[%d..%d] "
++				    "0x1800..0x180f -> cb%u last=%#x\n",
++				    free_slot, free_slot + (int)n - 1, cbn,
++				    *(volatile uint32_t *)(v + 0x800 + 4 *
++				    (free_slot + (int)n - 1)));
++				sweet_log_sync();
 +			}
 +			*(volatile uint32_t *)(v + 0x68) = 0xffffffffu;
 +			*(volatile uint32_t *)(v + 0x70) = 0;
@@ -783,7 +803,7 @@
 +		}
 +	}
 +	printf("SWEET SMMU: stage-2 programming skipped (layout unknown)\n");
- 	sweet_log_sync();
++	sweet_log_sync();
 +	return;
 +	/* The ADSP audio SID (msm-audio-ion: iommus = <&apps_smmu 0x1801>)
 +	 * has no SMR in a fastboot-booted XNU.  Give it a stage-2 identity
@@ -949,11 +969,10 @@
 +		printf("SWEET SMMU: USFCFG cleared %#x -> %#x\n", cr0,
 +		    *(volatile uint32_t *)(v + 0x00));
 +	}
-+	sweet_log_sync();
+ 	sweet_log_sync();
  }
  
- /* Prove whether the page pmap_find_phys reports is a real DRAM address:
-@@ -1687,7 +2343,7 @@
+@@ -1687,7 +2364,7 @@
  	printf("SWEET PHYS: va=%#llx pa=%#llx\n", (uint64_t)va, pa);
  	*(volatile uint32_t *)va = 0x5a5a1234u;
  	__asm__ volatile("dsb sy" ::: "memory");
@@ -962,7 +981,7 @@
  	if (!mirror) {
  		printf("SWEET PHYS: mirror map failed\n");
  	} else {
-@@ -1696,52 +2352,110 @@
+@@ -1696,52 +2373,110 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -1065,9 +1084,10 @@
  			sweet_log_sync();
 -			if (g_apm_cmd(src_port, 1, body, sizeof(body),
 -			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
+-				continue;
 +			if (g_apm_shm_map_flat(src_port, pa[i], flags[f],
 +			    "shm_map") != 0) {
- 				continue;
++				continue;
  			}
 -			g_shm_handle = g_le32(g_rsp + 32);
 -			printf("SWEET GLINK: shm handle=%#x\n", g_shm_handle);
@@ -1098,7 +1118,7 @@
  			return 0;
  		}
  	}
-@@ -1761,7 +2475,7 @@
+@@ -1761,7 +2496,7 @@
  		return 0;
  	}
  	if (!g_shm_va) {
@@ -1107,7 +1127,7 @@
  		if (g_shm_va) {
  			g_shm_pa = G_SHM_FIXED_PA;
  			printf("SWEET GLINK: shm: fixed pa=%#llx size=%#x\n",
-@@ -1909,7 +2623,7 @@
+@@ -1909,7 +2644,7 @@
  	uint8_t pkt[24 + 16];
  	uint32_t pkt_size = sizeof(pkt);
  
@@ -1116,10 +1136,13 @@
  		return -1;
  	}
  	memcpy((void *)g_shm_va, payload, len);
-@@ -2015,6 +2729,43 @@
- 	}
- }
+@@ -2012,7 +2747,44 @@
  
+ 		p[2 * i] = v;
+ 		p[2 * i + 1] = v;
++	}
++}
++
 +/*
 + * SMMU fault snapshot.  Read BEFORE touching the GLINK FIFO after a
 + * DATA_BUFFER, because a stalled DSP can hang that read and we would lose
@@ -1133,7 +1156,7 @@
 +		printf("SWEET SMMU: %s no gr window\n", tag);
 +		sweet_log_sync();
 +		return;
-+	}
+ 	}
 +	printf("SWEET SMMU: %s GFSR=%#x FSYNR0=%#x FSYNR1=%#x FSYNR2=%#x\n",
 +	    tag, *(volatile uint32_t *)(g_gr_win + 0x48u),
 +	    *(volatile uint32_t *)(g_gr_win + 0x50u),
@@ -1155,12 +1178,10 @@
 +		}
 +	}
 +	sweet_log_sync();
-+}
-+
+ }
+ 
  static int
- g_apm_data_buffer(uint32_t src_port, uint32_t dst_port, uint32_t off,
-     uint32_t len, uint32_t token)
-@@ -2027,15 +2778,87 @@
+@@ -2027,15 +2799,87 @@
  	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
  	g_put32(pkt + 8, src_port);
  	g_put32(pkt + 12, dst_port);
@@ -1252,7 +1273,7 @@
  	for (unsigned i = 0; i < 100; i += 5) {
  		g_drain(0);
  		if (g_rsp_ready) {
-@@ -2073,70 +2896,92 @@
+@@ -2073,72 +2917,94 @@
  		if (w36 != 0 && dbg++ < 4) {
  			printf("SWEET GLINK: data_buffer: dst=%#x done status=%#x "
  			    "w28=%#x w32=%#x\n", dst_port, w36, w28, w32);
@@ -1375,8 +1396,8 @@
 -				break;
 -			}
 +			return;
-+		}
-+	}
+ 		}
+ 	}
 +	/* Only the WR module accepts buffers (vendor trace: every
 +	 * DATA_BUFFER_V2 goes to the WR instance; SAL never answers).  Send
 +	 * exactly one probe there and stop guessing. */
@@ -1389,10 +1410,12 @@
 +		sweet_log_sync();
 +		if (r != 0) {
 +			return;
- 		}
- 	}
++		}
++	}
  	printf("SWEET GLINK: pcm tone start (dst=%#x)\n", dst_port);
-@@ -2332,24 +3177,31 @@
+ 
+ 	for (int n = 0; n < 2000; n++) {
+@@ -2332,24 +3198,31 @@
  	uint32_t v;
  	int rc;
  
@@ -1433,7 +1456,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2361,12 +3213,34 @@
+@@ -2361,12 +3234,34 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 3;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2; mf[30] = 3;
@@ -1472,7 +1495,7 @@
  	g_put32(mf + 0, 96000);
  	g_put32(mf + 4, 32u | (3u << 16));
  	g_put32(mf + 8, 1);
-@@ -2428,9 +3302,32 @@
+@@ -2428,9 +3323,32 @@
  	const uint32_t port = 0x2010u;
  	uint8_t tdm_payload[sizeof(g_graph_open_payload)];
  
@@ -1508,7 +1531,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2518,9 +3415,153 @@
+@@ -2518,9 +3436,153 @@
  		return;
  	}
  	printf("SWEET GLINK: graph_open failed on every payload\n");
@@ -1662,17 +1685,17 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2533,6 +3574,9 @@
+@@ -2533,6 +3595,9 @@
  		return;
  	}
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v39 (tdm params)\n");
++	printf("SWEET AUDIO: build v40 (sid 0x1800..0x180f)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
-@@ -2587,6 +3631,7 @@
+@@ -2587,6 +3652,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
