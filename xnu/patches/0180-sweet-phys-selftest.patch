@@ -1,0 +1,70 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1348,6 +1348,46 @@
+ 	sweet_log_sync();
+ }
+ 
++/* Prove whether the page pmap_find_phys reports is a real DRAM address:
++ * write a magic word through the kernel mapping, then map that physical
++ * address back and read it.  A match means the SHM path can hand this PA to
++ * the DSP; a mismatch means the SHIM virtualises physical addresses and the
++ * whole SHM_MAP approach is dead. */
++static void
++g_phys_selftest(void)
++{
++	static bool done;
++	vm_offset_t va = 0, mirror;
++	uint64_t pa;
++	uint32_t pn;
++
++	if (done) {
++		return;
++	}
++	done = true;
++	if (kmem_alloc(kernel_map, &va, G_SHM_SIZE, KMA_DATA | KMA_ZERO,
++	    VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) {
++		printf("SWEET PHYS: alloc failed\n");
++		return;
++	}
++	pn = pmap_find_phys(kernel_pmap, (addr64_t)va);
++	pa = ptoa_64(pn);
++	printf("SWEET PHYS: va=%#llx pa=%#llx\n", (uint64_t)va, pa);
++	*(volatile uint32_t *)va = 0x5a5a1234u;
++	__asm__ volatile("dsb sy" ::: "memory");
++	mirror = ml_io_map((vm_offset_t)pa, G_SHM_SIZE);
++	if (!mirror) {
++		printf("SWEET PHYS: mirror map failed\n");
++	} else {
++		uint32_t v = *(volatile uint32_t *)mirror;
++
++		printf("SWEET PHYS: mirror=%#x %s\n", v,
++		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
++	}
++	kmem_free(kernel_map, va, G_SHM_SIZE);
++	sweet_log_sync();
++}
++
+ static int
+ g_apm_shm_map_gpr(uint32_t src_port)
+ {
+@@ -1358,6 +1398,7 @@
+ 		return 0;
+ 	}
+ 	g_smmu_probe();
++	g_phys_selftest();
+ 	for (unsigned i = 0; i < sizeof(addrs) / sizeof(addrs[0]); i++) {
+ 		vm_offset_t va = ml_io_map((vm_offset_t)addrs[i], G_SHM_SIZE);
+ 
+@@ -1365,9 +1406,9 @@
+ 			printf("SWEET GLINK: shm: map %#llx failed\n", addrs[i]);
+ 			continue;
+ 		}
+-		/* pool 3 is SHMEM8_4K; sweep every pool id to see which one
+-		 * accepts a DDR address at all. */
+-		for (unsigned p = 0; p < 8; p++) {
++		/* All eight pool ids rejected every DDR address; keep one probe
++		 * so the map path stays exercised, but do not stall the boot. */
++		for (unsigned p = 3; p < 4; p++) {
+ 			memset(body, 0, sizeof(body));
+ 			g_put32(body + 0, p | (1u << 16));
+ 			g_put32(body + 4, 0u);
