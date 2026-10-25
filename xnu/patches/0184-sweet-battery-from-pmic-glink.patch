@@ -1,0 +1,35 @@
+--- a/iokit/Kernel/arm/SweetBattery.cpp
++++ b/iokit/Kernel/arm/SweetBattery.cpp
+@@ -203,9 +203,32 @@
+ 	return 100;
+ }
+ 
++extern "C" int sweet_batt_get(unsigned *percent, unsigned *mv, int *ma,
++    unsigned *status, unsigned *usb);
++
+ void
+ SweetBattery::poll(void)
+ {
++	unsigned bPercent, bMv, bStatus, bUsb;
++	int bMa;
++
++	/* Prefer the value read from the ADSP's battmgr service. */
++	if (sweet_batt_get(&bPercent, &bMv, &bMa, &bStatus, &bUsb)) {
++		bool ext = bUsb != 0;
++		bool charging = bStatus == 1;
++		bool full = bStatus == 4;
++
++		if (bPercent > 100) {
++			bPercent = 100;
++		}
++		if (bMv == 0) {
++			bMv = 4200;
++		}
++		publish(full ? 100 : bPercent, bMv, bMa, ext,
++		    ext && (charging || full), charging, full, true, true);
++		return;
++	}
++
+ 	uint8_t type, present, usb, path, charger, error, temperature;
+ 	uint16_t rawVoltage;
+ 	bool valid = fReal &&

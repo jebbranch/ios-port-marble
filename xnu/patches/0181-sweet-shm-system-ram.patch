@@ -1,6 +1,237 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -1121,6 +1121,24 @@
+@@ -117,6 +117,7 @@
+ struct g_riid {
+ 	uint32_t id;
+ 	uint32_t size;
++	uint32_t chan;
+ 	uint32_t in_use;
+ };
+ 
+@@ -138,6 +139,23 @@
+ static uint32_t g_rsp_len;
+ static int      g_rsp_ready;
+ 
++/* Optional pmic_glink client (sweetbatt=1).  The ADSP opens
++ * PMIC_RTR_ADSP_APPS itself; we ack it, open our own side and send
++ * 24-byte battmgr requests. */
++#define G_BATT_LCID	2u
++#define G_BATT_LIID	0x100u
++#define G_BATT_NAME	"PMIC_RTR_ADSP_APPS"
++#define G_BATT_NAME_LEN	19u	/* 18 chars + NUL */
++
++static uint32_t g_batt_rcid;
++static int      g_batt_acked, g_batt_remote;
++static uint8_t  g_batt_rsp[64];
++static uint32_t g_batt_rsp_len, g_batt_fill;
++static int      g_batt_ready;
++/* Last sample, consumed by SweetBattery.  -1 means "not read yet". */
++static int g_batt_s_status = -1, g_batt_s_cap = -1, g_batt_s_mv = -1;
++static int g_batt_s_ma, g_batt_s_usb = -1;
++
+ static void
+ g_wait(unsigned ms)
+ {
+@@ -307,7 +325,8 @@
+ 
+ /* Send a GLINK data message (16-byte header + payload). */
+ static void
+-g_send_tx_data(uint32_t iid, const uint8_t *pkt, uint32_t len)
++g_send_tx_data_lcid(uint32_t lcid, uint32_t iid, const uint8_t *pkt,
++    uint32_t len)
+ {
+ 	/* One probe thread only, so a static buffer is fine; GLINK messages
+ 	 * are 16-byte header + payload and must not be truncated (a 360-byte
+@@ -320,8 +339,8 @@
+ 	}
+ 	msg[0] = CMD_TX_DATA;
+ 	msg[1] = 0;
+-	msg[2] = (uint8_t)(g_lcid & 0xff);
+-	msg[3] = (uint8_t)(g_lcid >> 8);
++	msg[2] = (uint8_t)(lcid & 0xff);
++	msg[3] = (uint8_t)(lcid >> 8);
+ 	msg[4] = (uint8_t)(iid & 0xff);
+ 	msg[5] = (uint8_t)(iid >> 8);
+ 	msg[6] = (uint8_t)(iid >> 16);
+@@ -345,6 +364,12 @@
+ 	}
+ 	g_wr(g_desc_off + 4, head);
+ 	g_kick();
++}
++
++static void
++g_send_tx_data(uint32_t iid, const uint8_t *pkt, uint32_t len)
++{
++	g_send_tx_data_lcid(g_lcid, iid, pkt, len);
+ }
+ 
+ static void
+@@ -392,13 +417,33 @@
+ }
+ 
+ static struct g_riid *
+-g_pick_riid(uint32_t len)
++g_pick_riid(uint32_t chan, uint32_t len)
+ {
+ 	struct g_riid *best = NULL;
+ 
+ 	for (int i = 0; i < g_nriids; i++) {
+ 		struct g_riid *r = &g_riids[i];
+ 
++		if (r->in_use || r->size < len || r->chan != chan) {
++			continue;
++		}
++		if (best == NULL || r->size > best->size) {
++			best = r;
++		}
++	}
++	return best;
++}
++
++/* Older builds picked any intent.  Keep that as a fallback so a wrong
++ * channel tag can never stop the GPR/audio path from transmitting. */
++static struct g_riid *
++g_pick_riid_any(uint32_t len)
++{
++	struct g_riid *best = NULL;
++
++	for (int i = 0; i < g_nriids; i++) {
++		struct g_riid *r = &g_riids[i];
++
+ 		if (r->in_use || r->size < len) {
+ 			continue;
+ 		}
+@@ -407,6 +452,17 @@
+ 		}
+ 	}
+ 	return best;
++}
++
++static struct g_riid *
++g_gpr_riid(uint32_t len)
++{
++	struct g_riid *r = g_pick_riid(g_rcid, len);
++
++	if (r == NULL) {
++		r = g_pick_riid_any(len);
++	}
++	return r;
+ }
+ 
+ static int
+@@ -464,6 +520,19 @@
+ 			/* The rcid of *our* channel, not of the last OPEN. */
+ 			g_rcid = p1;
+ 			g_remote_open = 1;
++		} else if (n >= 18) {
++			int pm = 1;
++
++			for (int k = 0; k < 18; k++) {
++				if (tmp[k] != (uint8_t)G_BATT_NAME[k]) {
++					pm = 0;
++					break;
++				}
++			}
++			if (pm) {
++				g_batt_rcid = p1;
++				g_batt_remote = 1;
++			}
+ 		}
+ 		g_rx_advance((8 + p2 + 7u) & ~7u);
+ 		break;
+@@ -471,7 +540,11 @@
+ 
+ 	case CMD_OPEN_ACK:
+ 		printf("SWEET GLINK: OPEN_ACK lcid=%u\n", p1);
+-		g_open_acked = 1;
++		if (p1 == G_BATT_LCID) {
++			g_batt_acked = 1;
++		} else {
++			g_open_acked = 1;
++		}
+ 		g_rx_advance(8);
+ 		break;
+ 
+@@ -506,6 +579,7 @@
+ 				for (int k = 0; k < g_nriids; k++) {
+ 					if (g_riids[k].id == id) {
+ 						g_riids[k].size = size;
++						g_riids[k].chan = p1;
+ 						g_riids[k].in_use = 0;
+ 						found = 1;
+ 						break;
+@@ -514,6 +588,7 @@
+ 				if (!found && g_nriids < G_NRIIDS) {
+ 					g_riids[g_nriids].id = id;
+ 					g_riids[g_nriids].size = size;
++					g_riids[g_nriids].chan = p1;
+ 					g_riids[g_nriids].in_use = 0;
+ 					g_nriids++;
+ 				}
+@@ -567,6 +642,26 @@
+ 		if (avail < 16 + chunk) {
+ 			return -1;
+ 		}
++		if (g_batt_rcid != 0 && p1 == g_batt_rcid &&
++		    liid == G_BATT_LIID) {
++			if (g_batt_fill + chunk <= sizeof(g_batt_rsp)) {
++				g_fifo_read(g_rx_off, g_rx_len, tail + 16,
++				    g_batt_rsp + g_batt_fill, chunk);
++				g_batt_fill += chunk;
++			}
++			if (left == 0) {
++				g_batt_rsp_len = g_batt_fill;
++				if (g_batt_rsp_len > sizeof(g_batt_rsp)) {
++					g_batt_rsp_len = sizeof(g_batt_rsp);
++				}
++				g_batt_ready = 1;
++				g_batt_fill = 0;
++				g_send(CMD_RX_DONE_W_REUSE,
++				    (uint16_t)G_BATT_LCID, liid, NULL, 0);
++			}
++			g_rx_advance((16 + chunk + 7u) & ~7u);
++			break;
++		}
+ 		for (int i = 0; i < g_nliids; i++) {
+ 			if (g_liids[i].id != liid) {
+ 				continue;
+@@ -663,7 +758,7 @@
+ 	unsigned i = 0;
+ 
+ 	while (i < ms) {
+-		if (g_pick_riid(len) != NULL) {
++		if (g_gpr_riid(len) != NULL) {
+ 			return 1;
+ 		}
+ 		g_drain(0);
+@@ -671,7 +766,7 @@
+ 		i += 5;
+ 	}
+ 	g_drain(0);
+-	return g_pick_riid(len) != NULL;
++	return g_gpr_riid(len) != NULL;
+ }
+ 
+ static void
+@@ -682,7 +777,7 @@
+ 	if (len > 4096) {
+ 		len = 4096;
+ 	}
+-	if (g_pick_riid(len) == NULL) {
++	if (g_gpr_riid(len) == NULL) {
+ 		printf("SWEET GLINK: requesting %u-byte intent\n", len);
+ 		g_send(CMD_RX_INTENT_REQ, (uint16_t)g_lcid, len, NULL, 0);
+ 		if (!g_wait_riid(len, 5000)) {
+@@ -691,7 +786,7 @@
+ 			return;
+ 		}
+ 	}
+-	r = g_pick_riid(len);
++	r = g_gpr_riid(len);
+ 	if (r == NULL) {
+ 		return;
+ 	}
+@@ -1121,6 +1216,24 @@
  SYSCTL_PROC(_kern, OID_AUTO, sweetvibe,
      CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, 0, 0,
      sweet_vibe_sysctl, "I", "trigger the PM8350B haptics engine");
@@ -25,12 +256,10 @@
  
  static void
  g_dump(const char *tag, const uint8_t *p, uint32_t len)
-@@ -1522,6 +1540,63 @@
- 	0x33, 0x43, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00,
- 	0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+@@ -1524,6 +1637,63 @@
  	0x00, 0x00, 0x00, 0x00,
-+};
-+
+ };
+ 
 +/* Vendor device graph 0xb0000002 with a WR_SHARED_MEM_EP (0x07001000,
 + * iid 0x40bd) prepended and wired to SAL input port 2.  The vendor does
 + * this with a second (stream) subgraph and a cross-graph connection; a
@@ -86,10 +315,12 @@
 +	0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0xbd, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x12, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
- };
- 
++};
++
  #define APM_CMD_GRAPH_OPEN                  0x01001000u
-@@ -1537,7 +1612,11 @@
+ #define APM_CMD_GRAPH_PREPARE               0x01001001u
+ #define APM_CMD_GRAPH_START                 0x01001002u
+@@ -1537,7 +1707,11 @@
  #define G_TDM_MODULE_ID                     0x0700100eu
  #define G_INPUT_MODULE_OFF                  216u
  #define APM_VP_SG_ID                        0xb0000002u
@@ -101,13 +332,13 @@
  #define G_VP_TDM_IID                        0x428fu
  #define G_VP_AW_IID                         0x42d3u
  #define G_CDMA_MODULE_OFF                   224u
-@@ -1553,8 +1632,55 @@
+@@ -1553,7 +1727,54 @@
   */
  #define G_SHM_FIXED_PA                      0xa2d00000u
  
 -/* Send one APM command with the payload inlined in the GPR packet. */
 +/* Send a fully built packet and decode its reply. */
- static int
++static int
 +g_apm_xfer(uint8_t *pkt, uint32_t pkt_size, const char *what)
 +{
 +	g_rsp_ready = 0;
@@ -154,11 +385,10 @@
 +
 +/* Send one APM command with the payload inlined behind the 16-byte payload
 + * descriptor (graph and data commands use this form). */
-+static int
+ static int
  g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
      uint32_t plen, uint32_t opcode, const char *what)
- {
-@@ -1580,30 +1706,36 @@
+@@ -1580,30 +1801,36 @@
  	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes)\n", what,
  	    src_port, dst_port, pkt_size);
  	sweet_log_sync();
@@ -218,7 +448,7 @@
  }
  
  /* The vendor HAL never inlines a graph payload: it maps one region once and
-@@ -1614,6 +1746,8 @@
+@@ -1614,6 +1841,8 @@
   * and the vendor's kprobe trace agree byte for byte). */
  static vm_offset_t g_shm_va;
  static uint64_t    g_shm_pa;
@@ -227,7 +457,7 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1631,32 +1765,174 @@
+@@ -1631,32 +1860,183 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -241,8 +471,10 @@
  		return;
  	}
  	done = true;
--	v = ml_io_map(0x15000000u, 0x2000u);
-+	v = ml_io_map(0x15000000u, 0x100000u);
++	/* io_map() allocates from the fixed 8 MiB io_submap; a 1 MiB
++	 * request panicked run76 with KERN_NO_SPACE.  Map only GR0/GR1 and
++	 * the one context-bank page we need. */
+ 	v = ml_io_map(0x15000000u, 0x2000u);
  	if (!v) {
  		printf("SWEET SMMU: map failed\n");
  		return;
@@ -335,14 +567,20 @@
 +		 * CFIE is deliberately left clear: XNU has no SMMU fault
 +		 * handler and we do not want an unhandled IRQ storm. */
 +		uint32_t cbar6, cba2r6, sctlr6, vtcr6, pre0, pre1;
-+		vm_offset_t tb;
++		vm_offset_t tb, cb;
 +
++		cb = ml_io_map(0x15086000u, 0x1000u);
++		if (cb == 0) {
++			printf("SWEET SMMU: CB6 page map failed\n");
++			sweet_log_sync();
++			return;
++		}
 +		cbar6  = *(volatile uint32_t *)(v + 0x1018u);
 +		cba2r6 = *(volatile uint32_t *)(v + 0x1818u);
-+		sctlr6 = *(volatile uint32_t *)(v + 0x86000u);
-+		vtcr6  = *(volatile uint32_t *)(v + 0x86030u);
-+		pre0   = *(volatile uint32_t *)(v + 0x86020u);
-+		pre1   = *(volatile uint32_t *)(v + 0x86024u);
++		sctlr6 = *(volatile uint32_t *)(cb + 0x00u);
++		vtcr6  = *(volatile uint32_t *)(cb + 0x30u);
++		pre0   = *(volatile uint32_t *)(cb + 0x20u);
++		pre1   = *(volatile uint32_t *)(cb + 0x24u);
 +		printf("SWEET SMMU: CB6 pre cbar=%#x cba2r=%#x sctlr=%#x "
 +		    "vtcr=%#x ttbr0=%#x%08x\n", cbar6, cba2r6, sctlr6,
 +		    vtcr6, pre1, pre0);
@@ -372,10 +610,10 @@
 +		/* Vendor write order: CBA2R, CBAR, TCR, TTBR0, SCTLR. */
 +		*(volatile uint32_t *)(v + 0x1818u) = 0x1u;	/* VA64 */
 +		*(volatile uint32_t *)(v + 0x1018u) = 0x1u;	/* S2, VMID 1 */
-+		*(volatile uint32_t *)(v + 0x86030u) = 0x80003560u; /* VTCR */
-+		*(volatile uint32_t *)(v + 0x86020u) = (uint32_t)G_S2_L1_PA;
-+		*(volatile uint32_t *)(v + 0x86024u) = 0;
-+		*(volatile uint32_t *)(v + 0x86000u) = 0x0a5f0027u; /* SCTLR */
++		*(volatile uint32_t *)(cb + 0x30u) = 0x80003560u; /* VTCR */
++		*(volatile uint32_t *)(cb + 0x20u) = (uint32_t)G_S2_L1_PA;
++		*(volatile uint32_t *)(cb + 0x24u) = 0;
++		*(volatile uint32_t *)(cb + 0x00u) = 0x0a5f0027u; /* SCTLR */
 +		__asm__ volatile("dsb sy" ::: "memory");
 +		/* Route SID 0x1801 to CB6.  SMR first so no stream matches
 +		 * until the context is fully programmed. */
@@ -396,10 +634,10 @@
 +		    *(volatile uint32_t *)(v + 0xc00 + 4 * slot),
 +		    *(volatile uint32_t *)(v + 0x1018u),
 +		    *(volatile uint32_t *)(v + 0x1818u),
-+		    *(volatile uint32_t *)(v + 0x86000u),
-+		    *(volatile uint32_t *)(v + 0x86024u),
-+		    *(volatile uint32_t *)(v + 0x86020u),
-+		    *(volatile uint32_t *)(v + 0x86030u));
++		    *(volatile uint32_t *)(cb + 0x00u),
++		    *(volatile uint32_t *)(cb + 0x24u),
++		    *(volatile uint32_t *)(cb + 0x20u),
++		    *(volatile uint32_t *)(cb + 0x30u));
 +	}
 +	/* USFCFG=1 aborts every unmatched stream; turning it off is a
 +	 * belt-and-braces measure for streams other than 0x1801. */
@@ -412,7 +650,7 @@
  	sweet_log_sync();
  }
  
-@@ -1696,52 +1972,80 @@
+@@ -1696,52 +2076,80 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -519,7 +757,7 @@
  			return 0;
  		}
  	}
-@@ -1909,7 +2213,7 @@
+@@ -1909,7 +2317,7 @@
  	uint8_t pkt[24 + 16];
  	uint32_t pkt_size = sizeof(pkt);
  
@@ -528,7 +766,7 @@
  		return -1;
  	}
  	memcpy((void *)g_shm_va, payload, len);
-@@ -2029,8 +2333,14 @@
+@@ -2029,8 +2437,14 @@
  	g_put32(pkt + 12, dst_port);
  	g_put32(pkt + 16, token);
  	g_put32(pkt + 20, APM_CMD_DATA_BUFFER_V2);
@@ -545,7 +783,7 @@
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
  	g_rsp_ready = 0;
-@@ -2076,67 +2386,76 @@
+@@ -2076,67 +2490,76 @@
  			sweet_log_sync();
  		}
  		return w36 == 0 ? 0 : -1;
@@ -588,11 +826,11 @@
  {
 +	int pcm = 0;
 +
-+	/* The data path currently ends in a hard freeze: the non-secure world
-+	 * cannot set S2CR.BYPASS (run71 read back TYPE=FAULT), so the DSP's
-+	 * first buffer access aborts and stalls the interconnect.  Keep the
-+	 * default boot stable and make this probe opt-in until the stage-2
-+	 * translation is in place. */
++	/* The non-secure world cannot set S2CR.BYPASS (run71 read back
++	 * TYPE=FAULT), so the DSP's first buffer access needs a real stage-2
++	 * context.  g_smmu_probe() builds one under the same sweetpcm flag.
++	 * Keep this probe opt-in: if the translation is wrong the DSP stalls
++	 * the interconnect and the phone freezes. */
 +	(void)PE_parse_boot_argn("sweetpcm", &pcm, sizeof(pcm));
 +	if (!pcm) {
 +		printf("SWEET GLINK: pcm probe disabled (sweetpcm=1 to enable)\n");
@@ -670,7 +908,7 @@
  		}
  	}
  	printf("SWEET GLINK: pcm tone start (dst=%#x)\n", dst_port);
-@@ -2332,8 +2651,11 @@
+@@ -2332,8 +2755,11 @@
  	uint32_t v;
  	int rc;
  
@@ -684,7 +922,7 @@
  	g_put32(mf + 0, 1);
  	g_put32(mf + 4, 0x09001000);
  	g_put32(mf + 8, 18);
-@@ -2342,14 +2664,14 @@
+@@ -2342,14 +2768,14 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 2;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2;
@@ -703,7 +941,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2428,9 +2750,32 @@
+@@ -2428,9 +2854,32 @@
  	const uint32_t port = 0x2010u;
  	uint8_t tdm_payload[sizeof(g_graph_open_payload)];
  
@@ -739,3 +977,160 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
+@@ -2518,9 +2967,148 @@
+ 		return;
+ 	}
+ 	printf("SWEET GLINK: graph_open failed on every payload\n");
++}
++
++
++
++/* One 24-byte battmgr GET_PROP round trip.  The response echoes the
++ * property id at +12 and carries the value at +16 (from the kprobe
++ * capture on this phone). */
++static void
++g_batt_req(uint32_t op, uint32_t prop, const char *tag)
++{
++	struct g_riid *r;
++	uint8_t pkt[24];
++
++	r = g_pick_riid(g_batt_rcid, 24);
++	if (r == NULL) {
++		printf("SWEET BATT: %s no intent\n", tag);
++		return;
++	}
++	for (int i = 0; i < 24; i++) {
++		pkt[i] = 0;
++	}
++	g_put32(pkt, 0x800au);		/* MSG_OWNER_BC */
++	g_put32(pkt + 4, 1);		/* MSG_TYPE_REQ_RESP */
++	g_put32(pkt + 8, op);
++	g_put32(pkt + 12, prop);
++	r->in_use = 1;
++	g_batt_ready = 0;
++	g_batt_fill = 0;
++	g_send_tx_data_lcid(G_BATT_LCID, r->id, pkt, sizeof(pkt));
++	for (unsigned i = 0; i < 1000 && !g_batt_ready; i += 5) {
++		g_drain(0);
++		if (!g_batt_ready) {
++			g_wait(5);
++		}
++	}
++	if (!g_batt_ready) {
++		printf("SWEET BATT: %s op=%#x prop=%u no response\n",
++		    tag, op, prop);
++		return;
++	}
++	if (g_batt_rsp_len >= 20) {
++		uint32_t v = g_le32(g_batt_rsp + 16);
++
++		if (op == 0x30u && prop == 0) {
++			g_batt_s_status = (int)v;
++		} else if (op == 0x30u && prop == 4) {
++			g_batt_s_cap = (int)v;
++		} else if (op == 0x30u && prop == 7) {
++			g_batt_s_mv = (int)(v / 1000u);
++		} else if (op == 0x30u && prop == 9) {
++			g_batt_s_ma = (int)(v / 1000u);
++		} else if (op == 0x32u && prop == 0) {
++			g_batt_s_usb = (int)v;
++		}
++		printf("SWEET BATT: %s op=%#x prop=%u value=%u\n", tag, op,
++		    g_le32(g_batt_rsp + 12), v);
++	} else {
++		g_dump(tag, g_batt_rsp, g_batt_rsp_len);
++	}
+ }
+ 
++/*
++ * Last battery sample for SweetBattery.  Returns 0 until the pmic_glink
++ * probe has both a status and a capacity, so iOS keeps using its own
++ * fallback (battery-only, no fake AC) when this path is off.
++ */
++int
++sweet_batt_get(unsigned *percent, unsigned *mv, int *ma, unsigned *status,
++    unsigned *usb)
++{
++	if (g_batt_s_status < 0 || g_batt_s_cap < 0) {
++		return 0;
++	}
++	*percent = (unsigned)g_batt_s_cap;
++	*mv = g_batt_s_mv < 0 ? 0 : (unsigned)g_batt_s_mv;
++	*ma = g_batt_s_ma;
++	*status = (unsigned)g_batt_s_status;
++	*usb = g_batt_s_usb < 0 ? 0 : (unsigned)g_batt_s_usb;
++	return 1;
++}
+ 
++/*
++ * Optional battery read-out.  sweetbatt=1 opens our side of
++ * PMIC_RTR_ADSP_APPS, answers the ADSP's own OPEN, and asks the battmgr
++ * firmware for the battery properties.  Read-only: nothing here changes a
++ * charger setting.
++ */
++static void
++g_batt_probe(void)
++{
++	uint8_t name[G_BATT_NAME_LEN];
++	uint8_t ib[8];
++	int on = 0;
++
++	(void)PE_parse_boot_argn("sweetbatt", &on, sizeof(on));
++	if (!on) {
++		return;
++	}
++	printf("SWEET BATT: opening %s\n", G_BATT_NAME);
++	for (unsigned i = 0; i < G_BATT_NAME_LEN; i++) {
++		name[i] = (uint8_t)G_BATT_NAME[i];
++	}
++	g_send(CMD_OPEN, (uint16_t)G_BATT_LCID, G_BATT_NAME_LEN, name,
++	    G_BATT_NAME_LEN);
++	for (unsigned i = 0; i < 2000 && !(g_batt_acked && g_batt_remote);
++	    i += 5) {
++		g_drain(0);
++		if (!(g_batt_acked && g_batt_remote)) {
++			g_wait(5);
++		}
++	}
++	printf("SWEET BATT: ack=%d remote=%d rcid=%u\n", g_batt_acked,
++	    g_batt_remote, g_batt_rcid);
++	if (!g_batt_acked || !g_batt_remote) {
++		return;
++	}
++	g_send_open_ack(g_batt_rcid);
++	g_put32(ib, 128);
++	g_put32(ib + 4, G_BATT_LIID);
++	g_send(CMD_INTENT, (uint16_t)G_BATT_LCID, 1, ib, 8);
++	for (unsigned i = 0; i < 2000; i += 5) {
++		g_drain(0);
++		if (g_pick_riid(g_batt_rcid, 24) != NULL) {
++			break;
++		}
++		g_wait(5);
++	}
++	if (g_pick_riid(g_batt_rcid, 24) == NULL) {
++		printf("SWEET BATT: no pmic intent (rcid=%u)\n", g_batt_rcid);
++		return;
++	}
++	/* enum battery_property_id from qti_battery_charger.c, and the
++	 * BC_BATTERY_STATUS_GET / BC_USB_STATUS_GET opcodes. */
++	g_batt_req(0x30u, 0, "batt-status");
++	g_batt_req(0x30u, 4, "capacity");
++	g_batt_req(0x30u, 7, "vbat");
++	g_batt_req(0x30u, 9, "ibat");
++	g_batt_req(0x30u, 13, "temp");
++	g_batt_req(0x32u, 0, "usb-online");
++	sweet_log_sync();
++}
++
+ void
+ sweet_glink_probe(void)
+ {
+@@ -2587,6 +3175,7 @@
+ 		}
+ 		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
+ 		g_drain(100);
++		g_batt_probe();
+ 	} else {
+ 		printf("SWEET GLINK: channel did not open, skipping PRM\n");
+ 		goto out;
