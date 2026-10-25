@@ -1,0 +1,20 @@
+--- a/iokit/Kernel/arm/SweetBattery.cpp
++++ b/iokit/Kernel/arm/SweetBattery.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Built-in iOS battery bring-up service. Default: 100%, AC, not charging.
++ * Built-in iOS battery bring-up service. Default: 100%, no AC reported.
+  * sweetbattery=1: read-only PM6150 polling every 30 seconds; voltage-derived
+  * SOC is an UNCALIBRATED estimate, not a replacement for the Linux QG algo.
+  * See report.md for binary evidence, register provenance and integration.
+@@ -221,7 +221,9 @@
+ 	/* Zero, reset, floating, or implausible data cannot become 0% battery. */
+ 	valid = valid && mv >= 2800 && mv <= 4600;
+ 	if (!valid) {
+-		publish(100, 4200, 0, true, true, false, true, false, false);
++		/* No real sample: report battery-only.  Claiming AC here made
++		 * iOS show the charging icon with the cable unplugged. */
++		publish(100, 4200, 0, false, false, false, false, false, false);
+ 		return;
+ 	}
+ 	bool external = (usb & 0x10u) != 0;
