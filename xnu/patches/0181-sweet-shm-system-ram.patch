@@ -1,12 +1,12 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -1553,7 +1553,54 @@
+@@ -1553,8 +1553,55 @@
   */
  #define G_SHM_FIXED_PA                      0xa2d00000u
  
 -/* Send one APM command with the payload inlined in the GPR packet. */
 +/* Send a fully built packet and decode its reply. */
-+static int
+ static int
 +g_apm_xfer(uint8_t *pkt, uint32_t pkt_size, const char *what)
 +{
 +	g_rsp_ready = 0;
@@ -53,9 +53,10 @@
 +
 +/* Send one APM command with the payload inlined behind the 16-byte payload
 + * descriptor (graph and data commands use this form). */
- static int
++static int
  g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
      uint32_t plen, uint32_t opcode, const char *what)
+ {
 @@ -1580,30 +1627,36 @@
  	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes)\n", what,
  	    src_port, dst_port, pkt_size);
@@ -125,7 +126,57 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1696,52 +1751,82 @@
+@@ -1631,7 +1686,7 @@
+ {
+ 	static bool done;
+ 	vm_offset_t v;
+-	uint32_t idr0, idr1, cr0;
++	uint32_t id0, id1, cr0;
+ 	int valid = 0;
+ 
+ 	if (done) {
+@@ -1643,20 +1698,34 @@
+ 		printf("SWEET SMMU: map failed\n");
+ 		return;
+ 	}
+-	idr0 = *(volatile uint32_t *)(v + 0x40);
+-	idr1 = *(volatile uint32_t *)(v + 0x44);
++	/* SMMU-500: sCR0 is +0x00 (bit0 CLIENTPD, bit10 USFCFG), ID0/ID1 are
++	 * +0x20/+0x24, SMRs at +0x800, S2CRs at +0xc00.  VALID is bit 31. */
+ 	cr0 = *(volatile uint32_t *)(v + 0x00);
+-	printf("SWEET SMMU: idr0=%#x idr1=%#x scr0=%#x\n", idr0, idr1, cr0);
+-	for (unsigned n = 0; n < 32; n++) {
++	id0 = *(volatile uint32_t *)(v + 0x20);
++	id1 = *(volatile uint32_t *)(v + 0x24);
++	printf("SWEET SMMU: id0=%#x id1=%#x scr0=%#x\n", id0, id1, cr0);
++	for (unsigned n = 0; n < 120; n++) {
+ 		uint32_t smr = *(volatile uint32_t *)(v + 0x800 + 4 * n);
+ 		uint32_t s2cr = *(volatile uint32_t *)(v + 0xc00 + 4 * n);
+ 
+-		if (smr & 1u) {
++		if (smr & 0x80000000u) {
+ 			valid++;
+-			printf("SWEET SMMU: smr%d=%#x s2cr=%#x\n", n, smr, s2cr);
++			printf("SWEET SMMU: smr%d sid=%#x mask=%#x s2cr=%#x\n",
++			    n, smr & 0xffffu, smr >> 16, s2cr);
+ 		}
+ 	}
+ 	printf("SWEET SMMU: %d valid stream entries\n", valid);
++	/* USFCFG=1 aborts unmatched streams.  The ADSP's audio SID (0x1801,
++	 * per msm-audio-ion's iommus) has no SMR in a fastboot-booted XNU, so
++	 * let unmatched streams bypass instead: 0x1801 then reaches DRAM with
++	 * a plain physical address.  Streams that already match keep their
++	 * translation. */
++	if (cr0 & 0x400u) {
++		*(volatile uint32_t *)(v + 0x00) = cr0 & ~0x400u;
++		__asm__ volatile("dsb sy" ::: "memory");
++		printf("SWEET SMMU: USFCFG cleared %#x -> %#x\n", cr0,
++		    *(volatile uint32_t *)(v + 0x00));
++	}
+ 	sweet_log_sync();
+ }
+ 
+@@ -1696,52 +1765,82 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -192,12 +243,13 @@
 -			g_put32(body + 16, G_SHM_SIZE);
 -			printf("SWEET GLINK: shm_map_gpr pool=%u pa=%#llx\n",
 -			    p, addrs[i]);
+-			sweet_log_sync();
+-			if (g_apm_cmd(src_port, 1, body, sizeof(body),
+-			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
 +		for (unsigned f = 0; f < 2; f++) {
 +			printf("SWEET GLINK: shm_map pool=3 pa=%#llx flag=%u "
 +			    "play=%d\n", addrs[i], flags[f], playable[i]);
- 			sweet_log_sync();
--			if (g_apm_cmd(src_port, 1, body, sizeof(body),
--			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
++			sweet_log_sync();
 +			if (g_apm_shm_map_flat(src_port, addrs[i], flags[f],
 +			    "shm_map") != 0) {
  				continue;
@@ -227,7 +279,7 @@
  			return 0;
  		}
  	}
-@@ -2029,8 +2114,14 @@
+@@ -2029,8 +2128,14 @@
  	g_put32(pkt + 12, dst_port);
  	g_put32(pkt + 16, token);
  	g_put32(pkt + 20, APM_CMD_DATA_BUFFER_V2);
@@ -244,7 +296,7 @@
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
  	g_rsp_ready = 0;
-@@ -2084,31 +2175,8 @@
+@@ -2084,31 +2189,8 @@
  {
  	/* The vendor maps the PCM region from 0x2002 and feeds buffers from
  	 * the stream port 0x2011; graph commands stay on 0x2010. */
