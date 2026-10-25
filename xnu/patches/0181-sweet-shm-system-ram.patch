@@ -472,11 +472,11 @@
 + * shows a 44-byte packet whose body starts at +24 (pool|count, flag, addr
 + * lsw/msw, size) with no payload descriptor, and bit 16 set in the domain
 + * word.  The descriptor form makes the DSP read pool 0 / count 0. */
-+static int
 +/* sweetiova=1 registers the region at the vendor IOVA while the buffer
 + * itself stays at the physical page we fill. */
 +static uint64_t    g_map_addr;		/* MAP region address override */
 +
++static int
 +g_apm_shm_map_flat(uint32_t src_port, uint64_t pa, uint32_t flag,
 +    const char *what)
 +{
@@ -710,12 +710,14 @@
 +
 +		(void)PE_parse_boot_argn("sweets1", &s1, sizeof(s1));
 +		if (s1) {
-+			int cbn = 5;
++			int cbn = 5, iova_mode = 0;
 +			vm_offset_t cbw, tb1;
 +			uint32_t cbar, sc, re_sctlr, re_ttbr, re_tcr, re_mair;
 +
 +			(void)PE_parse_boot_argn("sweets1cb", &cbn,
 +			    sizeof(cbn));
++			(void)PE_parse_boot_argn("sweetiova", &iova_mode,
++			    sizeof(iova_mode));
 +			if (cbn < 0 || cbn > 5) {
 +				cbn = 5;
 +			}
@@ -736,12 +738,10 @@
 +				uint64_t *l3t = (uint64_t *)(tb1 + 0x2000);
 +				uint64_t va;
 +				unsigned i1, i2, i3;
-+				int s1empty = 0, iova_mode = 0;
++				int s1empty = 0;
 +
 +				(void)PE_parse_boot_argn("sweets1empty", &s1empty,
 +				    sizeof(s1empty));
-+				(void)PE_parse_boot_argn("sweetiova", &iova_mode,
-+				    sizeof(iova_mode));
 +				/*
 +				 * sweetiova=1 replays the vendor's address
 +				 * exactly: the region is registered at the
@@ -2013,7 +2013,7 @@
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v53 (vendor IOVA 33-bit)\n");
++	printf("SWEET AUDIO: build v54 (vendor IOVA 33-bit)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
