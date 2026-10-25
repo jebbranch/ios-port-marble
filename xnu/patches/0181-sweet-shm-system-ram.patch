@@ -101,12 +101,10 @@
  		if (r->in_use || r->size < len) {
  			continue;
  		}
-@@ -407,6 +452,17 @@
- 		}
- 	}
+@@ -409,6 +454,17 @@
  	return best;
-+}
-+
+ }
+ 
 +static struct g_riid *
 +g_gpr_riid(uint32_t len)
 +{
@@ -116,9 +114,11 @@
 +		r = g_pick_riid_any(len);
 +	}
 +	return r;
- }
- 
++}
++
  static int
+ g_rx_one(void)
+ {
 @@ -464,6 +520,19 @@
  			/* The rcid of *our* channel, not of the last OPEN. */
  			g_rcid = p1;
@@ -231,11 +231,10 @@
  	if (r == NULL) {
  		return;
  	}
-@@ -1121,6 +1216,24 @@
- SYSCTL_PROC(_kern, OID_AUTO, sweetvibe,
+@@ -1122,6 +1217,24 @@
      CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, 0, 0,
      sweet_vibe_sysctl, "I", "trigger the PM8350B haptics engine");
-+
+ 
 +/*
 + * Called from the key driver so a physical key press produces haptic
 + * feedback.  The haptics sequence sleeps ~300 ms; sweet_keys polls from its
@@ -253,9 +252,10 @@
 +	g_haptics_try();
 +	__atomic_store_n(&busy, 0, __ATOMIC_RELEASE);
 +}
- 
++
  static void
  g_dump(const char *tag, const uint8_t *p, uint32_t len)
+ {
 @@ -1524,6 +1637,63 @@
  	0x00, 0x00, 0x00, 0x00,
  };
@@ -457,7 +457,7 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1631,32 +1860,183 @@
+@@ -1631,32 +1860,189 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -471,10 +471,14 @@
  		return;
  	}
  	done = true;
-+	/* io_map() allocates from the fixed 8 MiB io_submap; a 1 MiB
-+	 * request panicked run76 with KERN_NO_SPACE.  Map only GR0/GR1 and
-+	 * the one context-bank page we need. */
- 	v = ml_io_map(0x15000000u, 0x2000u);
+-	v = ml_io_map(0x15000000u, 0x2000u);
++	/* io_map() allocates from the fixed 8 MiB io_submap and run76
++	 * panicked trying to take 1 MiB of what was left.  Use kernel_map
++	 * windows instead (same helper the SHM/IPCC paths use). */
++	v = g_win_alloc(0x2000u);
++	if (v != 0) {
++		v = g_win_map(v, 0x15000000u, 0x2000u);
++	}
  	if (!v) {
  		printf("SWEET SMMU: map failed\n");
  		return;
@@ -569,7 +573,10 @@
 +		uint32_t cbar6, cba2r6, sctlr6, vtcr6, pre0, pre1;
 +		vm_offset_t tb, cb;
 +
-+		cb = ml_io_map(0x15086000u, 0x1000u);
++		cb = g_win_alloc(0x1000u);
++		if (cb != 0) {
++			cb = g_win_map(cb, 0x15086000u, 0x1000u);
++		}
 +		if (cb == 0) {
 +			printf("SWEET SMMU: CB6 page map failed\n");
 +			sweet_log_sync();
@@ -650,7 +657,7 @@
  	sweet_log_sync();
  }
  
-@@ -1696,52 +2076,80 @@
+@@ -1696,52 +2082,80 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -757,7 +764,7 @@
  			return 0;
  		}
  	}
-@@ -1909,7 +2317,7 @@
+@@ -1909,7 +2323,7 @@
  	uint8_t pkt[24 + 16];
  	uint32_t pkt_size = sizeof(pkt);
  
@@ -766,7 +773,7 @@
  		return -1;
  	}
  	memcpy((void *)g_shm_va, payload, len);
-@@ -2029,8 +2437,14 @@
+@@ -2029,8 +2443,14 @@
  	g_put32(pkt + 12, dst_port);
  	g_put32(pkt + 16, token);
  	g_put32(pkt + 20, APM_CMD_DATA_BUFFER_V2);
@@ -783,15 +790,13 @@
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
  	g_rsp_ready = 0;
-@@ -2076,67 +2490,76 @@
- 			sweet_log_sync();
- 		}
+@@ -2078,65 +2498,74 @@
  		return w36 == 0 ? 0 : -1;
-+	}
-+}
+ 	}
+ }
 +
 +static int g_tone_filled;
-+
+ 
 +/* Map the PCM region and fill the tone *before* the graph starts.  The
 + * vendor's packet order is GRAPH_OPEN -> SHM_MAP -> SET_CFG -> PREPARE ->
 + * START -> DATA_BUFFER.  Run67 did the map/fill after START and the machine
@@ -807,7 +812,7 @@
 +		printf("SWEET GLINK: pcm: no shared memory\n");
 +		sweet_log_sync();
 +		return -1;
- 	}
++	}
 +	if (g_shm_va && !g_tone_filled) {
 +		g_fill_tone(G_PCM_OFF_A);
 +		g_fill_tone(G_PCM_OFF_B);
@@ -819,8 +824,8 @@
 +	}
 +	sweet_log_sync();
 +	return 0;
- }
- 
++}
++
  static void
  g_audio_tone(uint32_t src_port, uint32_t dst_port)
  {
@@ -908,7 +913,7 @@
  		}
  	}
  	printf("SWEET GLINK: pcm tone start (dst=%#x)\n", dst_port);
-@@ -2332,8 +2755,11 @@
+@@ -2332,8 +2761,11 @@
  	uint32_t v;
  	int rc;
  
@@ -922,7 +927,7 @@
  	g_put32(mf + 0, 1);
  	g_put32(mf + 4, 0x09001000);
  	g_put32(mf + 8, 18);
-@@ -2342,14 +2768,14 @@
+@@ -2342,14 +2774,14 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 2;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2;
@@ -941,7 +946,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2428,9 +2854,32 @@
+@@ -2428,9 +2860,32 @@
  	const uint32_t port = 0x2010u;
  	uint8_t tdm_payload[sizeof(g_graph_open_payload)];
  
@@ -977,7 +982,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2518,9 +2967,148 @@
+@@ -2518,9 +2973,148 @@
  		return;
  	}
  	printf("SWEET GLINK: graph_open failed on every payload\n");
@@ -1126,7 +1131,7 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2587,6 +3175,7 @@
+@@ -2587,6 +3181,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
