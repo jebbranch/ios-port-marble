@@ -1,11 +1,9 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -1522,6 +1522,63 @@
- 	0x33, 0x43, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00,
- 	0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+@@ -1524,6 +1524,63 @@
  	0x00, 0x00, 0x00, 0x00,
-+};
-+
+ };
+ 
 +/* Vendor device graph 0xb0000002 with a WR_SHARED_MEM_EP (0x07001000,
 + * iid 0x40bd) prepended and wired to SAL input port 2.  The vendor does
 + * this with a second (stream) subgraph and a cross-graph connection; a
@@ -61,9 +59,11 @@
 +	0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0xbd, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x12, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
- };
- 
++};
++
  #define APM_CMD_GRAPH_OPEN                  0x01001000u
+ #define APM_CMD_GRAPH_PREPARE               0x01001001u
+ #define APM_CMD_GRAPH_START                 0x01001002u
 @@ -1538,6 +1595,7 @@
  #define G_INPUT_MODULE_OFF                  216u
  #define APM_VP_SG_ID                        0xb0000002u
@@ -72,13 +72,13 @@
  #define G_VP_TDM_IID                        0x428fu
  #define G_VP_AW_IID                         0x42d3u
  #define G_CDMA_MODULE_OFF                   224u
-@@ -1553,8 +1611,55 @@
+@@ -1553,7 +1611,54 @@
   */
  #define G_SHM_FIXED_PA                      0xa2d00000u
  
 -/* Send one APM command with the payload inlined in the GPR packet. */
 +/* Send a fully built packet and decode its reply. */
- static int
++static int
 +g_apm_xfer(uint8_t *pkt, uint32_t pkt_size, const char *what)
 +{
 +	g_rsp_ready = 0;
@@ -125,10 +125,9 @@
 +
 +/* Send one APM command with the payload inlined behind the 16-byte payload
 + * descriptor (graph and data commands use this form). */
-+static int
+ static int
  g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
      uint32_t plen, uint32_t opcode, const char *what)
- {
 @@ -1580,30 +1685,36 @@
  	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes)\n", what,
  	    src_port, dst_port, pkt_size);
@@ -210,7 +209,7 @@
  
  	if (done) {
  		return;
-@@ -1643,20 +1757,68 @@
+@@ -1643,20 +1757,83 @@
  		printf("SWEET SMMU: map failed\n");
  		return;
  	}
@@ -248,10 +247,16 @@
  		}
 +		valid++;
 +		printf("SWEET SMMU: smr%d sid=%#x mask=%#x s2cr=%#x\n",
-+		    n, smr & 0xffffu, smr >> 16, s2cr);
++		    n, smr & 0xffffu, (smr >> 16) & 0x7fffu, s2cr);
 +		sweet_log_sync();
-+		if ((smr & 0xffffu) == 0x1801u) {
-+			sid18 = (int)n;
++		{
++			/* A masked SMR also matches 0x1801: compare only
++			 * the bits the mask leaves significant. */
++			uint32_t mask = (smr >> 16) & 0x7fffu;
++
++			if ((((smr & 0xffffu) ^ 0x1801u) & ~mask) == 0) {
++				sid18 = (int)n;
++			}
 +		}
  	}
  	printf("SWEET SMMU: %d valid stream entries\n", valid);
@@ -263,17 +268,26 @@
 +	if (sid18 >= 0) {
 +		printf("SWEET SMMU: sid 0x1801 already at smr%d\n", sid18);
 +	} else if (free_slot >= 0) {
-+		*(volatile uint32_t *)(v + 0x800 + 4 * free_slot) =
-+		    0x80000000u | 0x1801u;
++		/* qcom,msm-audio-ion is iommus=<&apps_smmu 0x1801 0x0> plus
++		 * qcom,smmu-sid-mask=0xf: the audio stream match ignores the
++		 * low four SID bits, so an exact 0x1801 SMR misses 0x1800 and
++		 * 0x1802..0x180f.  Program S2CR first — a valid SMR must never
++		 * point at an unset context bank — then SMR with mask 0xf. */
 +		*(volatile uint32_t *)(v + 0xc00 + 4 * free_slot) = 0x10000u;
++		__asm__ volatile("dsb sy" ::: "memory");
++		*(volatile uint32_t *)(v + 0x800 + 4 * free_slot) =
++		    0x80000000u | (0xfu << 16) | 0x1800u;
++		__asm__ volatile("dsb sy" ::: "memory");
 +		*(volatile uint32_t *)(v + 0x68) = 0xffffffffu;	/* TLBIALLNSNH */
 +		*(volatile uint32_t *)(v + 0x70) = 0;		/* TLBGSYNC */
 +		for (int i = 0; i < 1000 &&
 +		    (*(volatile uint32_t *)(v + 0x74) & 1u); i++) {
 +			__asm__ volatile("yield");
 +		}
-+		printf("SWEET SMMU: force sid 0x1801 bypass at smr%d\n",
-+		    free_slot);
++		printf("SWEET SMMU: force sid 0x1800-0x180f bypass at smr%d "
++		    "readback smr=%#x s2cr=%#x\n", free_slot,
++		    *(volatile uint32_t *)(v + 0x800 + 4 * free_slot),
++		    *(volatile uint32_t *)(v + 0xc00 + 4 * free_slot));
 +	}
 +	/* USFCFG=1 aborts every unmatched stream; turning it off is a
 +	 * belt-and-braces measure for streams other than 0x1801. */
@@ -286,7 +300,7 @@
  	sweet_log_sync();
  }
  
-@@ -1696,52 +1858,80 @@
+@@ -1696,52 +1873,80 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -393,7 +407,7 @@
  			return 0;
  		}
  	}
-@@ -1909,7 +2099,7 @@
+@@ -1909,7 +2114,7 @@
  	uint8_t pkt[24 + 16];
  	uint32_t pkt_size = sizeof(pkt);
  
@@ -402,7 +416,7 @@
  		return -1;
  	}
  	memcpy((void *)g_shm_va, payload, len);
-@@ -2029,8 +2219,14 @@
+@@ -2029,8 +2234,14 @@
  	g_put32(pkt + 12, dst_port);
  	g_put32(pkt + 16, token);
  	g_put32(pkt + 20, APM_CMD_DATA_BUFFER_V2);
@@ -419,7 +433,7 @@
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
  	g_rsp_ready = 0;
-@@ -2079,64 +2275,60 @@
+@@ -2079,64 +2290,60 @@
  	}
  }
  
@@ -502,6 +516,10 @@
 -		static const uint32_t cand[4] = {
 -			G_VP_SAL_IID, 0x48bau, 0x4007u, 0x418eu
 -		};
+-
+-		for (int i = 0; i < 4; i++) {
+-			int r = g_apm_data_buffer(0x2011u, cand[i],
+-			    G_PCM_OFF_A, G_PCM_BYTES, 0x40u + (uint32_t)i);
 +	/* Only the WR module accepts buffers (vendor trace: every
 +	 * DATA_BUFFER_V2 goes to the WR instance; SAL never answers).  Send
 +	 * exactly one probe there and stop guessing. */
@@ -509,10 +527,6 @@
 +		int r = g_apm_data_buffer(0x2011u, G_VP_WR_IID,
 +		    G_PCM_OFF_A, G_PCM_BYTES, 0);
  
--		for (int i = 0; i < 4; i++) {
--			int r = g_apm_data_buffer(0x2011u, cand[i],
--			    G_PCM_OFF_A, G_PCM_BYTES, 0x40u + (uint32_t)i);
--
 -			printf("SWEET GLINK: buffer probe dst=%#x -> %d\n",
 -			    cand[i], r);
 -			sweet_log_sync();
@@ -528,7 +542,7 @@
  		}
  	}
  	printf("SWEET GLINK: pcm tone start (dst=%#x)\n", dst_port);
-@@ -2332,8 +2524,11 @@
+@@ -2332,8 +2539,11 @@
  	uint32_t v;
  	int rc;
  
@@ -542,7 +556,7 @@
  	g_put32(mf + 0, 1);
  	g_put32(mf + 4, 0x09001000);
  	g_put32(mf + 8, 18);
-@@ -2342,14 +2537,14 @@
+@@ -2342,14 +2552,14 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 2;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2;
@@ -561,7 +575,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2428,9 +2623,32 @@
+@@ -2428,9 +2638,32 @@
  	const uint32_t port = 0x2010u;
  	uint8_t tdm_payload[sizeof(g_graph_open_payload)];
  
