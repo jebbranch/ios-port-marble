@@ -32,10 +32,12 @@
  static void
  g_wait(unsigned ms)
  {
-@@ -176,6 +194,21 @@
+@@ -174,6 +192,21 @@
+ 	pmap_map(win, (vm_offset_t)base, (vm_offset_t)(base + span),
+ 	    VM_PROT_READ | VM_PROT_WRITE, VM_WIMG_IO);
  	return win + off;
- }
- 
++}
++
 +/* ml_io_map() draws from a permanent, system-wide 8 MiB io_submap that
 + * SPMI already half fills, and an exhausted submap panics with
 + * KERN_NO_SPACE (run76, run83).  Use a kernel_map window instead: allocate
@@ -49,11 +51,9 @@
 +		return 0;
 +	}
 +	return g_win_map(w, pa, size);
-+}
-+
+ }
+ 
  static void
- g_win_free(vm_offset_t win, vm_size_t size)
- {
 @@ -307,7 +340,8 @@
  
  /* Send a GLINK data message (16-byte header + payload). */
@@ -88,18 +88,18 @@
  g_send_version(void)
  {
  	g_send(CMD_VERSION, (uint16_t)GLINK_VERSION_1, GLINK_FEATURE_REUSE,
-@@ -392,13 +432,33 @@
+@@ -392,7 +432,27 @@
  }
  
  static struct g_riid *
 -g_pick_riid(uint32_t len)
 +g_pick_riid(uint32_t chan, uint32_t len)
- {
- 	struct g_riid *best = NULL;
- 
- 	for (int i = 0; i < g_nriids; i++) {
- 		struct g_riid *r = &g_riids[i];
- 
++{
++	struct g_riid *best = NULL;
++
++	for (int i = 0; i < g_nriids; i++) {
++		struct g_riid *r = &g_riids[i];
++
 +		if (r->in_use || r->size < len || r->chan != chan) {
 +			continue;
 +		}
@@ -114,15 +114,9 @@
 + * channel tag can never stop the GPR/audio path from transmitting. */
 +static struct g_riid *
 +g_pick_riid_any(uint32_t len)
-+{
-+	struct g_riid *best = NULL;
-+
-+	for (int i = 0; i < g_nriids; i++) {
-+		struct g_riid *r = &g_riids[i];
-+
- 		if (r->in_use || r->size < len) {
- 			continue;
- 		}
+ {
+ 	struct g_riid *best = NULL;
+ 
 @@ -409,6 +469,17 @@
  	return best;
  }
@@ -262,11 +256,10 @@
  
  	if (!v) {
  		printf("SWEET MMIO: %s: map failed\n", tag);
-@@ -1121,6 +1231,24 @@
- SYSCTL_PROC(_kern, OID_AUTO, sweetvibe,
+@@ -1122,6 +1232,24 @@
      CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, 0, 0,
      sweet_vibe_sysctl, "I", "trigger the PM8350B haptics engine");
-+
+ 
 +/*
 + * Called from the key driver so a physical key press produces haptic
 + * feedback.  The haptics sequence sleeps ~300 ms; sweet_keys polls from its
@@ -284,9 +277,10 @@
 +	g_haptics_try();
 +	__atomic_store_n(&busy, 0, __ATOMIC_RELEASE);
 +}
- 
++
  static void
  g_dump(const char *tag, const uint8_t *p, uint32_t len)
+ {
 @@ -1522,6 +1650,63 @@
  	0x33, 0x43, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00,
  	0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
@@ -370,13 +364,13 @@
  #define G_VP_TDM_IID                        0x428fu
  #define G_VP_AW_IID                         0x42d3u
  #define G_CDMA_MODULE_OFF                   224u
-@@ -1553,7 +1749,54 @@
+@@ -1553,8 +1749,55 @@
   */
  #define G_SHM_FIXED_PA                      0xa2d00000u
  
 -/* Send one APM command with the payload inlined in the GPR packet. */
 +/* Send a fully built packet and decode its reply. */
-+static int
+ static int
 +g_apm_xfer(uint8_t *pkt, uint32_t pkt_size, const char *what)
 +{
 +	g_rsp_ready = 0;
@@ -423,9 +417,10 @@
 +
 +/* Send one APM command with the payload inlined behind the 16-byte payload
 + * descriptor (graph and data commands use this form). */
- static int
++static int
  g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
      uint32_t plen, uint32_t opcode, const char *what)
+ {
 @@ -1580,30 +1823,36 @@
  	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes)\n", what,
  	    src_port, dst_port, pkt_size);
@@ -812,21 +807,7 @@
  	g_phys_selftest();
 -	for (unsigned i = 0; i < sizeof(addrs) / sizeof(addrs[0]); i++) {
 -		vm_offset_t va = ml_io_map((vm_offset_t)addrs[i], G_SHM_SIZE);
-+	pa[n] = 0xa2e00000u;		/* SHIM-prefilled tone, low DRAM */
-+	/* ml_io_map() itself works for this PA (run64 mapped it and the APM
-+	 * accepted it); only flush_dcache64()->phystokv_range() panics on
-+	 * PAs outside the ADT bank, so this mapping is never flushed. */
-+	va[n] = g_map_win((uint64_t)pa[n], G_SHM_SIZE);
-+	playable[n++] = 1;
-+	if (g_self_pa) {
-+		pa[n] = g_self_pa;
-+		va[n] = g_map_win((uint64_t)g_self_pa, G_SHM_SIZE);
-+		playable[n++] = 1;
-+	}
-+	pa[n] = 0x11ffe8000ull;		/* vendor IOVA, status only */
-+	va[n] = 0;
-+	playable[n++] = 0;
- 
+-
 -		if (!va) {
 -			printf("SWEET GLINK: shm: map %#llx failed\n", addrs[i]);
 -			continue;
@@ -842,6 +823,21 @@
 -			g_put32(body + 16, G_SHM_SIZE);
 -			printf("SWEET GLINK: shm_map_gpr pool=%u pa=%#llx\n",
 -			    p, addrs[i]);
++	pa[n] = 0xa2e00000u;		/* SHIM-prefilled tone, low DRAM */
++	/* ml_io_map() itself works for this PA (run64 mapped it and the APM
++	 * accepted it); only flush_dcache64()->phystokv_range() panics on
++	 * PAs outside the ADT bank, so this mapping is never flushed. */
++	va[n] = g_map_win((uint64_t)pa[n], G_SHM_SIZE);
++	playable[n++] = 1;
++	if (g_self_pa) {
++		pa[n] = g_self_pa;
++		va[n] = g_map_win((uint64_t)g_self_pa, G_SHM_SIZE);
++		playable[n++] = 1;
++	}
++	pa[n] = 0x11ffe8000ull;		/* vendor IOVA, status only */
++	va[n] = 0;
++	playable[n++] = 0;
++
 +	for (unsigned i = 0; i < n; i++) {
 +		for (unsigned f = 0; f < 2; f++) {
 +			printf("SWEET GLINK: shm_map pool=3 pa=%#llx flag=%u "
@@ -1108,13 +1104,10 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2518,9 +3066,148 @@
- 		return;
- 	}
- 	printf("SWEET GLINK: graph_open failed on every payload\n");
-+}
-+
-+
+@@ -2521,6 +3069,145 @@
+ }
+ 
+ 
 +
 +/* One 24-byte battmgr GET_PROP round trip.  The response echoes the
 + * property id at +12 and carries the value at +16 (from the kprobe
@@ -1171,8 +1164,8 @@
 +	} else {
 +		g_dump(tag, g_batt_rsp, g_batt_rsp_len);
 +	}
- }
- 
++}
++
 +/*
 + * Last battery sample for SweetBattery.  Returns 0 until the pmic_glink
 + * probe has both a status and a capacity, so iOS keeps using its own
@@ -1192,7 +1185,7 @@
 +	*usb = g_batt_s_usb < 0 ? 0 : (unsigned)g_batt_s_usb;
 +	return 1;
 +}
- 
++
 +/*
 + * Optional battery read-out.  sweetbatt=1 opens our side of
 + * PMIC_RTR_ADSP_APPS, answers the ADSP's own OPEN, and asks the battmgr
@@ -1257,7 +1250,17 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2587,6 +3274,7 @@
+@@ -2533,6 +3220,9 @@
+ 		return;
+ 	}
+ 	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
++	/* Build tag: watchers key on this so an intermediate kernel cannot be
++	 * mistaken for the one that was just pushed.  Bump it every change. */
++	printf("SWEET AUDIO: build v24 (kernel_map windows)\n");
+ 
+ 	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
+ 	g_clock_from_bootarg();
+@@ -2587,6 +3277,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
