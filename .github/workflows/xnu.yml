@@ -105,8 +105,34 @@ jobs:
           MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
         run: |
           ccache -z
-          bash build.sh
+          set -o pipefail
+          # tee so a failed build still leaves the compiler diagnostics behind
+          bash build.sh 2>&1 | tee /tmp/build.log
           ccache -s
+
+      # The job log needs admin rights to download, so publish the actual
+      # compiler diagnostics as a release asset instead - that is readable.
+      - name: Publish build errors
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "commit: ${{ github.sha }}"
+            echo
+            echo "=== errors ==="
+            grep -nE 'error:|fatal error|undefined|undeclared|expected' /tmp/build.log \
+              | grep -viE 'unifdef|--- ERROR ---' | head -80 || true
+            echo
+            echo "=== tail ==="
+            tail -60 /tmp/build.log || true
+          } > build-error.txt
+          wc -l build-error.txt
+          gh release upload kernel-latest build-error.txt --clobber \
+            --repo "${{ github.repository }}" \
+            || gh release create kernel-latest build-error.txt \
+                 --title "kernel" --notes "build diagnostics" \
+                 --repo "${{ github.repository }}" || true
 
       - name: Package build tree for local compiles
         if: always()
