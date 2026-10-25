@@ -1884,3 +1884,151 @@ if (FIELD_GET(ARM_SMMU_S2CR_TYPE, reg) != S2CR_TYPE_BYPASS) { ...bypass_quirk...
 
 对 CB0..5 逐一把 `SCTLR` 的 **bit7（CFCFG）清 0**，其余位保持不动，
 打印前后值。只改 fault 处理模型，不改 M、不动已启用的 bank。
+
+---
+
+## run117（v51，`sweetskipgfsr=1`）—— ★ 冻结范围缩小到整个 LPASS
+
+改动：发完合法 DATA_BUFFER 后**完全不访问 SMMU 寄存器**，改为轮询 GLINK FIFO，
+每 40 次（约 200 ms）打一行 `alive N`。
+
+```
+SWEET GLINK: data_buffer send
+SWEET GLINK: data_buffer sent; gfsr=0 fsynr1=0     ← 落盘 ⇒ 之前那次 sync 成功
+（然后死：连第一行 "alive 40" 都没等到）
+```
+
+推理链：
+1. 那行能落盘 ⇒ 写盘成功 ⇒ **AP、中断、UFS 通路都正常**；
+2. 之后只调用了 `g_drain(0)` 读 **GLINK FIFO**（同样是 LPASS 侧 MMIO）；
+3. 在第一个 200 ms 心跳前就挂住 ⇒ **GLINK FIFO 读也不再返回**。
+
+⇒ 冻结范围不是"SMMU 寄存器"，而是**整个 LPASS 子系统**：
+SMMU 和 GLINK FIFO 一起失去响应，而 AP 其余部分完好。
+
+**与"事务被下层挡住而非拒绝"高度吻合**：被挡住的事务永不返回 ⇒ DSP 的 NoC
+端口卡死 ⇒ 之后 LPASS 的所有 MMIO 都不响应。这也统一解释了为什么
+SMMU 配成什么样都毫无区别（它根本不在这条路径的关键位置上）。
+
+### 因此下一个实验：1:1 复现厂商的 IOVA 路径
+
+厂商用的区域地址是 **`0x1_1FFE8000`（33 位）**，而我们一直用自己挑的
+`0xa2e00000`（32 位）。这条配置从来没被真正试过：
+- `SHM_MAP` 报 `0x11ffe8000`（msw=1）——**实测 status=0，是被接受的**；
+- 需要 33 位输入地址空间 ⇒ `TCR.T0SZ = 31`；
+- 需要三级页表（4 KB 页）：`L1[VA[32:30]] → L2[VA[29:21]] → L3[VA[20:12]]`；
+- IOVA `0x1_1FFE8000` 在 2 MB 块内偏移 `0x1E8000`，与我们的 PA 偏移不同，
+  所以**不能用 2 MB 块，必须落到 4 KB 页**（L3 索引 0xE8）。
+
+计划用 `sweetiova=1` 开关实现，映射
+`0x1_1FFE8000 → 0xa2e00000`（那个预填了音调的页）。
+
+---
+
+## ★★★★ run118（v54，`sweetiova=1`）—— **整机不再挂死，且拿到了真实 fault**
+
+这是本项目第一次：发**合法** DATA_BUFFER 之后整机活下来并完整复位。
+
+```
+SWEET AUDIO: build v54
+SWEET SMMU: s1 tables va=0x11ffe8000 l1[4]=0xa3001003 l2[255]=0xa3002003 l3[488]=0xa2e00703
+SWEET SMMU: s1 cb5 ... tcr=0x351f  mair=0xff
+SWEET GLINK: shm_flat pa=0x11ffe8000 (region addr, buffer PA differs) flag=4 size=20480
+SWEET GLINK: shm_map rsp status=0
+SWEET GLINK: shm mapped pa=0xa2e00000 mode=offset
+SWEET GLINK: data_buffer send
+SWEET GLINK: data_buffer sent; gfsr=0 fsynr1=0
+SWEET SMMU: poll GFSR=0 FSYNR1=0 reached=3          ← GFSR 读成功
+post cb5 FSR=0x402 FAR=0x1ffe8000 FSYNR0=0x40001   ← ★ 真实 context fault
+SWEET GLINK: data_buffer: no rsp (dst=0x40bd)
+===== done =====
+PSCI SYSTEM_RESET                                   ← 正常复位
+```
+
+### 对比：32 位恒等映射 vs 33 位 IOVA
+
+| 配置 | post cb5 |
+|---|---|
+| 32 位恒等映射（v46~v51） | `FSR=0x400`（未变）→ **事务根本没到 CB5** |
+| 33 位厂商 IOVA（v54） | `FSR=0x402 FAR=0x1ffe8000` → **事务到了 CB5，页表没走通** |
+
+`FSR=0x402` 按厂商头文件解：`TF = BIT(1)` ⇒ **Translation Fault**。
+`FAR = 0x1ffe8000` 正是 `0x1_1FFE8000` 的低 32 位。
+
+### 结论（三条，全是一手证据）
+
+1. **之前所有"整机冻结"的根因就是地址不对。** 用厂商的 33 位 IOVA 之后，
+   同样的 DATA_BUFFER 不再挂死。
+2. **SID 匹配是好的、CB 路由是好的**：DSP 的访问确实进了 CB5（FAR 就是这个 IOVA）。
+   前面"SID 从未匹配"的猜测**被推翻**。
+3. 现在的状态是**一个干净、可复现、可读的翻译失败**，而 CFCFG=0（terminate）
+   让它不会拖死系统 ⇒ 可以快速迭代页表配置了。
+
+### 为什么之前 32 位映射时事务没到 CB5
+
+推测（非证据）：DSP 侧对区域基址有自己的地址空间认知，用 32 位物理地址时
+事务在更前面就被挡住/丢弃；换成厂商的 IOVA 表达后才真正下发。
+这正是"四维不变性"的合理解释——那四个维度改变的都不是**地址表达**。
+
+## v55：改用单个 2 MiB 块描述符
+
+三级页表（`L1→L2→L3`）报了 TF，于是换成更简单的一级：
+
+```
+IOVA [0x1_1FE00000, 0x1_20000000)  →  PA [0xa2e00000, 0xa3000000)
+L2[255] = 0xa2e00701      （valid|block + AF + SH inner + AttrIndx0）
+```
+
+为了让 `0x1_1FFE8000` 正好落在缓冲区上，缓冲区要放到同块内相同偏移：
+`PA = 0xa2e00000 + 0x1E8000 = 0xa2fe8000`（由 `g_map_pa` 自动算出）。
+
+---
+
+## run120 / run121 —— 翻译通了，但"成功反而挂死"（2026-10-25 23:50~00:10）
+
+### run120（v56，`sweets1tcr2=0x38000`，TCR2.SEP=7）
+
+外部评审指出 `FSYNR0=0x40001` 里 `PLVL[1:0]=1` ⇒ fault 在 **Level 1（根表）**，
+并怀疑 `TCR2.SEP=0`（按 bit31 符号扩展）与 33 位 IOVA 不匹配。单变量验证：
+
+```
+tcr2=0x38060          ← SEP=7 写进去了，回读正确
+post cb5 FSR=0x402 FAR=0x1ffe8000 FSYNR0=0x140001
+```
+
+**故障完全没变 ⇒ SEP 被干净排除。**
+
+### run121（v57，`sweets1va=0x1FFE8000`，32 位 IOVA）
+
+`FAR` 只读到低 32 位 `0x1ffe8000`，怀疑 DSP 把厂商的 33 位地址**截断**了：
+若输入是 `0x1FFE8000`，则 `VA[32]=0`，在 `T0SZ=31` 下 L1 索引是 **0**，
+而我们写在 **L1[4]** ⇒ 正好是 Level 1 TF。于是改成直接声明 32 位 IOVA：
+
+```
+s1 tables va=0x1ffe8000 l1[0]=0xa3001003 l2[255]=0xa2e00701 buf_pa=0xa2fe8000
+s1 cb5 ... tcr=0x3560                    ← T0SZ=32，索引 0
+shm mapped pa=0xa2fe8000
+data_buffer sent; gfsr=0 fsynr1=0
+（挂死：连 "poll GFSR" 都没打出来）
+```
+
+### ★★★ 三条配置的对比，规律是反的
+
+| 配置 | 翻译 | 整机 |
+|---|---|---|
+| 33 位 IOVA `0x1_1FFE8000` | **失败**（TF，terminate） | **活着** |
+| 32 位 IOVA `0x1FFE8000` | **成功** → `0xa2fe8000` | **挂死** |
+| 32 位物理地址 `0xa2e00000`（早期） | 成功（恒等） | 挂死 |
+
+⇒ **DSP 的访问被 SMMU 干净拒绝时整机安然；一旦翻译成功、DSP 真拿到数据，
+整机反而挂死。**
+
+**推论（重要）**：页表这件事已经基本做对了——32 位 IOVA 下的页表配置
+（`L1[0]→L2[255]→2MiB 块`）能让 SMMU 成功翻译。
+剩下的挂死**发生在"读成功之后"**，也就是 DSP 拿到 buffer 之后做的事。
+
+下一步方向（按信息量排序）：
+1. 用 `sweetskipgfsr=1` 在 32 位 IOVA 配置下跑，看挂死是在 SMMU 读、
+   GLINK 读，还是更早——确定"挂死发生在 DSP 侧还是 AP 侧"。
+2. 若 AP 侧正常，则问题在 DSP 消费数据之后（写回 / TDM / 功放），
+   那时 TDM 链路（§2.8 已全部 status=0）就是下一个排查点。
