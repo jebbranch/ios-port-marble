@@ -40,12 +40,10 @@
  static void
  g_wait(unsigned ms)
  {
-@@ -174,6 +193,21 @@
- 	pmap_map(win, (vm_offset_t)base, (vm_offset_t)(base + span),
- 	    VM_PROT_READ | VM_PROT_WRITE, VM_WIMG_IO);
+@@ -176,6 +195,21 @@
  	return win + off;
-+}
-+
+ }
+ 
 +/* ml_io_map() draws from a permanent, system-wide 8 MiB io_submap that
 + * SPMI already half fills, and an exhausted submap panics with
 + * KERN_NO_SPACE (run76, run83).  Use a kernel_map window instead: allocate
@@ -59,9 +57,11 @@
 +		return 0;
 +	}
 +	return g_win_map(w, pa, size);
- }
- 
++}
++
  static void
+ g_win_free(vm_offset_t win, vm_size_t size)
+ {
 @@ -307,7 +341,8 @@
  
  /* Send a GLINK data message (16-byte header + payload). */
@@ -96,18 +96,18 @@
  g_send_version(void)
  {
  	g_send(CMD_VERSION, (uint16_t)GLINK_VERSION_1, GLINK_FEATURE_REUSE,
-@@ -392,13 +433,33 @@
+@@ -392,7 +433,27 @@
  }
  
  static struct g_riid *
 -g_pick_riid(uint32_t len)
 +g_pick_riid(uint32_t chan, uint32_t len)
- {
- 	struct g_riid *best = NULL;
- 
- 	for (int i = 0; i < g_nriids; i++) {
- 		struct g_riid *r = &g_riids[i];
- 
++{
++	struct g_riid *best = NULL;
++
++	for (int i = 0; i < g_nriids; i++) {
++		struct g_riid *r = &g_riids[i];
++
 +		if (r->in_use || r->size < len || r->chan != chan) {
 +			continue;
 +		}
@@ -122,15 +122,9 @@
 + * channel tag can never stop the GPR/audio path from transmitting. */
 +static struct g_riid *
 +g_pick_riid_any(uint32_t len)
-+{
-+	struct g_riid *best = NULL;
-+
-+	for (int i = 0; i < g_nriids; i++) {
-+		struct g_riid *r = &g_riids[i];
-+
- 		if (r->in_use || r->size < len) {
- 			continue;
- 		}
+ {
+ 	struct g_riid *best = NULL;
+ 
 @@ -409,6 +470,17 @@
  	return best;
  }
@@ -198,11 +192,10 @@
  					g_riids[g_nriids].in_use = 0;
  					g_nriids++;
  				}
-@@ -566,6 +657,26 @@
- 		}
+@@ -567,6 +658,26 @@
  		if (avail < 16 + chunk) {
  			return -1;
-+		}
+ 		}
 +		if (g_batt_rcid != 0 && p1 == g_batt_rcid &&
 +		    liid == G_BATT_LIID) {
 +			if (g_batt_fill + chunk <= sizeof(g_batt_rsp)) {
@@ -222,9 +215,10 @@
 +			}
 +			g_rx_advance((16 + chunk + 7u) & ~7u);
 +			break;
- 		}
++		}
  		for (int i = 0; i < g_nliids; i++) {
  			if (g_liids[i].id != liid) {
+ 				continue;
 @@ -663,7 +774,7 @@
  	unsigned i = 0;
  
@@ -270,7 +264,7 @@
  
  	if (!v) {
  		printf("SWEET MMIO: %s: map failed\n", tag);
-@@ -1121,6 +1232,24 @@
+@@ -1121,7 +1232,25 @@
  SYSCTL_PROC(_kern, OID_AUTO, sweetvibe,
      CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, 0, 0,
      sweet_vibe_sysctl, "I", "trigger the PM8350B haptics engine");
@@ -285,20 +279,23 @@
 +sweet_haptics_kick(void)
 +{
 +	static volatile int busy;
-+
+ 
 +	if (__atomic_exchange_n(&busy, 1, __ATOMIC_ACQ_REL) != 0) {
 +		return;
 +	}
 +	g_haptics_try();
 +	__atomic_store_n(&busy, 0, __ATOMIC_RELEASE);
 +}
- 
++
  static void
  g_dump(const char *tag, const uint8_t *p, uint32_t len)
-@@ -1524,6 +1653,63 @@
+ {
+@@ -1522,6 +1651,63 @@
+ 	0x33, 0x43, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00,
+ 	0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
  	0x00, 0x00, 0x00, 0x00,
- };
- 
++};
++
 +/* Vendor device graph 0xb0000002 with a WR_SHARED_MEM_EP (0x07001000,
 + * iid 0x40bd) prepended and wired to SAL input port 2.  The vendor does
 + * this with a second (stream) subgraph and a cross-graph connection; a
@@ -354,11 +351,9 @@
 +	0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0xbd, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x12, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-+};
-+
+ };
+ 
  #define APM_CMD_GRAPH_OPEN                  0x01001000u
- #define APM_CMD_GRAPH_PREPARE               0x01001001u
- #define APM_CMD_GRAPH_START                 0x01001002u
 @@ -1537,13 +1723,25 @@
  #define G_TDM_MODULE_ID                     0x0700100eu
  #define G_INPUT_MODULE_OFF                  216u
@@ -545,7 +540,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -1631,33 +1910,545 @@
+@@ -1631,32 +1910,544 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -931,7 +926,7 @@
 +		}
 +	}
 +	printf("SWEET SMMU: stage-2 programming skipped (layout unknown)\n");
- 	sweet_log_sync();
++	sweet_log_sync();
 +	return;
 +	/* The ADSP audio SID (msm-audio-ion: iommus = <&apps_smmu 0x1801>)
 +	 * has no SMR in a fastboot-booted XNU.  Give it a stage-2 identity
@@ -1097,10 +1092,9 @@
 +		printf("SWEET SMMU: USFCFG cleared %#x -> %#x\n", cr0,
 +		    *(volatile uint32_t *)(v + 0x00));
 +	}
-+	sweet_log_sync();
+ 	sweet_log_sync();
  }
  
- /* Prove whether the page pmap_find_phys reports is a real DRAM address:
 @@ -1687,7 +2478,7 @@
  	printf("SWEET PHYS: va=%#llx pa=%#llx\n", (uint64_t)va, pa);
  	*(volatile uint32_t *)va = 0x5a5a1234u;
@@ -1288,10 +1282,13 @@
  	g_put32(pkt + 24 + 4, 0);
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
-@@ -2015,6 +2867,43 @@
- 	}
- }
+@@ -2012,7 +2864,44 @@
  
+ 		p[2 * i] = v;
+ 		p[2 * i + 1] = v;
++	}
++}
++
 +/*
 + * SMMU fault snapshot.  Read BEFORE touching the GLINK FIFO after a
 + * DATA_BUFFER, because a stalled DSP can hang that read and we would lose
@@ -1305,7 +1302,7 @@
 +		printf("SWEET SMMU: %s no gr window\n", tag);
 +		sweet_log_sync();
 +		return;
-+	}
+ 	}
 +	printf("SWEET SMMU: %s GFSR=%#x FSYNR0=%#x FSYNR1=%#x FSYNR2=%#x\n",
 +	    tag, *(volatile uint32_t *)(g_gr_win + 0x48u),
 +	    *(volatile uint32_t *)(g_gr_win + 0x50u),
@@ -1327,11 +1324,9 @@
 +		}
 +	}
 +	sweet_log_sync();
-+}
-+
+ }
+ 
  static int
- g_apm_data_buffer(uint32_t src_port, uint32_t dst_port, uint32_t off,
-     uint32_t len, uint32_t token)
 @@ -2027,15 +2916,113 @@
  	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
  	g_put32(pkt + 8, src_port);
@@ -1450,7 +1445,7 @@
  	for (unsigned i = 0; i < 100; i += 5) {
  		g_drain(0);
  		if (g_rsp_ready) {
-@@ -2073,72 +3060,94 @@
+@@ -2073,70 +3060,92 @@
  		if (w36 != 0 && dbg++ < 4) {
  			printf("SWEET GLINK: data_buffer: dst=%#x done status=%#x "
  			    "w28=%#x w32=%#x\n", dst_port, w36, w28, w32);
@@ -1458,9 +1453,9 @@
  			sweet_log_sync();
  		}
  		return w36 == 0 ? 0 : -1;
- 	}
- }
- 
++	}
++}
++
 +static int g_tone_filled;
 +
 +/* Map the PCM region and fill the tone *before* the graph starts.  The
@@ -1478,7 +1473,7 @@
 +		printf("SWEET GLINK: pcm: no shared memory\n");
 +		sweet_log_sync();
 +		return -1;
-+	}
+ 	}
 +	if (g_shm_va && !g_tone_filled) {
 +		g_fill_tone(G_PCM_OFF_A);
 +		g_fill_tone(G_PCM_OFF_B);
@@ -1490,8 +1485,8 @@
 +	}
 +	sweet_log_sync();
 +	return 0;
-+}
-+
+ }
+ 
  static void
  g_audio_tone(uint32_t src_port, uint32_t dst_port)
  {
@@ -1573,8 +1568,8 @@
 -				break;
 -			}
 +			return;
- 		}
- 	}
++		}
++	}
 +	/* Only the WR module accepts buffers (vendor trace: every
 +	 * DATA_BUFFER_V2 goes to the WR instance; SAL never answers).  Send
 +	 * exactly one probe there and stop guessing. */
@@ -1587,11 +1582,9 @@
 +		sweet_log_sync();
 +		if (r != 0) {
 +			return;
-+		}
-+	}
+ 		}
+ 	}
  	printf("SWEET GLINK: pcm tone start (dst=%#x)\n", dst_port);
- 
- 	for (int n = 0; n < 2000; n++) {
 @@ -2332,24 +3341,31 @@
  	uint32_t v;
  	int rc;
@@ -1672,7 +1665,7 @@
  	g_put32(mf + 0, 96000);
  	g_put32(mf + 4, 32u | (3u << 16));
  	g_put32(mf + 8, 1);
-@@ -2428,9 +3466,41 @@
+@@ -2428,9 +3466,60 @@
  	const uint32_t port = 0x2010u;
  	uint8_t tdm_payload[sizeof(g_graph_open_payload)];
  
@@ -1687,20 +1680,39 @@
 +	 * and connection come from the vendor stream-graph dump 0xb00000d6
 +	 * (WR has 0 input ports and 1 output port). */
 +	/*
-+	 * Vendor order is MAP first, then GRAPH_OPEN.  The vendor sends a
-+	 * 40-byte GRAPH_OPEN whose payload descriptor is
-+	 * {offset, 0, handle, size} and keeps the graph definition inside
-+	 * the mapped region - never inline.  Mirror that exactly (v48).
-+	 * The graph lives at G_GRAPH_OFF so it cannot collide with the PCM
-+	 * buffers at offset 0 / 0x800.
++	 * sweetshmgraph=1 probes the vendor's shared-memory form: a 40-byte
++	 * GRAPH_OPEN whose descriptor is {offset, 0, handle, size} with the
++	 * graph definition inside the mapped region.
++	 *
++	 * ★ It is opt-in, NOT the default.  The audio bring-up runs on every
++	 * boot, and this form makes the DSP read the region - which hangs the
++	 * SoC before the GUI ever starts (run115).  The inline form needs no
++	 * DSP memory access, so it is the safe default and lets iOS boot.
 +	 */
-+	if (g_pcm_prepare() != 0) {
-+		printf("SWEET GLINK: no shared memory, cannot open a graph\n");
-+		sweet_log_sync();
-+		return;
++	{
++		int shmgraph = 0;
++
++		(void)PE_parse_boot_argn("sweetshmgraph", &shmgraph,
++		    sizeof(shmgraph));
++		if (shmgraph && g_pcm_prepare() == 0 &&
++		    g_apm_graph_open_shm(port, g_graph_vp_wr,
++		    sizeof(g_graph_vp_wr), G_GRAPH_OFF,
++		    "graph_open/vp-wr-shm") == 0) {
++			g_audio_graph_cfg_vp(port);
++			if (g_apm_graph_start(port, APM_VP_SG_ID) == 0) {
++				printf("SWEET GLINK: shm graph started\n");
++				sweet_log_sync();
++				g_audio_tone(port, G_VP_WR_IID);
++			} else {
++				printf("SWEET GLINK: shm graph did not start\n");
++				sweet_log_sync();
++			}
++			return;
++		}
 +	}
-+	if (g_apm_graph_open_shm(port, g_graph_vp_wr, sizeof(g_graph_vp_wr),
-+	    G_GRAPH_OFF, "graph_open/vp-wr-shm") == 0) {
++	if (g_apm_cmd(port, 1, g_graph_vp_wr, sizeof(g_graph_vp_wr),
++	    APM_CMD_GRAPH_OPEN, "graph_open/vp-wr") == 0) {
++		g_pcm_prepare();
 +		g_audio_graph_cfg_vp(port);
 +		if (g_apm_graph_start(port, APM_VP_SG_ID) == 0) {
 +			printf("SWEET GLINK: vendor graph + WR input started\n");
@@ -1717,7 +1729,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2448,7 +3518,8 @@
+@@ -2448,7 +3537,8 @@
  	 * command; a handle owned by another port may be rejected. */
  	if (g_apm_shm_map(port) == 0) {
  		if (g_apm_graph_open_shm(port, g_graph_vp,
@@ -1727,7 +1739,7 @@
  			g_audio_graph_cfg_vp(port);
  			if (g_apm_graph_start(port, APM_VP_SG_ID) == 0) {
  				g_audio_tone(port, G_VP_SAL_IID);
-@@ -2500,7 +3571,8 @@
+@@ -2500,7 +3590,8 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_open_payload,
@@ -1737,7 +1749,7 @@
  		g_audio_graph_cfg(port);
  		if (g_apm_graph_start(port, APM_GRAPH_SG_ID) == 0) {
  			/* The tone needs a mapped region for the PCM buffers. */
-@@ -2513,14 +3585,159 @@
+@@ -2513,14 +3604,159 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_vendor_payload,
@@ -1898,17 +1910,17 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2533,6 +3750,9 @@
+@@ -2533,6 +3769,9 @@
  		return;
  	}
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v49 (clear CFCFG stall)\n");
++	printf("SWEET AUDIO: build v50 (shm graph opt-in)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
-@@ -2587,6 +3807,7 @@
+@@ -2587,6 +3826,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
