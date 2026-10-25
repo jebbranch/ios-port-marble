@@ -1,12 +1,12 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -1553,7 +1553,54 @@
+@@ -1553,8 +1553,55 @@
   */
  #define G_SHM_FIXED_PA                      0xa2d00000u
  
 -/* Send one APM command with the payload inlined in the GPR packet. */
 +/* Send a fully built packet and decode its reply. */
-+static int
+ static int
 +g_apm_xfer(uint8_t *pkt, uint32_t pkt_size, const char *what)
 +{
 +	g_rsp_ready = 0;
@@ -53,9 +53,10 @@
 +
 +/* Send one APM command with the payload inlined behind the 16-byte payload
 + * descriptor (graph and data commands use this form). */
- static int
++static int
  g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
      uint32_t plen, uint32_t opcode, const char *what)
+ {
 @@ -1580,30 +1627,36 @@
  	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes)\n", what,
  	    src_port, dst_port, pkt_size);
@@ -125,18 +126,19 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1631,8 +1686,8 @@
+@@ -1631,8 +1686,9 @@
  {
  	static bool done;
  	vm_offset_t v;
 -	uint32_t idr0, idr1, cr0;
 -	int valid = 0;
 +	uint32_t id0, id1, cr0;
++	unsigned num_smr;
 +	int valid = 0, free_slot = -1, sid18 = -1;
  
  	if (done) {
  		return;
-@@ -1643,20 +1698,58 @@
+@@ -1643,20 +1699,68 @@
  		printf("SWEET SMMU: map failed\n");
  		return;
  	}
@@ -150,7 +152,16 @@
 +	id0 = *(volatile uint32_t *)(v + 0x20);
 +	id1 = *(volatile uint32_t *)(v + 0x24);
 +	printf("SWEET SMMU: id0=%#x id1=%#x scr0=%#x\n", id0, id1, cr0);
-+	for (unsigned n = 0; n < 120; n++) {
++	sweet_log_sync();
++	/* ID0[7:0] is the number of SMR groups (113 here, matching Android's
++	 * "stream matching with 113 register groups").  Reading past the last
++	 * implemented SMR returns an external abort: run65 read SMR[113] at
++	 * offset 0x9c4 and panicked.  Never hardcode 120. */
++	num_smr = id0 & 0xffu;
++	if (num_smr == 0 || num_smr > 128) {
++		num_smr = 113;
++	}
++	for (unsigned n = 0; n < num_smr; n++) {
  		uint32_t smr = *(volatile uint32_t *)(v + 0x800 + 4 * n);
  		uint32_t s2cr = *(volatile uint32_t *)(v + 0xc00 + 4 * n);
  
@@ -166,6 +177,7 @@
 +		valid++;
 +		printf("SWEET SMMU: smr%d sid=%#x mask=%#x s2cr=%#x\n",
 +		    n, smr & 0xffffu, smr >> 16, s2cr);
++		sweet_log_sync();
 +		if ((smr & 0xffffu) == 0x1801u) {
 +			sid18 = (int)n;
 +		}
@@ -202,7 +214,7 @@
  	sweet_log_sync();
  }
  
-@@ -1696,52 +1789,80 @@
+@@ -1696,52 +1800,80 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -309,7 +321,7 @@
  			return 0;
  		}
  	}
-@@ -1909,7 +2030,7 @@
+@@ -1909,7 +2041,7 @@
  	uint8_t pkt[24 + 16];
  	uint32_t pkt_size = sizeof(pkt);
  
@@ -318,7 +330,7 @@
  		return -1;
  	}
  	memcpy((void *)g_shm_va, payload, len);
-@@ -2029,8 +2150,14 @@
+@@ -2029,8 +2161,14 @@
  	g_put32(pkt + 12, dst_port);
  	g_put32(pkt + 16, token);
  	g_put32(pkt + 20, APM_CMD_DATA_BUFFER_V2);
@@ -335,7 +347,7 @@
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
  	g_rsp_ready = 0;
-@@ -2084,39 +2211,25 @@
+@@ -2084,39 +2222,25 @@
  {
  	/* The vendor maps the PCM region from 0x2002 and feeds buffers from
  	 * the stream port 0x2011; graph commands stay on 0x2010. */
