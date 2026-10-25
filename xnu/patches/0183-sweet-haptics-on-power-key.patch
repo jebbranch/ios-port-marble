@@ -1,0 +1,20 @@
+--- a/iokit/Kernel/arm/hid/SweetHID.cpp
++++ b/iokit/Kernel/arm/hid/SweetHID.cpp
+@@ -538,10 +538,17 @@
+ 	collection->release();
+ }
+ 
++extern "C" void
++sweet_haptics_kick(void);
++
+ /* key: 0 power (side button), 1 volume up, 2 volume down, 3 home */
+ extern "C" void
+ sweet_hid_key(int key, int down)
+ {
++	/* Power key: give the user a short haptic pulse on each press. */
++	if (key == 0 && down) {
++		sweet_haptics_kick();
++	}
+ 	static const UInt32 usages[] = {
+ 		kHIDUsage_Csmr_Power, kHIDUsage_Csmr_VolumeIncrement,
+ 		kHIDUsage_Csmr_VolumeDecrement, kHIDUsage_Csmr_Menu,
