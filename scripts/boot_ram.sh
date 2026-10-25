@@ -29,13 +29,17 @@ in_fastboot() {
 
 # Get into the bootloader.  "fastboot getvar" blocks forever when no device is
 # present, so poll "fastboot devices" instead.  TWRP sometimes ignores
-# "adb reboot bootloader"; retry through its root shell.
+# "adb reboot bootloader"; retry through its root shell.  Recovery can take
+# well over 30 s to come back up in fastboot (run66 was lost that way), so
+# keep polling for 120 s and keep retrying while recovery still answers adb.
 in_fastboot || adb -s "$SERIAL" reboot bootloader >/dev/null 2>&1 || true
-for _ in $(seq 1 30); do in_fastboot && break; sleep 1; done
-if ! in_fastboot && adb -s "$SERIAL" get-state 2>/dev/null | grep -q recovery; then
-  adb -s "$SERIAL" shell reboot bootloader >/dev/null 2>&1 || true
-  for _ in $(seq 1 30); do in_fastboot && break; sleep 1; done
-fi
+for _ in $(seq 1 120); do
+  in_fastboot && break
+  if adb -s "$SERIAL" get-state 2>/dev/null | grep -q recovery; then
+    adb -s "$SERIAL" shell reboot bootloader >/dev/null 2>&1 || true
+  fi
+  sleep 1
+done
 if ! in_fastboot; then
   echo "device $SERIAL is not in fastboot." >&2
   echo "hold Power+VolDown until the bootloader screen appears, then retry." >&2
