@@ -1,0 +1,469 @@
+--- a/bsd/dev/marble_touch.c
++++ b/bsd/dev/marble_touch.c
+@@ -26,6 +26,7 @@
+ extern kern_return_t thread_terminate(thread_t);
+ extern int sweet_rpmh_vreg_enable(const char *res, unsigned mv);
+ extern void sweet_hid_touch(int finger, int down, int x, int y);
++extern void sweet_log_sync(void);
+ void marble_touch_init(void);
+ 
+ #define MARBLE_SE_PA       0x00990000u   /* QUP wrapper 0 SE4, spi@990000 */
+@@ -379,10 +380,353 @@
+ 	mt_wait(100);
+ 	printf("SWEET MARBLE TOUCH: IC reset done gpio20=%#x gpio21=%#x\n",
+ 	    mt_rd(gpio, GPIO_IO(20)), mt_rd(gpio, GPIO_IO(21)));
++}
++
++
++/* ---- GENI SPI (FIFO/PIO) on QUP wrapper 0, SE4 (spi@990000) --------------
++ * The bootloader leaves SPI firmware in the SE (FW_REVISION protocol 1), so
++ * the serial engine generates the waveform and the CPU only moves bytes
++ * through the FIFOs: no DMA buffer and no QUP SMMU context are needed.
++ * Register layout and sequences follow the Linux spi-geni-qcom /
++ * qcom-geni-se drivers and the UniXNU QcomGeniSpi component
++ * (BSD-2-Clause-Patent).  Only 8-bit words, MSB first, are used here.
++ */
++#define MTS_FORCE_DEFAULT	0x20u
++#define MTS_OUTPUT_CTRL		0x24u
++#define MTS_CGC_CTRL		0x28u
++#define MTS_STATUS		0x40u
++#define MTS_SER_M_CLK_CFG	0x48u
++#define MTS_IF_DISABLE_RO	0x64u
++#define MTS_FW_REVISION_RO	0x68u
++#define MTS_CLK_SEL		0x7cu
++#define MTS_SPI_CPHA		0x224u
++#define MTS_SPI_LOOPBACK	0x22cu
++#define MTS_SPI_CPOL		0x230u
++#define MTS_SPI_DEMUX_INV	0x24cu
++#define MTS_SPI_DEMUX_SEL	0x250u
++#define MTS_BYTE_GRAN		0x254u
++#define MTS_DMA_MODE_EN		0x258u
++#define MTS_SPI_TRANS_CFG	0x25cu
++#define MTS_TX_PACK0		0x260u
++#define MTS_TX_PACK1		0x264u
++#define MTS_SPI_WORD_LEN	0x268u
++#define MTS_SPI_TX_LEN		0x26cu
++#define MTS_SPI_RX_LEN		0x270u
++#define MTS_RX_PACK0		0x284u
++#define MTS_RX_PACK1		0x288u
++#define MTS_M_CMD0		0x600u
++#define MTS_M_CMD_CTRL		0x604u
++#define MTS_M_IRQ_STATUS	0x610u
++#define MTS_M_IRQ_EN		0x614u
++#define MTS_M_IRQ_CLEAR		0x618u
++#define MTS_S_IRQ_EN		0x644u
++#define MTS_S_IRQ_CLEAR		0x648u
++#define MTS_TX_FIFO		0x700u
++#define MTS_RX_FIFO		0x780u
++#define MTS_TX_FIFO_STATUS	0x800u
++#define MTS_RX_FIFO_STATUS	0x804u
++#define MTS_TX_WATERMARK	0x80cu
++#define MTS_RX_WATERMARK	0x810u
++#define MTS_RX_RFR_WATERMARK	0x814u
++#define MTS_IRQ_EN		0xe1cu
++#define MTS_GSI_EVENT_EN	0xe18u
++#define MTS_HW_PARAM0		0xe24u
++#define MTS_DMA_GENERAL_CFG	0xe30u
++
++#define MTS_CMD_DONE		(1u << 0)
++#define MTS_ILLEGAL_CMD		(1u << 2)
++#define MTS_CMD_FAILURE		(1u << 3)
++#define MTS_RX_RD_ERR		(1u << 24)
++#define MTS_RX_WR_ERR		(1u << 25)
++#define MTS_RX_WATERMARK	(1u << 26)
++#define MTS_RX_LAST		(1u << 27)
++#define MTS_TX_RD_ERR		(1u << 28)
++#define MTS_TX_WR_ERR		(1u << 29)
++#define MTS_TX_WATERMARK	(1u << 30)
++#define MTS_ERRORS		(MTS_ILLEGAL_CMD | MTS_CMD_FAILURE | \
++				 MTS_RX_RD_ERR | MTS_RX_WR_ERR | \
++				 MTS_TX_RD_ERR | MTS_TX_WR_ERR)
++#define MTS_FIFO_LAST_VALID	((1u << 28) | (1u << 29) | (1u << 30))
++#define MTS_RX_WC_MASK		0x1ffffffu
++
++static int      mts_ok;			/* SE programmed and usable */
++static unsigned mts_depth = 16;		/* TX FIFO depth, 32-bit words */
++static unsigned mts_wm = 1;
++static unsigned mts_limit = 200000;
++static vm_offset_t mtse, mtgpio;
++static unsigned mt_clk = 18, mt_mosi = 17, mt_miso = 16;
++
++static uint32_t
++mts_rd(vm_offset_t se, uint32_t off)
++{
++	return *(volatile uint32_t *)(se + off);
++}
++
++static void
++mts_wr(vm_offset_t se, uint32_t off, uint32_t val)
++{
++	*(volatile uint32_t *)(se + off) = val;
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
++/* 1 MHz SCLK out of whichever DFS level the bootloader left enabled. */
++static int
++mts_clock(vm_offset_t se, vm_offset_t gcc, unsigned speed)
++{
++	unsigned level = 0, div, best = 0;
++	uint64_t rate = 0;
++	for (unsigned i = 0; i < 8; ++i) {
++		uint32_t cfg = *(volatile uint32_t *)(gcc + 0x274e4u + 0x1cu + 4u * i);
++		unsigned src = (cfg >> 8) & 7u, d = cfg & 31u;
++		uint64_t hz = src == 0 ? 19200000ull :
++		    src == 1 ? 600000000ull : src == 6 ? 300000000ull : 0;
++		if (d) {
++			hz = hz * 2u / (d + 1u);
++		}
++		if ((cfg >> 12) & 3u) {
++			uint32_t m = *(volatile uint32_t *)(gcc + 0x274e4u +
++			    0x5cu + 4u * i) & 0xffffu;
++			uint32_t n = ((~*(volatile uint32_t *)(gcc + 0x274e4u +
++			    0x9cu + 4u * i)) & 0xffffu) + m;
++			hz = n ? hz * m / n : 0;
++		}
++		if (hz && (!rate || hz < rate)) {
++			level = i;
++			rate = hz;
++		}
++	}
++	if (!rate) {
++		return -1;
++	}
++	div = (unsigned)((rate + speed - 1u) / speed);
++	if (div == 0 || div > 0xfffu) {
++		return -1;
++	}
++	mts_wr(se, MTS_CLK_SEL, level);
++	mts_wr(se, MTS_SER_M_CLK_CFG, (div << 4) | 1u);
++	printf("SWEET MARBLE TOUCH: spi clk level=%u src=%llu div=%u\n",
++	    level, (unsigned long long)rate, div);
++	best = (unsigned)mts_rd(se, MTS_SER_M_CLK_CFG);
++	return best ? 0 : -1;
++}
++
++static int
++mts_init(vm_offset_t se, vm_offset_t gcc)
++{
++	uint32_t fw = mts_rd(se, MTS_FW_REVISION_RO);
++	uint32_t hw0 = mts_rd(se, MTS_HW_PARAM0);
++	uint32_t ifd = mts_rd(se, MTS_IF_DISABLE_RO);
++
++	mts_depth = (hw0 >> 16) & 0x1fu;
++	printf("SWEET MARBLE TOUCH: se4 fw=%#x proto=%u fifodis=%u depth=%u "
++	    "width=%u\n", fw, (fw >> 8) & 0xffu, ifd & 1u, mts_depth,
++	    (hw0 >> 24) & 0x3fu);
++	if (((fw >> 8) & 0xffu) != 1u || (ifd & 1u) || mts_depth < 4 ||
++	    ((hw0 >> 24) & 0x3fu) != 32u) {
++		printf("SWEET MARBLE TOUCH: SE4 not usable for SPI\n");
++		return -1;
++	}
++	/* geni_se_init */
++	mts_wr(se, MTS_S_IRQ_EN, 0);
++	mts_wr(se, MTS_M_IRQ_CLEAR, 0xffffffffu);
++	mts_wr(se, MTS_S_IRQ_CLEAR, 0xffffffffu);
++	mts_wr(se, MTS_CGC_CTRL, mts_rd(se, MTS_CGC_CTRL) | 0x7fu);
++	mts_wr(se, MTS_DMA_GENERAL_CFG, mts_rd(se, MTS_DMA_GENERAL_CFG) |
++	    0x0fu);
++	mts_wr(se, MTS_OUTPUT_CTRL, 0x7fu);
++	mts_wr(se, MTS_FORCE_DEFAULT, 1u);
++	mts_wr(se, MTS_IRQ_EN, 0);		/* poll status registers only */
++	mts_wr(se, MTS_DMA_MODE_EN, mts_rd(se, MTS_DMA_MODE_EN) & ~1u);
++	mts_wr(se, MTS_GSI_EVENT_EN, 0);
++	mts_wr(se, MTS_RX_WATERMARK, mts_depth - 3u);
++	mts_wr(se, MTS_RX_RFR_WATERMARK, mts_depth - 2u);
++	mts_wr(se, MTS_M_IRQ_EN, MTS_CMD_DONE | MTS_TX_WATERMARK |
++	    MTS_RX_WATERMARK | MTS_RX_LAST);
++	/* SPI, mode 0, chip select 0, no loopback, no manual CS toggling */
++	mts_wr(se, MTS_SPI_LOOPBACK, 0);
++	mts_wr(se, MTS_SPI_DEMUX_SEL, 0);
++	mts_wr(se, MTS_SPI_DEMUX_INV, 0);
++	mts_wr(se, MTS_SPI_CPHA, 0);
++	mts_wr(se, MTS_SPI_CPOL, 0);
++	mts_wr(se, MTS_SPI_TRANS_CFG, mts_rd(se, MTS_SPI_TRANS_CFG) & ~2u);
++	/* 8-bit words, four per 32-bit FIFO word, MSB first */
++	{
++		uint32_t p0 = 0xfeu | (0x1feu << 10);
++		uint32_t p1 = 0x2feu | (0x3ffu << 10);
++		mts_wr(se, MTS_TX_PACK0, p0);
++		mts_wr(se, MTS_TX_PACK1, p1);
++		mts_wr(se, MTS_RX_PACK0, p0);
++		mts_wr(se, MTS_RX_PACK1, p1);
++		mts_wr(se, MTS_BYTE_GRAN, 0);
++		mts_wr(se, MTS_SPI_WORD_LEN, 4u);	/* 8 - 4 */
++	}
++	if (mts_rd(se, MTS_TX_PACK0) != (0xfeu | (0x1feu << 10)) ||
++	    mts_rd(se, MTS_RX_PACK1) != (0x2feu | (0x3ffu << 10))) {
++		printf("SWEET MARBLE TOUCH: packing readback mismatch\n");
++		return -1;
++	}
++	return mts_clock(se, gcc, 1000000u);
++}
++
++/* Full-duplex PIO transfer; tx and rx are the same length. */
++static int
++mts_xfer(vm_offset_t se, const uint8_t *tx, uint8_t *rx, unsigned len)
++{
++	unsigned sent = 0, got = 0, bpw = 4, chunk;
++	int status = -1;
++
++	if (!len || len > 0xffffffu) {
++		return -1;
++	}
++	mts_wr(se, MTS_SPI_TX_LEN, len);
++	mts_wr(se, MTS_SPI_RX_LEN, len);
++	mts_wr(se, MTS_M_IRQ_CLEAR, 0xffffffffu);
++	mts_wr(se, MTS_M_CMD0, 3u << 27);	/* TX_RX */
++
++	chunk = (mts_depth - mts_wm) * bpw;
++	if (chunk > len) {
++		chunk = len;
++	}
++	while (sent < chunk) {
++		uint32_t word = 0;
++		unsigned n = (chunk - sent < bpw) ? (chunk - sent) : bpw;
++		for (unsigned j = 0; j < n; ++j) {
++			word |= (uint32_t)tx[sent + j] << (8 * j);
++		}
++		for (unsigned j = n; j < bpw; ++j) {
++			word |= 0xffu << (8 * j);
++		}
++		mts_wr(se, MTS_TX_FIFO, word);
++		sent += bpw;
++	}
++	if (sent < len) {
++		mts_wr(se, MTS_TX_WATERMARK, mts_wm);
++	}
++
++	for (unsigned i = 0; i < mts_limit; ++i) {
++		uint32_t st = mts_rd(se, MTS_M_IRQ_STATUS);
++		if (!st) {
++			__asm__ volatile("yield");
++			continue;
++		}
++		mts_wr(se, MTS_M_IRQ_CLEAR, st);
++		if (st & MTS_ERRORS) {
++			break;
++		}
++		if (st & (MTS_RX_WATERMARK | MTS_RX_LAST)) {
++			uint32_t fs = mts_rd(se, MTS_RX_FIFO_STATUS);
++			unsigned bytes = (fs & MTS_RX_WC_MASK) * bpw;
++			if (fs & MTS_RX_LAST) {
++				unsigned valid = (fs >> 28) & 7u;
++				if (valid && valid < 4) {
++					bytes -= bpw - valid;
++				}
++			}
++			while (bytes) {
++				uint32_t word = mts_rd(se, MTS_RX_FIFO);
++				unsigned n = (bytes < bpw) ? bytes : bpw;
++				for (unsigned j = 0; j < n; ++j) {
++					if (got + j < len) {
++						rx[got + j] =
++						    (uint8_t)(word >> (8 * j));
++					}
++				}
++				got += n;
++				bytes -= n;
++			}
++		}
++		if ((st & MTS_TX_WATERMARK) && sent < len) {
++			unsigned max = (mts_depth - mts_wm) * bpw;
++			if (max > len - sent) {
++				max = len - sent;
++			}
++			unsigned k = 0;
++			while (k < max) {
++				uint32_t word = 0;
++				unsigned n = (max - k < bpw) ? (max - k) : bpw;
++				for (unsigned j = 0; j < n; ++j) {
++					word |= (uint32_t)tx[sent + k + j] <<
++					    (8 * j);
++				}
++				for (unsigned j = n; j < bpw; ++j) {
++					word |= 0xffu << (8 * j);
++				}
++				mts_wr(se, MTS_TX_FIFO, word);
++				k += bpw;
++			}
++			sent += max;
++			if (sent >= len) {
++				mts_wr(se, MTS_TX_WATERMARK, 0);
++			}
++		}
++		if (st & MTS_CMD_DONE) {
++			status = (got >= len && sent >= len) ? 0 : -1;
++			break;
++		}
++	}
++	if (status != 0) {
++		mts_wr(se, MTS_TX_WATERMARK, 0);
++		mts_wr(se, MTS_M_CMD_CTRL, 1u << 2);	/* CANCEL */
++		printf("SWEET MARBLE TOUCH: spi xfer stuck len=%u sent=%u "
++		    "got=%u st=%#x\n", len, sent, got,
++		    mts_rd(se, MTS_M_IRQ_STATUS));
++		sweet_log_sync();
++	}
++	return status;
+ }
+ 
++/* Read/write through GENI when it came up, else the bit-bang fallback. */
++static int
++mt_read(uint32_t addr, uint8_t *buf, unsigned len)
++{
++	if (mts_ok) {
++		uint8_t tx[8 + 160];
++		uint8_t rx[8 + 160];
++		if (len > 160) {
++			return 0;
++		}
++		memset(tx, 0xff, sizeof(tx));
++		memset(rx, 0, sizeof(rx));
++		tx[0] = 0xf1;
++		tx[1] = (uint8_t)(addr >> 24);
++		tx[2] = (uint8_t)(addr >> 16);
++		tx[3] = (uint8_t)(addr >> 8);
++		tx[4] = (uint8_t)addr;
++		if (mts_xfer(mtse, tx, rx, 8u + len) != 0) {
++			return 0;
++		}
++		if (!len) {
++			return 0;
++		}
++		memcpy(buf, rx + 8, len);
++		return buf[0];
++	}
++	return bb_read(mtgpio, mt_clk, mt_mosi, mt_miso, addr, buf, len);
++}
+ 
+ static void
++mt_write(uint32_t addr, const uint8_t *buf, unsigned len)
++{
++	if (mts_ok) {
++		uint8_t tx[5 + 160];
++		uint8_t rx[5 + 160];
++		if (len > 160) {
++			return;
++		}
++		memset(tx, 0xff, sizeof(tx));
++		tx[0] = 0xf0;
++		tx[1] = (uint8_t)(addr >> 24);
++		tx[2] = (uint8_t)(addr >> 16);
++		tx[3] = (uint8_t)(addr >> 8);
++		tx[4] = (uint8_t)addr;
++		memcpy(tx + 5, buf, len);
++		(void)mts_xfer(mtse, tx, rx, 5u + len);
++		return;
++	}
++	bb_write(mtgpio, mt_clk, mt_mosi, mt_miso, addr, buf, len);
++}
++
++static void
+ marble_touch_thread(void *arg, wait_result_t result)
+ {
+ 	int enabled = 0;
+@@ -427,24 +771,46 @@
+ 
+ 	/* Mapping proven in stage 5: CLK=18 MOSI=17 MISO=16 CS=19. */
+ 	unsigned clk = 18, mosi = 17, miso = 16;
+-	bb_setup(gpio, clk, mosi, miso);
++	mtse = se;
++	mtgpio = gpio;
++	/*
++	 * Give the four pads the QUP function so the serial engine drives
++	 * them, then bring GENI SPI up.  Falls back to the bit-bang path when
++	 * the SE has no SPI firmware or the FIFO interface is disabled.
++	 */
++	{
++		int mux = 1;
++
++		(void)PE_parse_boot_argn("marble_touch_mux", &mux, sizeof(mux));
++		for (unsigned pin = 16; pin <= 19; ++pin) {
++			mt_gpio(gpio, pin, (unsigned)mux, 0, 2, false, false);
++		}
++		mt_wait(2);
++		mts_ok = (mts_init(se, gcc) == 0);
++		printf("SWEET MARBLE TOUCH: geni spi %s (mux=%d)\n",
++		    mts_ok ? "up" : "unavailable", mux);
++		sweet_log_sync();
++	}
++	if (!mts_ok) {
++		bb_setup(gpio, clk, mosi, miso);
++	}
+ 	mt_wait(10);
+ 
+ 	uint8_t aa[8] = {
+ 		0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+ 	};
+ 	uint8_t c[8] = {0};
+-	bb_read(gpio, clk, mosi, miso, 0x00010000u, c, sizeof(c));
++	mt_read(0x00010000u, c, sizeof(c));
+ 	printf("SWEET MARBLE TOUCH: pre-confirm:");
+ 	for (unsigned i = 0; i < sizeof(c); ++i) {
+ 		printf(" %02x", c[i]);
+ 	}
+ 	printf("\n");
+ 
+-	bb_write(gpio, clk, mosi, miso, 0x00010000u, aa, sizeof(aa));
++	mt_write(0x00010000u, aa, sizeof(aa));
+ 	mt_wait(10);
+ 	memset(c, 0, sizeof(c));
+-	bb_read(gpio, clk, mosi, miso, 0x00010000u, c, sizeof(c));
++	mt_read(0x00010000u, c, sizeof(c));
+ 	printf("SWEET MARBLE TOUCH: post-confirm:");
+ 	for (unsigned i = 0; i < sizeof(c); ++i) {
+ 		printf(" %02x", c[i]);
+@@ -453,7 +819,7 @@
+ 
+ 	/* struct goodix_berlin_fw_version: 28 bytes at 0x10014 */
+ 	uint8_t ver[32] = {0};
+-	uint8_t vfirst = bb_read(gpio, clk, mosi, miso, 0x00010014u,
++	uint8_t vfirst = mt_read(0x00010014u,
+ 	    ver, sizeof(ver));
+ 	printf("SWEET MARBLE TOUCH: ver first=%02x\n", vfirst);
+ 	mt_hex("ver", ver, sizeof(ver));
+@@ -473,7 +839,7 @@
+ 
+ 	/* GOODIX_BERLIN_IC_INFO_ADDR = 0x10070, u16 length first. */
+ 	uint8_t lraw[4] = {0};
+-	uint8_t lfirst = bb_read(gpio, clk, mosi, miso, 0x00010070u,
++	uint8_t lfirst = mt_read(0x00010070u,
+ 	    lraw, sizeof(lraw));
+ 	unsigned ilen = lraw[0] | (lraw[1] << 8);
+ 	printf("SWEET MARBLE TOUCH: icinfo first=%02x len=%u raw=%02x %02x %02x %02x\n",
+@@ -485,7 +851,7 @@
+ 
+ 	static uint8_t info[1024];
+ 	memset(info, 0, sizeof(info));
+-	bb_read(gpio, clk, mosi, miso, 0x00010070u, info, ilen);
++	mt_read(0x00010070u, info, ilen);
+ 
+ 	/* u16 len + 16-byte version + 10-byte feature + 4 u8 counts */
+ 	unsigned off = 2 + 16 + 10 + 4;
+@@ -530,7 +896,7 @@
+ 		}
+ 		uint8_t ev[8 + 10 * 8 + 2];
+ 		memset(ev, 0, sizeof(ev));
+-		bb_read(gpio, clk, mosi, miso, tda, ev, 26);
++		mt_read(tda, ev, 26);
+ 		uint8_t status = ev[0];
+ 		if (dbg) {
+ 			printf("SWEET MARBLE TOUCH: ev st=%02x %02x tn=%u hdr:",
+@@ -557,7 +923,7 @@
+ 				tn = 10;
+ 			}
+ 			if (tn > 2) {
+-				bb_read(gpio, clk, mosi, miso, tda + 26,
++				mt_read(tda + 26,
+ 				    &ev[26], (tn - 2) * 8);
+ 			}
+ 			if (tn > 0) {
+@@ -618,7 +984,7 @@
+ 			printf("SWEET MARBLE TOUCH: request code=%u\n", ev[2]);
+ 		}
+ 		uint8_t z[4] = {0};
+-		bb_write(gpio, clk, mosi, miso, tda, z, sizeof(z));
++		mt_write(tda, z, sizeof(z));
+ 		mt_wait(2);
+ 	}
+ 	/* The event loop is the driver: it must live for the whole boot,
