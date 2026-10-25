@@ -1,18 +1,33 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -1594,11 +1594,27 @@
- 		printf("SWEET GLINK: %s: no response\n", what);
- 		return -1;
- 	}
--	if (g_rsp_len >= 32) {
--		uint32_t status = g_le32(g_rsp + 28);
+@@ -1553,7 +1553,54 @@
+  */
+ #define G_SHM_FIXED_PA                      0xa2d00000u
+ 
+-/* Send one APM command with the payload inlined in the GPR packet. */
++/* Send a fully built packet and decode its reply. */
++static int
++g_apm_xfer(uint8_t *pkt, uint32_t pkt_size, const char *what)
++{
++	g_rsp_ready = 0;
++	g_rsp_len = 0;
++	g_send_gpr(pkt, pkt_size);
++	for (unsigned i = 0; i < 5000; i += 5) {
++		g_drain(0);
++		if (g_rsp_ready) {
++			break;
++		}
++		g_wait(5);
++	}
++	if (!g_rsp_ready) {
++		printf("SWEET GLINK: %s: no response\n", what);
++		return -1;
++	}
 +	if (g_rsp_len >= 28) {
 +		uint32_t hop = g_le32(g_rsp + 20);      /* packet opcode */
 +		uint32_t op = g_le32(g_rsp + 24);
 +		uint32_t status;
- 
--		printf("SWEET GLINK: %s rsp op=%#x status=%#x\n", what,
--		    g_le32(g_rsp + 24), status);
++
 +		/* APM_CMD_RSP_SHARED_MEM_MAP_REGIONS is short: 24-byte header
 +		 * plus a bare 4-byte mem_map_handle.  It is a success reply,
 +		 * not a GPR basic response. */
@@ -29,10 +44,79 @@
 +		}
 +		printf("SWEET GLINK: %s rsp op=%#x status=%#x hop=%#x len=%u\n",
 +		    what, op, status, hop, g_rsp_len);
- 		sweet_log_sync();
- 		return status == 0 ? 0 : -1;
- 	}
-@@ -1614,6 +1630,8 @@
++		sweet_log_sync();
++		return status == 0 ? 0 : -1;
++	}
++	printf("SWEET GLINK: %s rsp %u bytes\n", what, g_rsp_len);
++	return -1;
++}
++
++/* Send one APM command with the payload inlined behind the 16-byte payload
++ * descriptor (graph and data commands use this form). */
+ static int
+ g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
+     uint32_t plen, uint32_t opcode, const char *what)
+@@ -1580,30 +1627,36 @@
+ 	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes)\n", what,
+ 	    src_port, dst_port, pkt_size);
+ 	sweet_log_sync();
+-	g_rsp_ready = 0;
+-	g_rsp_len = 0;
+-	g_send_gpr(pkt, pkt_size);
+-	for (unsigned i = 0; i < 5000; i += 5) {
+-		g_drain(0);
+-		if (g_rsp_ready) {
+-			break;
+-		}
+-		g_wait(5);
+-	}
+-	if (!g_rsp_ready) {
+-		printf("SWEET GLINK: %s: no response\n", what);
+-		return -1;
+-	}
+-	if (g_rsp_len >= 32) {
+-		uint32_t status = g_le32(g_rsp + 28);
++	return g_apm_xfer(pkt, pkt_size, what);
++}
+ 
+-		printf("SWEET GLINK: %s rsp op=%#x status=%#x\n", what,
+-		    g_le32(g_rsp + 24), status);
+-		sweet_log_sync();
+-		return status == 0 ? 0 : -1;
+-	}
+-	printf("SWEET GLINK: %s rsp %u bytes\n", what, g_rsp_len);
+-	return -1;
++/* APM_CMD_SHARED_MEM_MAP_REGIONS is the exception: the vendor kprobe trace
++ * shows a 44-byte packet whose body starts at +24 (pool|count, flag, addr
++ * lsw/msw, size) with no payload descriptor, and bit 16 set in the domain
++ * word.  The descriptor form makes the DSP read pool 0 / count 0. */
++static int
++g_apm_shm_map_flat(uint32_t src_port, uint64_t pa, uint32_t flag,
++    const char *what)
++{
++	uint8_t pkt[24 + 20];
++	uint32_t pkt_size = sizeof(pkt);
++
++	memset(pkt, 0, sizeof(pkt));
++	g_put32(pkt + 0, (6u << 4) | (pkt_size << 8));
++	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8) | 0x10000u);
++	g_put32(pkt + 8, src_port);
++	g_put32(pkt + 12, 1);
++	g_put32(pkt + 16, 0x2du);
++	g_put32(pkt + 20, APM_CMD_SHARED_MEM_MAP_REGIONS);
++	g_put32(pkt + 24, 3u | (1u << 16));
++	g_put32(pkt + 28, flag);
++	g_put32(pkt + 32, (uint32_t)pa);
++	g_put32(pkt + 36, (uint32_t)(pa >> 32));
++	g_put32(pkt + 40, G_SHM_SIZE);
++	printf("SWEET GLINK: shm_flat pa=%#llx flag=%u size=%u\n", pa, flag,
++	    G_SHM_SIZE);
++	sweet_log_sync();
++	return g_apm_xfer(pkt, pkt_size, what);
+ }
+ 
+ /* The vendor HAL never inlines a graph payload: it maps one region once and
+@@ -1614,6 +1667,8 @@
   * and the vendor's kprobe trace agree byte for byte). */
  static vm_offset_t g_shm_va;
  static uint64_t    g_shm_pa;
@@ -41,7 +125,7 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1696,14 +1714,29 @@
+@@ -1696,52 +1751,82 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -57,33 +141,39 @@
  g_apm_shm_map_gpr(uint32_t src_port)
  {
 -	static const uint64_t addrs[] = { 0xa2d00000u };
-+	/* Every address probed so far was inside a Qualcomm carve-out (smem,
-+	 * ADSP firmware, splash, hyp) or above 4 GiB.  Android's audio
-+	 * buffers live in plain System RAM below 4 GiB; test exactly that,
-+	 * plus the page the self-test proved is real (high bank).
-+	 * flag 4 = offset mode (what the vendor GSL uses), 0 = PA mode. */
+-	uint8_t body[20];
++	/* Android hands the DSP an apps-smmu IOVA: the vendor trace's map uses
++	 * 0x1_1FFE8000, which is not DRAM at all.  With apps-smmu disabled we
++	 * test plain System RAM PAs first; the vendor IOVA is a status-only
++	 * probe so the DSP is never asked to read an untranslated address.
++	 * flag 4 = offset mode (vendor GSL), 0 = PA mode. */
 +	static const uint64_t low[] = {
 +		0xa2e00000u,	/* first System RAM page after the ADSP carve-out */
 +		0x86000000u,	/* System RAM 0x85e00000-0x87ffffff */
 +		0x80640000u,	/* System RAM right after the hyp carve-out */
 +	};
 +	static const uint32_t flags[] = { 4u, 0u };
-+	uint64_t addrs[4];
++	uint64_t addrs[5];
++	int playable[5];
 +	unsigned naddr = 0;
- 	uint8_t body[20];
  
  	if (g_shm_mapped) {
-@@ -1711,37 +1744,47 @@
+ 		return 0;
  	}
  	g_smmu_probe();
  	g_phys_selftest();
 -	for (unsigned i = 0; i < sizeof(addrs) / sizeof(addrs[0]); i++) {
 +	for (unsigned i = 0; i < sizeof(low) / sizeof(low[0]); i++) {
-+		addrs[naddr++] = low[i];
++		addrs[naddr] = low[i];
++		playable[naddr++] = 1;
 +	}
 +	if (g_self_pa) {
-+		addrs[naddr++] = g_self_pa;
++		addrs[naddr] = g_self_pa;
++		playable[naddr++] = 1;
 +	}
++	addrs[naddr] = 0x11ffe8000ull;	/* vendor IOVA, never played */
++	playable[naddr++] = 0;
++
 +	for (unsigned i = 0; i < naddr; i++) {
  		vm_offset_t va = ml_io_map((vm_offset_t)addrs[i], G_SHM_SIZE);
  
@@ -94,22 +184,22 @@
 -		/* All eight pool ids rejected every DDR address; keep one probe
 -		 * so the map path stays exercised, but do not stall the boot. */
 -		for (unsigned p = 3; p < 4; p++) {
-+		for (unsigned f = 0; f < 2; f++) {
- 			memset(body, 0, sizeof(body));
+-			memset(body, 0, sizeof(body));
 -			g_put32(body + 0, p | (1u << 16));
 -			g_put32(body + 4, 0u);
-+			g_put32(body + 0, 3u | (1u << 16));
-+			g_put32(body + 4, flags[f]);
- 			g_put32(body + 8, (uint32_t)addrs[i]);
- 			g_put32(body + 12, (uint32_t)(addrs[i] >> 32));
- 			g_put32(body + 16, G_SHM_SIZE);
+-			g_put32(body + 8, (uint32_t)addrs[i]);
+-			g_put32(body + 12, (uint32_t)(addrs[i] >> 32));
+-			g_put32(body + 16, G_SHM_SIZE);
 -			printf("SWEET GLINK: shm_map_gpr pool=%u pa=%#llx\n",
 -			    p, addrs[i]);
-+			printf("SWEET GLINK: shm_map pool=3 pa=%#llx flag=%u\n",
-+			    addrs[i], flags[f]);
++		for (unsigned f = 0; f < 2; f++) {
++			printf("SWEET GLINK: shm_map pool=3 pa=%#llx flag=%u "
++			    "play=%d\n", addrs[i], flags[f], playable[i]);
  			sweet_log_sync();
- 			if (g_apm_cmd(src_port, 1, body, sizeof(body),
- 			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
+-			if (g_apm_cmd(src_port, 1, body, sizeof(body),
+-			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
++			if (g_apm_shm_map_flat(src_port, addrs[i], flags[f],
++			    "shm_map") != 0) {
  				continue;
  			}
 -			g_shm_handle = g_le32(g_rsp + 32);
@@ -121,6 +211,12 @@
  			if (g_shm_handle == 0 || g_shm_handle == 0xffffffffu) {
  				continue;
  			}
++			if (!playable[i]) {
++				printf("SWEET GLINK: shm iova accepted "
++				    "(apps-smmu required)\n");
++				sweet_log_sync();
++				continue;
++			}
  			g_shm_va = va;
  			g_shm_pa = addrs[i];
 +			g_shm_offset_mode = (flags[f] & 4u) != 0;
@@ -131,7 +227,7 @@
  			return 0;
  		}
  	}
-@@ -2029,8 +2072,14 @@
+@@ -2029,8 +2114,14 @@
  	g_put32(pkt + 12, dst_port);
  	g_put32(pkt + 16, token);
  	g_put32(pkt + 20, APM_CMD_DATA_BUFFER_V2);
@@ -148,7 +244,7 @@
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
  	g_rsp_ready = 0;
-@@ -2084,31 +2133,8 @@
+@@ -2084,31 +2175,8 @@
  {
  	/* The vendor maps the PCM region from 0x2002 and feeds buffers from
  	 * the stream port 0x2011; graph commands stay on 0x2010. */
