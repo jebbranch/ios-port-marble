@@ -1,6 +1,6 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -1282,11 +1282,27 @@
+@@ -1594,11 +1594,27 @@
  		printf("SWEET GLINK: %s: no response\n", what);
  		return -1;
  	}
@@ -32,7 +32,7 @@
  		sweet_log_sync();
  		return status == 0 ? 0 : -1;
  	}
-@@ -1302,6 +1318,8 @@
+@@ -1614,6 +1630,8 @@
   * and the vendor's kprobe trace agree byte for byte). */
  static vm_offset_t g_shm_va;
  static uint64_t    g_shm_pa;
@@ -41,7 +41,7 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1384,14 +1402,29 @@
+@@ -1696,14 +1714,29 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -73,7 +73,7 @@
  	uint8_t body[20];
  
  	if (g_shm_mapped) {
-@@ -1399,37 +1432,47 @@
+@@ -1711,37 +1744,47 @@
  	}
  	g_smmu_probe();
  	g_phys_selftest();
@@ -131,7 +131,7 @@
  			return 0;
  		}
  	}
-@@ -1719,8 +1762,14 @@
+@@ -2029,8 +2072,14 @@
  	g_put32(pkt + 12, dst_port);
  	g_put32(pkt + 16, token);
  	g_put32(pkt + 20, APM_CMD_DATA_BUFFER_V2);
@@ -148,18 +148,37 @@
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
  	g_rsp_ready = 0;
-@@ -1774,14 +1823,6 @@
+@@ -2084,31 +2133,8 @@
  {
  	/* The vendor maps the PCM region from 0x2002 and feeds buffers from
  	 * the stream port 0x2011; graph commands stay on 0x2010. */
--	/* Which physical ranges can the ADSP map at all?  The vendor's
--	 * buffers live around 0x1FFE8000 (inside the 28 MB audio CMA pool);
--	 * probe that, the pool base, and the 4 GB boundary.  Mapping alone
--	 * touches no data. */
--	(void)g_apm_map_probe(0x9fd00000u, 0u, 0x4000u, "adsp_carveout");
--	(void)g_apm_map_probe(0x1ffe8000u, 0u, 0x5000u, "vendor_pa");
--	(void)g_apm_map_probe(0x1fe00000u, 0u, 0x4000u, "audio_cma_base");
--	(void)g_apm_map_probe(0x00000000u, 0x1u, 0x4000u, "ddr_4g");
+-	/* One clean probe per boot: the vendor's own buffer address.  The
+-	 * kprobe trace's map carries msw=1, so the real PA is 0x1_1FFE8000
+-	 * (4.5 GB); probes before 0147 dropped the high word.  Mapping alone
+-	 * touches no data.  The SPF-state queries around it reveal whether
+-	 * an illegal map restarts the ADSP. */
+-	g_apm_state_query_sync("before_map");
+-	/* Same low region, different client port / property flag: SMEM is
+-	 * already reachable by the ADSP, so a refusal here is telling. */
+-	(void)g_apm_map_probe(0x2010u, 0x80900000u, 0u, 0x4000u, 4u, 0x50u,
+-	    "smem_2010");
+-	(void)g_apm_map_probe(0x2011u, 0x80900000u, 0u, 0x4000u, 0u, 0x51u,
+-	    "smem_2011");
+-	/* The vendor trace's SHM_MAP carries msw=1: the real physical address
+-	 * is 0x1_1FFE8000 (4.5 GB), not 0x1FFE8000.  Everything before 0147
+-	 * probed the wrong address. */
+-	(void)g_apm_map_probe(0x2002u, 0x1FFE8000u, 1u, 0x5000u, 4u, 0x2du,
+-	    "vendor_low");
+-	/* Addresses the DSP's own boot chain mapped (adsp_region@9fd00000 and
+-	 * the firmware load address seen in the ADSP banner).  If these still
+-	 * return status 1, the refusal is about permissions, not the address. */
+-	(void)g_apm_map_probe(0x2002u, 0x9fd00000u, 0u, 0x1000u, 4u, 0x2du,
+-	    "adsp_start");
+-	(void)g_apm_map_probe(0x2002u, 0xa0700000u, 0u, 0x1000u, 4u, 0x2du,
+-	    "adsp_load");
+-	g_apm_state_query_sync("after_map");
++	/* The old carve-out probes (smem, ADSP firmware, vendor 4.5 GB) all
++	 * returned BADPARAM; g_apm_shm_map() now tries real System RAM. */
  	if (g_apm_shm_map(0x2002u) != 0 || g_shm_va == 0 || g_shm_pa == 0) {
  		printf("SWEET GLINK: pcm: no shared memory, tone skipped\n");
  		sweet_log_sync();
