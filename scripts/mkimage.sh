@@ -41,6 +41,11 @@ for a in "$@"; do CMDLINE="$CMDLINE $a"; done
 if [ "${KEEPALIVE:-0}" = 1 ]; then
   CMDLINE=$(printf '%s' "$CMDLINE" | sed 's/ *sweetreboot=1//')
 fi
+# CPUS=n replaces the single-core default; interactive testing needs the
+# other cores available or every GPIO-bitbang or I2C scan stalls the UI.
+if [ -n "${CPUS:-}" ]; then
+  CMDLINE=$(printf '%s' "$CMDLINE" | sed "s/cpus=[0-9]*/cpus=$CPUS/")
+fi
 # Host wall clock at image build time; XNU sets its calendar from this.
 CMDLINE="$CMDLINE sweettime=$(date +%s)"
 
