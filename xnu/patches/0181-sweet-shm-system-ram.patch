@@ -1,12 +1,12 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -1553,8 +1553,55 @@
+@@ -1553,7 +1553,54 @@
   */
  #define G_SHM_FIXED_PA                      0xa2d00000u
  
 -/* Send one APM command with the payload inlined in the GPR packet. */
 +/* Send a fully built packet and decode its reply. */
- static int
++static int
 +g_apm_xfer(uint8_t *pkt, uint32_t pkt_size, const char *what)
 +{
 +	g_rsp_ready = 0;
@@ -53,10 +53,9 @@
 +
 +/* Send one APM command with the payload inlined behind the 16-byte payload
 + * descriptor (graph and data commands use this form). */
-+static int
+ static int
  g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
      uint32_t plen, uint32_t opcode, const char *what)
- {
 @@ -1580,30 +1627,36 @@
  	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes)\n", what,
  	    src_port, dst_port, pkt_size);
@@ -126,16 +125,18 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1631,7 +1686,7 @@
+@@ -1631,8 +1686,8 @@
  {
  	static bool done;
  	vm_offset_t v;
 -	uint32_t idr0, idr1, cr0;
+-	int valid = 0;
 +	uint32_t id0, id1, cr0;
- 	int valid = 0;
++	int valid = 0, free_slot = -1, sid18 = -1;
  
  	if (done) {
-@@ -1643,20 +1698,34 @@
+ 		return;
+@@ -1643,20 +1698,58 @@
  		printf("SWEET SMMU: map failed\n");
  		return;
  	}
@@ -154,19 +155,44 @@
  		uint32_t s2cr = *(volatile uint32_t *)(v + 0xc00 + 4 * n);
  
 -		if (smr & 1u) {
-+		if (smr & 0x80000000u) {
- 			valid++;
+-			valid++;
 -			printf("SWEET SMMU: smr%d=%#x s2cr=%#x\n", n, smr, s2cr);
-+			printf("SWEET SMMU: smr%d sid=%#x mask=%#x s2cr=%#x\n",
-+			    n, smr & 0xffffu, smr >> 16, s2cr);
++		if (!(smr & 0x80000000u)) {
++			if (free_slot < 0) {
++				free_slot = (int)n;
++			}
++			continue;
  		}
++		valid++;
++		printf("SWEET SMMU: smr%d sid=%#x mask=%#x s2cr=%#x\n",
++		    n, smr & 0xffffu, smr >> 16, s2cr);
++		if ((smr & 0xffffu) == 0x1801u) {
++			sid18 = (int)n;
++		}
  	}
  	printf("SWEET SMMU: %d valid stream entries\n", valid);
-+	/* USFCFG=1 aborts unmatched streams.  The ADSP's audio SID (0x1801,
-+	 * per msm-audio-ion's iommus) has no SMR in a fastboot-booted XNU, so
-+	 * let unmatched streams bypass instead: 0x1801 then reaches DRAM with
-+	 * a plain physical address.  Streams that already match keep their
-+	 * translation. */
++	/* The ADSP audio SID (msm-audio-ion: iommus = <&apps_smmu 0x1801>)
++	 * has no SMR in a fastboot-booted XNU.  Force it to bypass so the DSP
++	 * reads plain physical addresses.  If the bootloader already gave it
++	 * an SMR, leave that translation alone (the firmware may need it) and
++	 * report it instead. */
++	if (sid18 >= 0) {
++		printf("SWEET SMMU: sid 0x1801 already at smr%d\n", sid18);
++	} else if (free_slot >= 0) {
++		*(volatile uint32_t *)(v + 0x800 + 4 * free_slot) =
++		    0x80000000u | 0x1801u;
++		*(volatile uint32_t *)(v + 0xc00 + 4 * free_slot) = 0x10000u;
++		*(volatile uint32_t *)(v + 0x68) = 0xffffffffu;	/* TLBIALLNSNH */
++		*(volatile uint32_t *)(v + 0x70) = 0;		/* TLBGSYNC */
++		for (int i = 0; i < 1000 &&
++		    (*(volatile uint32_t *)(v + 0x74) & 1u); i++) {
++			__asm__ volatile("yield");
++		}
++		printf("SWEET SMMU: force sid 0x1801 bypass at smr%d\n",
++		    free_slot);
++	}
++	/* USFCFG=1 aborts every unmatched stream; turning it off is a
++	 * belt-and-braces measure for streams other than 0x1801. */
 +	if (cr0 & 0x400u) {
 +		*(volatile uint32_t *)(v + 0x00) = cr0 & ~0x400u;
 +		__asm__ volatile("dsb sy" ::: "memory");
@@ -176,7 +202,7 @@
  	sweet_log_sync();
  }
  
-@@ -1696,52 +1765,82 @@
+@@ -1696,52 +1789,80 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -193,20 +219,18 @@
  {
 -	static const uint64_t addrs[] = { 0xa2d00000u };
 -	uint8_t body[20];
-+	/* Android hands the DSP an apps-smmu IOVA: the vendor trace's map uses
-+	 * 0x1_1FFE8000, which is not DRAM at all.  With apps-smmu disabled we
-+	 * test plain System RAM PAs first; the vendor IOVA is a status-only
++	/* XNU's phystokv_range() rejects any PA outside the ADT bank, so
++	 * ml_io_map(0xa2e00000) panics.  The SHIM pre-fills the PCM tone
++	 * there before XNU starts; for that candidate va stays 0 and this
++	 * code never touches the buffer.  The self-test page is inside the
++	 * ADT bank and is mapped normally; the vendor IOVA is a status-only
 +	 * probe so the DSP is never asked to read an untranslated address.
 +	 * flag 4 = offset mode (vendor GSL), 0 = PA mode. */
-+	static const uint64_t low[] = {
-+		0xa2e00000u,	/* first System RAM page after the ADSP carve-out */
-+		0x86000000u,	/* System RAM 0x85e00000-0x87ffffff */
-+		0x80640000u,	/* System RAM right after the hyp carve-out */
-+	};
 +	static const uint32_t flags[] = { 4u, 0u };
-+	uint64_t addrs[5];
-+	int playable[5];
-+	unsigned naddr = 0;
++	uint64_t pa[3];
++	vm_offset_t va[3];
++	int playable[3];
++	unsigned n = 0;
  
  	if (g_shm_mapped) {
  		return 0;
@@ -214,24 +238,26 @@
  	g_smmu_probe();
  	g_phys_selftest();
 -	for (unsigned i = 0; i < sizeof(addrs) / sizeof(addrs[0]); i++) {
-+	for (unsigned i = 0; i < sizeof(low) / sizeof(low[0]); i++) {
-+		addrs[naddr] = low[i];
-+		playable[naddr++] = 1;
-+	}
+-		vm_offset_t va = ml_io_map((vm_offset_t)addrs[i], G_SHM_SIZE);
++	pa[n] = 0xa2e00000u;		/* SHIM-prefilled tone, low DRAM */
++	/* ml_io_map() itself works for this PA (run64 mapped it and the APM
++	 * accepted it); only flush_dcache64()->phystokv_range() panics on
++	 * PAs outside the ADT bank, so this mapping is never flushed. */
++	va[n] = ml_io_map((vm_offset_t)pa[n], G_SHM_SIZE);
++	playable[n++] = 1;
 +	if (g_self_pa) {
-+		addrs[naddr] = g_self_pa;
-+		playable[naddr++] = 1;
++		pa[n] = g_self_pa;
++		va[n] = ml_io_map((vm_offset_t)g_self_pa, G_SHM_SIZE);
++		playable[n++] = 1;
 +	}
-+	addrs[naddr] = 0x11ffe8000ull;	/* vendor IOVA, never played */
-+	playable[naddr++] = 0;
-+
-+	for (unsigned i = 0; i < naddr; i++) {
- 		vm_offset_t va = ml_io_map((vm_offset_t)addrs[i], G_SHM_SIZE);
++	pa[n] = 0x11ffe8000ull;		/* vendor IOVA, status only */
++	va[n] = 0;
++	playable[n++] = 0;
  
- 		if (!va) {
- 			printf("SWEET GLINK: shm: map %#llx failed\n", addrs[i]);
- 			continue;
- 		}
+-		if (!va) {
+-			printf("SWEET GLINK: shm: map %#llx failed\n", addrs[i]);
+-			continue;
+-		}
 -		/* All eight pool ids rejected every DDR address; keep one probe
 -		 * so the map path stays exercised, but do not stall the boot. */
 -		for (unsigned p = 3; p < 4; p++) {
@@ -243,14 +269,14 @@
 -			g_put32(body + 16, G_SHM_SIZE);
 -			printf("SWEET GLINK: shm_map_gpr pool=%u pa=%#llx\n",
 -			    p, addrs[i]);
--			sweet_log_sync();
--			if (g_apm_cmd(src_port, 1, body, sizeof(body),
--			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
++	for (unsigned i = 0; i < n; i++) {
 +		for (unsigned f = 0; f < 2; f++) {
 +			printf("SWEET GLINK: shm_map pool=3 pa=%#llx flag=%u "
-+			    "play=%d\n", addrs[i], flags[f], playable[i]);
-+			sweet_log_sync();
-+			if (g_apm_shm_map_flat(src_port, addrs[i], flags[f],
++			    "play=%d\n", pa[i], flags[f], playable[i]);
+ 			sweet_log_sync();
+-			if (g_apm_cmd(src_port, 1, body, sizeof(body),
+-			    APM_CMD_SHARED_MEM_MAP_REGIONS, "shm_map") != 0) {
++			if (g_apm_shm_map_flat(src_port, pa[i], flags[f],
 +			    "shm_map") != 0) {
  				continue;
  			}
@@ -263,23 +289,36 @@
  			if (g_shm_handle == 0 || g_shm_handle == 0xffffffffu) {
  				continue;
  			}
+-			g_shm_va = va;
+-			g_shm_pa = addrs[i];
 +			if (!playable[i]) {
 +				printf("SWEET GLINK: shm iova accepted "
 +				    "(apps-smmu required)\n");
 +				sweet_log_sync();
 +				continue;
 +			}
- 			g_shm_va = va;
- 			g_shm_pa = addrs[i];
++			g_shm_va = va[i];
++			g_shm_pa = pa[i];
 +			g_shm_offset_mode = (flags[f] & 4u) != 0;
  			g_shm_mapped = 1;
-+			printf("SWEET GLINK: shm mapped pa=%#llx mode=%s\n",
-+			    g_shm_pa, g_shm_offset_mode ? "offset" : "pa");
++			printf("SWEET GLINK: shm mapped pa=%#llx mode=%s "
++			    "va=%#llx\n", g_shm_pa,
++			    g_shm_offset_mode ? "offset" : "pa",
++			    (uint64_t)g_shm_va);
 +			sweet_log_sync();
  			return 0;
  		}
  	}
-@@ -2029,8 +2128,14 @@
+@@ -1909,7 +2030,7 @@
+ 	uint8_t pkt[24 + 16];
+ 	uint32_t pkt_size = sizeof(pkt);
+ 
+-	if (!g_shm_mapped || len > G_SHM_SIZE) {
++	if (!g_shm_mapped || !g_shm_va || len > G_SHM_SIZE) {
+ 		return -1;
+ 	}
+ 	memcpy((void *)g_shm_va, payload, len);
+@@ -2029,8 +2150,14 @@
  	g_put32(pkt + 12, dst_port);
  	g_put32(pkt + 16, token);
  	g_put32(pkt + 20, APM_CMD_DATA_BUFFER_V2);
@@ -296,7 +335,7 @@
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
  	g_rsp_ready = 0;
-@@ -2084,31 +2189,8 @@
+@@ -2084,39 +2211,25 @@
  {
  	/* The vendor maps the PCM region from 0x2002 and feeds buffers from
  	 * the stream port 0x2011; graph commands stay on 0x2010. */
@@ -325,8 +364,29 @@
 -	(void)g_apm_map_probe(0x2002u, 0xa0700000u, 0u, 0x1000u, 4u, 0x2du,
 -	    "adsp_load");
 -	g_apm_state_query_sync("after_map");
+-	if (g_apm_shm_map(0x2002u) != 0 || g_shm_va == 0 || g_shm_pa == 0) {
 +	/* The old carve-out probes (smem, ADSP firmware, vendor 4.5 GB) all
 +	 * returned BADPARAM; g_apm_shm_map() now tries real System RAM. */
- 	if (g_apm_shm_map(0x2002u) != 0 || g_shm_va == 0 || g_shm_pa == 0) {
++	if (g_apm_shm_map(0x2002u) != 0 || g_shm_pa == 0) {
  		printf("SWEET GLINK: pcm: no shared memory, tone skipped\n");
  		sweet_log_sync();
+ 		return;
+ 	}
+-	g_fill_tone(G_PCM_OFF_A);
+-	g_fill_tone(G_PCM_OFF_B);
+-	flush_dcache64((addr64_t)(g_shm_pa + G_PCM_OFF_A), 0x1000, 1);
++	if (g_shm_va) {
++		g_fill_tone(G_PCM_OFF_A);
++		g_fill_tone(G_PCM_OFF_B);
++		/* No flush_dcache64() here: it takes a physical address and
++		 * goes through phystokv_range(), which panics for any PA
++		 * outside the ADT bank (run64, PA 0xa2e00000).  The
++		 * ml_io_map window is Device-nGnRnE, i.e. already uncached. */
++		__asm__ volatile("dsb sy" ::: "memory");
++	} else {
++		printf("SWEET GLINK: pcm: using SHIM-prefilled low DRAM\n");
++		sweet_log_sync();
++	}
+ 
+ 	/* The vendor graph buffers are taken by whichever module owns the
+ 	 * stream input.  Find it empirically: send one frame to each of the

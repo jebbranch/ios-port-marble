@@ -569,12 +569,49 @@ static void __attribute__((unused)) shim_main_p1(uint64_t dtb)
 
 extern const uint32_t splash_img[];
 
+/*
+ * XNU's phystokv_range() (arm_vm_init.c) refuses every PA outside the ADT
+ * bank (0x840000000+), so ml_io_map() cannot touch low DRAM.  The DSP, on
+ * the other hand, is behind apps-smmu SID 0x1801 which we leave bypassing,
+ * so it reads plain physical addresses fine.  Fill the PCM tone here, while
+ * the shim has no MMU (plain physical stores), and let sweet_glink.c map
+ * exactly TONE_PA with offset mode and stream offsets 0/0x800.
+ * Two 1152-byte buffers, 144 frames of 32-bit stereo at 96 kHz.
+ */
+#define TONE_PA		0xa2e00000UL
+static const int16_t tone48[48] = {
+	0, 1069, 2120, 3135, 4096, 4987, 5793, 6499,
+	7094, 7568, 7913, 8122, 8192, 8122, 7913, 7568,
+	7094, 6499, 5793, 4987, 4096, 3135, 2120, 1069,
+	0, -1069, -2120, -3135, -4096, -4987, -5793, -6499,
+	-7094, -7568, -7913, -8122, -8192, -8122, -7913, -7568,
+	-7094, -6499, -5793, -4987, -4096, -3135, -2120, -1069,
+};
+
+static void
+fill_tone_low(void)
+{
+	volatile uint32_t *p = (volatile uint32_t *)TONE_PA;
+
+	for (int b = 0; b < 2; b++) {
+		for (int i = 0; i < 144; i++) {
+			int32_t v = (int32_t)tone48[i % 48] << 16;
+
+			p[b * 0x200 + 2 * i] = (uint32_t)v;
+			p[b * 0x200 + 2 * i + 1] = (uint32_t)v;
+		}
+	}
+	__asm__ volatile("dsb sy" ::: "memory");
+}
+
 #ifndef UFS_DIAG
 void shim_main(uint64_t dtb)
 {
 	stage = "xnu";
 	con_image(splash_img, FB_W, FB_H);
 	con_str("SHIM", "marble XNU loader");
+	fill_tone_low();
+	con_str("TONE", "prefilled at 0xa2e00000");
 
 	uint64_t mmfr0 = rsr("id_aa64mmfr0_el1");
 	con_hex2("MMFR0", "lo=", (uint32_t)mmfr0, "tg16=", (mmfr0 >> 20) & 0xf);
