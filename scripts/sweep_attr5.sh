@@ -167,11 +167,14 @@ for spec in "${RUNS[@]}"; do
   fi
   ./scripts/pull_logs.sh "$label" || { echo "!! pull_logs failed for $label" >&2; exit 1; }
   echo "  -> logs/ring-$label.txt"
-  # a quick in-log verdict so the operator sees progress without reading them
-  if grep -q "nolpass alive" "logs/ring-$label.txt" 2>/dev/null; then
-    echo "     VERDICT: survived past DATA_BUFFER (nolpass heartbeat present)"
+  # a quick in-log verdict so the operator sees progress without reading them.
+  # NOTE: an "nolpass alive" line alone does NOT mean survival -- the heartbeat
+  # prints every ~100 ms and the old runs all died 100-200 ms in.  Only
+  # reaching the end of the run counts.
+  if grep -q "===== done =====" "logs/ring-$label.txt" 2>/dev/null; then
+    echo "     VERDICT: COMPLETED (reached the end of the run)"
   elif grep -q "data_buffer sent" "logs/ring-$label.txt" 2>/dev/null; then
-    echo "     VERDICT: hung right after DATA_BUFFER"
+    echo "     VERDICT: hung after DATA_BUFFER ($(grep -c 'nolpass alive' "logs/ring-$label.txt" 2>/dev/null) heartbeat(s))"
   else
     echo "     VERDICT: never reached DATA_BUFFER - check the log"
   fi
