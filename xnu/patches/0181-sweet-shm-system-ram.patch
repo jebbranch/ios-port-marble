@@ -602,7 +602,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -1631,547 +1959,1729 @@
+@@ -1631,547 +1959,1751 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -1891,7 +1891,13 @@
 +		return;
 +	}
 +	done = true;
-+	if (kmem_alloc(kernel_map, &va, g_shm_region_size(), KMA_DATA | KMA_ZERO,
++	/* Fixed 16 KiB: this only checks whether a kernel page can be mirrored.
++	 * It used to follow the region size, so growing the region to 1 MiB also
++	 * grew a pointless allocation + ml_io_map - and a 1 MiB ml_io_map is
++	 * implicated in the pmap_assert_free panic seen in j2. */
++	const vm_size_t probe_size = 0x4000;
++
++	if (kmem_alloc(kernel_map, &va, probe_size, KMA_DATA | KMA_ZERO,
 +	    VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) {
 +		printf("SWEET PHYS: alloc failed\n");
 +		return;
@@ -1901,7 +1907,7 @@
 +	printf("SWEET PHYS: va=%#llx pa=%#llx\n", (uint64_t)va, pa);
 +	*(volatile uint32_t *)va = 0x5a5a1234u;
 +	__asm__ volatile("dsb sy" ::: "memory");
-+	mirror = g_map_win((uint64_t)pa, g_shm_region_size());
++	mirror = g_map_win((uint64_t)pa, probe_size);
 +	if (!mirror) {
 +		printf("SWEET PHYS: mirror map failed\n");
 +	} else {
@@ -2797,6 +2803,16 @@
 +	/* Fire-and-forget walks the whole region once, i.e. plays the entire
 +	 * clip; the reply-waiting path keeps the vendor's 2000 ping-pongs. */
 +	int tone_buffers = nw ? (int)blocks : 2000;
++	{
++		/* sweetbufs=N caps the loop so region size and flood length can
++		 * be tested separately instead of changing together. */
++		int cap = 0;
++
++		(void)PE_parse_boot_argn("sweetbufs", &cap, sizeof(cap));
++		if (cap > 0 && cap < tone_buffers) {
++			tone_buffers = cap;
++		}
++	}
 +
 +	if (tone_buffers > 1200) {
 +		tone_buffers = 1200;
@@ -2807,6 +2823,12 @@
 +		    ((uint32_t)((unsigned)n % blocks) * G_PCM_BYTES) :
 +		    ((n & 1) ? G_PCM_OFF_B : G_PCM_OFF_A);
 +
++		if (nw && (n & 31) == 0) {
++			/* So a death inside the loop still tells us how far it got. */
++			printf("SWEET GLINK: tone buf %d/%d off=%#x\n", n,
++			    tone_buffers, off);
++			sweet_log_sync();
++		}
 +		if (g_apm_data_buffer(0x2011u, dst_port, off, G_PCM_BYTES,
 +		    (uint32_t)(n & 1)) != 0 && !nw) {
 +			printf("SWEET GLINK: pcm buffer %d not consumed\n", n);
@@ -2838,7 +2860,7 @@
  		g_put32(mf + 0, rate);
  		g_put32(mf + 4, width | (2u << 16));    /* bit_width, channels */
  		g_put32(mf + 8, 1);                     /* DATA_FORMAT_FIXED_POINT */
-@@ -2332,24 +3842,40 @@
+@@ -2332,24 +3864,40 @@
  	uint32_t v;
  	int rc;
  
@@ -2888,7 +2910,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2361,12 +3887,34 @@
+@@ -2361,12 +3909,34 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 3;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2; mf[30] = 3;
@@ -2927,7 +2949,7 @@
  	g_put32(mf + 0, 96000);
  	g_put32(mf + 4, 32u | (3u << 16));
  	g_put32(mf + 8, 1);
-@@ -2425,12 +3973,82 @@
+@@ -2425,12 +3995,82 @@
  g_apm_graph_bringup(void)
  {
  	/* The vendor's AGM clients send from 0x2010/0x2011. */
@@ -3014,7 +3036,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2448,7 +4066,8 @@
+@@ -2448,7 +4088,8 @@
  	 * command; a handle owned by another port may be rejected. */
  	if (g_apm_shm_map(port) == 0) {
  		if (g_apm_graph_open_shm(port, g_graph_vp,
@@ -3024,7 +3046,7 @@
  			g_audio_graph_cfg_vp(port);
  			if (g_apm_graph_start(port, APM_VP_SG_ID) == 0) {
  				g_audio_tone(port, G_VP_SAL_IID);
-@@ -2500,7 +4119,8 @@
+@@ -2500,7 +4141,8 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_open_payload,
@@ -3034,7 +3056,7 @@
  		g_audio_graph_cfg(port);
  		if (g_apm_graph_start(port, APM_GRAPH_SG_ID) == 0) {
  			/* The tone needs a mapped region for the PCM buffers. */
-@@ -2513,7 +4133,8 @@
+@@ -2513,14 +4155,159 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_vendor_payload,
@@ -3044,10 +3066,10 @@
  		g_apm_graph_start(port, APM_VENDOR_SG_ID);
  		return;
  	}
-@@ -2521,6 +4142,150 @@
- }
- 
- 
+ 	printf("SWEET GLINK: graph_open failed on every payload\n");
++}
++
++
 +
 +/* One 24-byte battmgr GET_PROP round trip.  The response echoes the
 + * property id at +12 and carries the value at +16 (from the kprobe
@@ -3109,8 +3131,8 @@
 +	} else {
 +		g_dump(tag, g_batt_rsp, g_batt_rsp_len);
 +	}
-+}
-+
+ }
+ 
 +/*
 + * Last battery sample for SweetBattery.  Returns 0 until the pmic_glink
 + * probe has both a status and a capacity, so iOS keeps using its own
@@ -3130,7 +3152,7 @@
 +	*usb = g_batt_s_usb < 0 ? 0 : (unsigned)g_batt_s_usb;
 +	return 1;
 +}
-+
+ 
 +/*
 + * Optional battery read-out.  sweetbatt=1 opens our side of
 + * PMIC_RTR_ADSP_APPS, answers the ADSP's own OPEN, and asks the battmgr
@@ -3195,17 +3217,17 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2533,6 +4298,9 @@
+@@ -2533,6 +4320,9 @@
  		return;
  	}
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v71 (runtime region size for a real clip)\n");
++	printf("SWEET AUDIO: build v73 (small self-test mapping)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
-@@ -2587,6 +4355,7 @@
+@@ -2587,6 +4377,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
