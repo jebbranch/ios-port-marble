@@ -1,25 +1,24 @@
 #!/bin/bash
-# v68 sweep: 2 boots, 2 log pulls.
+# v68 sweep: 4 boots, 4 log pulls.
 #
-#   ./scripts/sweep_wrmf2.sh            # build 3 images, boot each, pull its log
-#   DRY_RUN=1 ./scripts/sweep_wrmf2.sh  # only build the images
+#   ./scripts/sweep_h4.sh            # build 3 images, boot each, pull its log
+#   DRY_RUN=1 ./scripts/sweep_h4.sh  # only build the images
 #
 # RAM-only, same as the other sweeps.
 #
-# Eliminated so far, each with a boot: SMMU translation on/off/failing,
-# target memory (host RAM / ADSP carve-out), context bank, leaf
-# cacheability, client port alignment.  f1 showed a DATA_BUFFER for a
-# nonexistent module is harmless, so the frame is fine and only delivery to
-# a real, buffer-consuming module kills the machine.
+# Eliminated so far, one boot each: SMMU translation on/off/failing, target
+# memory (host RAM / ADSP carve-out), context bank, leaf cacheability, client
+# port alignment.  f1 showed a DATA_BUFFER for a nonexistent module is
+# harmless, so the frame itself is fine and only delivery to a real,
+# buffer-consuming module kills the machine.
 #
-# Two things left that we do differently from the vendor and can still test
-# without rebuilding the graph:
+# Four runs, each changing one thing we do differently from the vendor:
 #
-#   h1  sweetwrmf=0   we send SET_CFG(media format) to the WR; the vendor
-#                     trace never configures the WR at all.  Drop ours.
-#   h2  sweetdbdst=0x428f  deliver the buffer to our TDM module instead of
-#                     the WR.  f2 from the f round never ran, so this is the
-#                     missing data point: a real module that is not a sink.
+#   h1  sweetwrmf=0        the vendor never sends SET_CFG to the WR; stop
+#   h2  sweetdbdst=0x428f  deliver to our TDM module (real, not a sink)
+#   h3  sweetdbdst=0x42d3  deliver to our AW amp module (also real, not a sink)
+#   h4  best-guess stack   WR mf dropped + graph AND data both on 0x2011, i.e.
+#                          the two remaining vendor deviations together
 #
 # BASE is identical to the b-sweep except nothing extra: sweetpcm=1 is
 # mandatory or nothing below "graph started" ever runs.
@@ -46,6 +45,8 @@ fi
 RUNS=(
   "h1-no-wr-mf|sweets1attr=1 sweetwrmf=0|stop configuring the WR the way the vendor never does"
   "h2-dst-tdm|sweetdbdst=0x428f|deliver the buffer to our TDM module (real, not a sink)"
+  "h3-dst-aw|sweetdbdst=0x42d3|deliver the buffer to our AW amp module (real, not a sink)"
+  "h4-stack|sweets1attr=1 sweetwrmf=0 sweetgraphport=0x2011|both remaining vendor deviations together"
 )
 
 say() { printf '\n=== %s ===\n' "$*"; }
