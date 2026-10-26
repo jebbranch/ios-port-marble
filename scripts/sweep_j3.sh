@@ -1,5 +1,5 @@
 #!/bin/bash
-# v70 sweep: 3 boots, 3 log pulls.  LISTEN to the speaker.
+# v71 sweep: 3 boots, 3 log pulls.  LISTEN to the speaker.
 #
 #   ./scripts/sweep_j3.sh            # build 3 images, boot each, pull its log
 #   DRY_RUN=1 ./scripts/sweep_j3.sh  # only build the images
@@ -29,8 +29,14 @@ ROOT="$(cd "$HERE/.." && pwd)"
 cd "$ROOT"
 
 SERIAL="${SERIAL:-2aa26095}"
-BASE="sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1"
-MARKER="build v70"
+# 0x1FE00000 is the start of the 2 MiB block that maps to 0xa2e00000, the
+# page the shim prefills, so the whole block (and the whole clip) is usable.
+BASE="sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FE00000 sweetshmsize=0x100000 sweetnolpass=1"
+
+# Real audio: the 3.6 s clip becomes ~1 MiB of 48 kHz/24-bit/stereo PCM.
+export PCM_SRC="${PCM_SRC:-$ROOT/assets/clip.mp3}"
+export PCM_BYTES="${PCM_BYTES:-0x100000}" 
+MARKER="build v71"
 OUTDIR="$ROOT/images/sweep"
 
 if [ -z "${D22AP_ADT:-}" ] && [ ! -f "$ROOT/research/ipsw-x/d22ap.adt" ]; then
