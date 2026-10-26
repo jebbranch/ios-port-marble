@@ -581,7 +581,9 @@ extern const uint32_t splash_img[];
 #define TONE_PA		0xa2e00000UL
 /* Bytes copied in front of the DSP: the kernel declares the same size as the
  * shared-memory region, so the offsets it streams are all inside this. */
-#define PCM_REGION	0x5000UL
+#ifndef PCM_REGION
+#define PCM_REGION	0x5000UL	/* overridden by build_xnu.sh (-DPCM_REGION) */
+#endif
 
 extern const uint8_t pcm_img[];
 extern const uint8_t pcm_img_end[];

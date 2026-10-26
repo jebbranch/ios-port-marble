@@ -18,6 +18,10 @@ SECTIONS
 	. += 8 * 0x1000;
 	. = ALIGN(16);
 	.splash : { *(.splash) }
+	/* The PCM clip lives at the very end: start.S reaches _bss_start and the
+	 * stacks with ADR (+-1 MiB), so it must not sit between .text and .bss. */
+	. = ALIGN(4096);
+	.pcm : { *(.pcm) }
 	. = ALIGN(4096);
 	_end = .;
 	/DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*) }

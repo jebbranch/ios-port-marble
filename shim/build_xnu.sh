@@ -63,7 +63,7 @@ if [ ! -f pcm.raw ] || [ -n "$PCM_SRC" ] || [ pcm.raw -ot splash.png ]; then
     fi
     python3 - "$tmp" pcm.raw "$PCM_BYTES" <<'PYPCM'
 import sys
-src, out, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
+src, out, n = sys.argv[1], sys.argv[2], int(sys.argv[3], 0)
 n -= n % 6                       # whole 24-bit stereo frames (6 bytes)
 d = open(src, 'rb').read()[:n]
 if not d:
@@ -77,7 +77,7 @@ PYPCM
 fi
 
 for f in start.S shim.c console.c mmu.c fdt.c loader.c splash.S pcm.S; do
-  $CC $CFLAGS -DFB_STRIDE=$STRIDE -c "$f" -o "$OUT/${f%.*}.o"
+  $CC $CFLAGS -DFB_STRIDE=$STRIDE -DPCM_REGION=$PCM_BYTES -c "$f" -o "$OUT/${f%.*}.o"
 done
 
 # Only start.o may carry absolute addresses (it is linked at 0).
