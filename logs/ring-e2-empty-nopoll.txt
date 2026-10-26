@@ -1,0 +1,1723 @@
+Darwin Kernel Version 22.6.0: Mon Aug 14 05:06:07 UTC 2023; runner:xnu-8796.141.3
+pmap_startup() init/release time: 16693 microsec
+pmap_startup() delayed init/release of 0 pages
+vm_page_bootstrap: 257371 free pages, 4773 wired pages, (up to 0 of which are delayed free)
+VM boostrap: 97 maps, 204 entries and 512 holes available
+Maximum number of VM swap files: 100
+zone_meta               : 0xfffffe100017c000 - 0xfffffe1008d70000 (139M)
+zones                   : 0xfffffe1008d70000 - 0xfffffe3008d70000 (128G)
+kmem_ptr_range          : 0xfffffe3008d70000 - 0xfffffe43fb4f0000 (79G)
+mb                      : 0xfffffe43fb4f0000 - 0xfffffe44014f0000 (96M)
+bufferhdr               : 0xfffffe44014f0000 - 0xfffffe44017b8000 (2848K)
+ipc_kernel_copy_map     : 0xfffffe44017b8000 - 0xfffffe4401fb8000 (8M)
+gIOKitPageableFixed0    : 0xfffffe4401fb8000 - 0xfffffe4407fb8000 (96M)
+io_submap               : 0xfffffe4407fb8000 - 0xfffffe440bfb8000 (64M)
+ipc_kernel_map          : 0xfffffe440bfb8000 - 0xfffffe440ffb8000 (64M)
+bsd_pageable            : 0xfffffe440ffb8000 - 0xfffffe44142c0000 (67M)
+gIOKitPageableFixed1    : 0xfffffe44142c0000 - 0xfffffe441a2c0000 (96M)
+kmem_sprayqtn_range     : 0xfffffe441a2c0000 - 0xfffffe4498564000 (2018M)
+gIOKitPageableFixed2    : 0xfffffe4498564000 - 0xfffffe449e564000 (96M)
+kmem_ptr_range_meta     : 0xfffffe449e564000 - 0xfffffe449ece0000 (7M)
+gIOKitPageableFixed3    : 0xfffffe449ece0000 - 0xfffffe44a4ce0000 (96M)
+kmem_data_range         : 0xfffffe44a4ce0000 - 0xfffffe7fff794000 (237G)
+compressor              : 0xfffffe7fff794000 - 0xfffffe8fffdfc000 (64G)
+kmem_large_ranges[1]    : 0 - 0 (0B)
+kmem_large_ranges[2]    : 0 - 0 (0B)
+kmem_large_ranges[3]    : 0 - 0 (0B)
+kmem_large_ranges[4]    : 0xfffffe4429f14800 - 0xfffffe4498564000 (1766M)
+kmem_large_ranges[5]    : 0xfffffe4c10236800 - 0xfffffe7fff794000 (207G)
+"vm_compressor_mode" is 4
+zone_init: pgzalloc  0xfffffe1008d70000:0xfffffe100acfc000 (31M) [1009 slots]
+zone_init: map VM    0xfffffe100acfc000:0xfffffe14d750c000 (19G)
+zone_init: map RO    0xfffffe14d750c000:0xfffffe1670d10000 (6G)
+zone_init: map GEN0  0xfffffe1670d10000:0xfffffe1b3d520000 (19G)
+zone_init: map GEN1  0xfffffe1b3d520000:0xfffffe2009d30000 (19G)
+zone_init: map GEN2  0xfffffe2009d30000:0xfffffe24d6540000 (19G)
+zone_init: map GEN3  0xfffffe24d6540000:0xfffffe29a2d54000 (19G)
+zone_init: map DATA  0xfffffe29a2d54000:0xfffffe3008d70000 (25G)
+zone_init: metadata  0xfffffe100018c000:0xfffffe100818c000 (128M)
+zone_init: metabits  0xfffffe100818c000:0xfffffe1008d60000 (11M)
+zone_init: extra     0:0 (0B)
+VM bootstrap done: 85 maps, 165 entries and 501 holes left
+Log queues configured: slot count: 8, per-slot size: 32768, total size: 262144
+OSLog stream configured: stream: 8192 bytes, cache: 2112 bytes
+OSLog stream verification: 0
+Long logs support configured: size: 16384
+Firehose configured: 16 chunks, 8 io pages
+standard timeslicing quantum is 10000 us
+standard background quantum is 2500 us
+mig_table_max_displ = 54 mach_kobj_count = 374
+debug_log_init: Error!! gPanicBase is still not initialized
+debug_log_init: Error!! gPanicBase is still not initialized
+kdp_core zlib memory 0x8000
+Serial requested, consistent debug disabled or debug boot arg not present, configuring debugging over serial
+iBoot version: marble-shim
+"name" not a kext
+"AAPL,phandle" not a kext
+"RAMDisk" not a kext
+SWEET AMFI: built-in interface registered (XML entitlements)
+calling mpo_policy_init for vnguard
+Security policy loaded: Guarded vnode policy (vnguard)
+SWEET: trust caches unavailable (Image4/AMFI not installed)
+keepsyms boot arg specified; keeping linkedit segment for symbols.
+No POST boot-arg set.
+SWEET: starting device-tree platform expert
+SWEET: platform expert registered
+SWEET AKS: AppleKeyStore registered (no passcode, unlocked)
+SWEET WDT: IOWatchdog registered (accepts check-ins, never fires)
+SWEET SURF: IOCoreSurfaceRoot registered
+SWEET AMFI: AppleMobileFileIntegrity service registered
+SWEET HID: buttons registered (test every 0 s)
+SWEET HID: touch registered
+SWEET BATTERY: static fallback, 100% 4200mV external=0 charging=0
+SWEET FB: AppleCLCD 1080x2400 stride 4320 at 0xb8000000, default surface 1, presented as 1125x2436
+SWEET CPU: requested=1 selected=1 (limit=8)
+SWEET CPU: cpu=0 mpidr=0x0 came alive; SGI1 OK
+Copyright (c) 1982, 1986, 1989, 1991, 1993
+	The Regents of the University of California. All rights reserved.
+
+MAC Framework successfully initialized
+using 5167 buffer headers and 4631 cluster IO buffer headers
+SWEET CPU: 1/1 CPUs initialized, SGI1 verified
+ktriage_register_subsystem_strings: set subsystem 8 strings
+calling mpo_policy_init for SWEET AMFI
+Security policy loaded: SWEET built-in Mobile File Integrity (SWEET AMFI)
+SWEET AMFI: platform binary policy registered (0)
+calling mpo_policy_init for Sandbox
+Security policy loaded: SWEET permissive sandbox stand-in (Sandbox)
+SWEET Sandbox: permissive policy registered (0)
+SWEET HFS: hfs-627.100.6 registered
+mcache: 1 CPU(s), 64 bytes CPU cache line size
+mbinit: done [96 MB total pool size, (64/32) split]
+dlil_init: Waiting for all the create dlil kernel threads to get scheduled at least once.
+dlil_init: All the created dlil kernel threads have been scheduled at least once. Proceeding.
+ifnet_attach: All kernel threads created for interface lo0 have been scheduled at least once. Proceeding.
+ifnet_attach: Waiting for all kernel threads created for interface gif0 to get scheduled at least once.
+ifnet_attach: All kernel threads created for interface gif0 have been scheduled at least once. Proceeding.
+skip attaching fsw to lo0 using legacy TX modelifnet_attach: Waiting for all kernel threads created for interface stf0 to get scheduled at least once.
+ifnet_attach: All kernel threads created for interface stf0 have been scheduled at least once. Proceeding.
+Added memory device md0/rmd0 (01000000/12000000) at FFFFFE00084E8000 for 00000000015A8000
+SWEET UFS: root range override 0x3603600 + 5243387 blocks
+SWEET UFS: "userdata" on LUN 0: first block 0x3603600, 20481 MiB, read-write, DMA at 0x845894000
+SWEET KEYS: pon-subtype=0x8/1 pwr-bit=0x80 res-bit=0x40
+SWEET KEYS: arb=0x70000000 v7 apids=768 pon-apid=536 gpio6-apid=434 pon=0x10/1 gpio=0x1/1 mode=0/1 en=0x80/1 subtype=0x11/1
+SWEET TOUCH: disabled (sweettouch=0)
+SWEET USB: marble clk master       0x00000221 (on)
+SWEET USB: marble clk sleep        0x00000001 (on)
+SWEET USB: marble clk utmi         0x00000001 (on)
+SWEET USB: marble clk cfg-noc      0x00000001 (on)
+SWEET USB: marble clk aggre        0x00000001 (on)
+SWEET USB: marble clk eusb-clkref  0x00000001 (on)
+SWEET USB: marble GDSC 0xf822f000 (on)
+SWEET USB: DWC3 GSNPSID 0x33313130 GCTL 0x00102001 GSTS 0x7e800000 GUSB2PHYCFG 0x00102400
+SWEET USB: DWC3 DCFG 0x0048080c DCTL 0x10f00000 DEVTEN 0x00001277 DSTS 0x00d321bc DALEPENA 0x0000000f
+SWEET USB: DWC3 GEVNTADR 0x00000000fc261000 GEVNTSIZ 0x80001000 GEVNTCOUNT 0x00000000 GHWPARAMS0 0x4020400a
+ifnet_attach: Waiting for all kernel threads created for interface ue0 to get scheduled at least once.
+SWEET LOG: console log to the last 4100 KiB of the partition (block 0x3b033fa)
+SWEET MARBLE TOUCH: stage-9 start in 15s
+ifnet_attach: All kernel threads created for interface ue0 have been scheduled at least once. Proceeding.
+skip attaching fsw to ue0 using legacy TX modelSWEET NET: kernel_task ue0 add address 192.168.7.2
+SWEET USB: ue0 192.168.7.2/24 up (err 0)
+SWEET USB: soft reset done after 3 ms, GCTL 0x00102001 DCFG 0x0048080c
+SWEET USB: QSCRATCH HS_PHY_CTRL 0x00000000 SS_PHY_CTRL 0x00000000 GENERAL_CFG 0x00000004
+SWEET USB: VBUS override on: HS_PHY_CTRL 0x10100000 SS_PHY_CTRL 0x01000000
+SWEET USB: running (DSTS 0x00820001 after 0 ms), DMA at 0x845998000
+SWEET USB: marble eUSB2 PHY left to ABL
+BSD root: ufsroot0, major 2, minor 0
+jnl: b(2, 0): replay_journal: from: 5816320 to: 1860096 (joffset 0x82000)
+jnl: b(2, 0): journal replay done.
+SWEET AUDIO: disabled (sweetaudio=1 sweetcmddb=1 sweetscm=1)
+SWEET ADSP: ===== Q6 bring-up, start in 60s =====
+SWEET ADSP: early amp probe
+SWEET I2C: TLMM @0xf138000 scl cfg=0x1 sda cfg=0x1
+SWEET I2C: levels before (rstA=0 spksw=0 scl=1 sda=1 rstB=0 irqA=1 irqB=1)
+SWEET USB: event 0x00000000
+SWEET I2C: floating (no pull) scl=1 sda=1
+hfs: Removed 2 orphaned / unlinked files and 3 directories 
+hfs: mounted iOSRoot on device b(2, 0)
+SWEET: root volume is not authenticated (error 25); continuing unsealed
+SWEET I2C: resets released (A=1 B=1)
+VM Swap Subsystem is ON
+SWEET I2C: sda driven low reads 0
+No POST boot-arg set.
+load_init_program: attempting to load /usr/appleinternal/sbin/launchd.development
+SWEET I2C: sda driven high reads 1
+SWEET I2C: scl driven low reads 0
+load_init_program: attempting to load /sbin/launchd
+SWEET I2C: scl high reads 1
+SWEET I2C: bus idle, sda=1
+SWEET USB: event 0x00000201
+SWEET USB: connected, speed 0
+exec launchd
+SWEET USB: event 0x0000c040
+SWEET USB: setup 00 05 0001 0000 len 0
+SWEET USB: address 1
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0100 0000 len 18
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+shared_region: 0x41079937bcc350d9 [1(launchd)] check_np(0x16f437bc0) vm_shared_region_start_address() failed
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0302 0409 len 2
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET Sandbox: launchd op 2
+Darwin Ignition Sequence Version 1.0.0: Tue Jul  2 20:41:23 PDT 2024; root:libignition-51~1974/libignition_core/RELEASE_ARM64
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0302 0409 len 50
+SWEET USB: event 0x000010c2
+libignition: 1: arguments           :
+libignition: 1:   ignition level    : 0x5
+libignition: 1:   force dylib root  : 0x0
+libignition: 1:   halt after stage  : n/a
+libignition: 1: ignition blob not available
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+libignition: 1: configuration         :
+libignition: 1:   program             : launchd
+libignition: 1:   os environment      : n/a
+libignition: 1:   rd                  : ufsroot0
+libignition: 1:   arp0          SWEET USB: event 0x0000c040
+      : n/a
+libignition: 1:   rp                  : n/a
+libignition: 1:   pivot src           : n/a
+libignition: 1:   root ramdisk        : 0x0
+libignition: 1:   restore             : 0x0
+libignition: 1:   root device info    : 0x0
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0301 0409 len 2
+SWEET USB: event 0x000010c2
+libignition: 1:   can haz debugger    : 0x1
+libignition: 1:   rootfs mount flags  : 0x480d000
+libignition: 1:   ecid                : 0x0
+libignition: 1:   hardware target     : d22ap
+libignition: 1:   initproc            : 0x1
+libignition: 1:   single user   SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+      : 0x0
+libignition: 1:   userspace reboot    : 0x0
+libignition: 1:   secure boot level   : 0x0
+libignition: 1:   os version          : n/a
+libignition: 1: parameters      SWEET USB: event 0x0000c040
+    :
+libignition: 1:   version           : 0x1
+libignition: 1:   argc              : 0x1
+libignition: 1:   log fd            : 0xffffffffffffffff
+libignition: 1:   platform          : 0x2
+libignition: 1: boot spec       SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0301 0409 len 20
+SWEET USB: event 0x000010c2
+    :
+libignition: 1:   name              : local
+libignition: 1:   stage count       : 0x7
+libignition: 1:        hello: commence primary ignition
+libignition: 1:        hello: hello from launchd.1
+libignition: 1:      preboot: moSWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+unting preboot
+libignition: 1: failed to lookup preboot: 25
+libignition: 1:      preboot: failed to get preboot device: 25
+libignition: 1:      preboot: ignition failed: 25
+libignition: 1: ignition boot failed: 25
+SWEET USB: event 0x0000c040
+ignite() returned 25
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0303 0409 len 2
+SWEET USB: event 0x000010c2
+shared_region: 0x41079937bcc350d9 [1(launchd)] check_np(0x16f437150) vm_shared_region_start_address() failed
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0303 0409 len 10
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0200 0000 len 9
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0200 0000 len 80
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 00 09 0001 0000 len 0
+SWEET USB: ECM endpoints configured
+SWEET USB: configured (1)
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 01 0b 0000 0001 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 01 0b 0001 0001 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 0000 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0304 0409 len 2
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0304 0409 len 26
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0300 0000 len 255
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000c 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000c 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c04a
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET Sandbox: launchd op 4
+com.apple.xpc.launchd|1969-12-31 16:00:40.317002 <Notice>: hello
+com.apple.xpc.launchd|1969-12-31 16:00:40.325070 <Error>: Could not opt into 50 MB Jetsam high watermark: 22: Invalid argument
+com.apple.xpc.launchd|1969-12-31 16:00:40.325764 <Notice>: Darwin Bootstrapper Version 7.0.0: Thu Feb  1 20:33:09 PST 2024; root:libxpc_executables-2462.140.4.702.1~1/launchd/RELEASE_ARM64
+com.apple.xpc.launchd|1969-12-31 16:00:40.325987 <Notice>: boot-args = debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 cs_debug=0 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweetkeys=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=1 sweetglink=1 sweetreboot=1 sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1 sweets1empty=1 sweettime=1793009864
+com.apple.xpc.launchd|1969-12-31 16:00:40.337052 (system) <Notice>: entering ondemand mode
+SWEET NET: launchd lo0 add address 127.0.0.1
+skip attaching fsw to lo0 using legacy TX modelcom.apple.xpc.launchd|1969-12-31 16:00:40.338501 (system) <Notice>: created
+com.apple.xpc.launchd|1969-12-31 16:00:40.340814 (mount-phase-1) <Notice>: Doing boot task
+exec mount
+SWEET I2C: released scan found 0 device(s)
+SWEET I2C: spksw high
+SWEET USB: event 0x0000e044
+failed to get filesystem info
+failed to get filesystem info
+mount: data volume missing, but not required in env: 0
+vnode_create_internal: alias vnode 0xfffffe1b3d14e9b0 is in state of change (start)
+vnode_create_internal: alias vnode 0xfffffe1b3d14e9b0 is in state of change (end)
+exec mount_hfs
+GetMasterBlock: Error 16 opening /dev/ufsroot0
+/dev/ufsroot0 on / (hfs, local, journaled, noatime)
+SWEET USB: event 0x0000c046
+com.apple.xpc.launchd|1969-12-31 16:00:40.565929 (data-protection) <Notice>: Doing boot task
+exec seputil
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+init_data_protection: No SEP present on this device
+com.apple.xpc.launchd|1969-12-31 16:00:40.745514 (finish-obliteration) <Notice>: Doing boot task
+exec mobile_obliterator
+SWEET I2C: spksw-high scan found 0 device(s)
+Obliterator: In INIT check
+Wed Dec 31 16:00:40 1969: checkOblitNVRAMkey: IORegistryEntryFromPath failed [gF: 0x0000000000000000]
+Obliterator: No obliteration needed, continue booting, returning 0
+com.apple.xpc.launchd|1969-12-31 16:00:40.836646 (detect-installed-roots) <Notice>: Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:40.838099 <Notice>: No cookie from system volume
+com.apple.xpc.launchd|1969-12-31 16:00:40.838378 <Notice>: Found cookie: /private/preboot/C5C71F68C1964E946937B34AD1D46185C4CDF5B0DA092400EB84C1587B7548437A7FFE45A962E0D97307E802EDBB59DF/.roots-installed
+com.apple.xpc.launchd|1969-12-31 16:00:40.838459 <Notice>: Found roots installed cookie
+com.apple.xpc.launchd|1969-12-31 16:00:40.838590 (commit-boot-mode) <Notice>: Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:40.838681 <Notice>: boot-mode committed: (null)
+com.apple.xpc.launchd|1969-12-31 16:00:40.838762 (restore-datapartition) <Notice>: Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:40.842352 (restore-datapartition) <Notice>: optional boot task not present
+com.apple.xpc.launchd|1969-12-31 16:00:40.842454 (mount-phase-2) <Notice>: Doing boot task
+exec mount
+failed to get filesystem info
+failed to get filesystem info
+mount: data volume missing, but not required in env: 0
+ERROR: BindFS bindfs_mount: lookup of /private/var/hardware/Pearl/System/Library/Pearl/ReferenceFrames failed error: 2
+ERROR: BindFS bindfs_mount: lookup of /private/var/hardware/FactoryData/System/Library/Caches/com.apple.factorydata failed error: 2
+com.apple.xpc.launchd|1969-12-31 16:00:40.877207 (init-with-data-volume) <Notice>: Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:40.878988 (MSUEarlyBootTask) <Notice>: Doing boot task
+exec MSUEarlyBootTask
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+MSUEarlyBootTask: MSUEarlyBootTask running
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+main: Content from the ramdisk will be present at /private/var/MobileSoftwareUpdate//c5c71f68c1964e946937b34ad1d46185c4cdf5b0da092400eb84c1587b7548437a7ffe45a962e0d97307e802edbb59df-MSUData if it exists
+MSUEarlyBootTask: I have nothing to do. Goodbye!!
+com.apple.xpc.launchd|1969-12-31 16:00:41.020203 (fips) <Notice>: Doing boot task
+exec cc_fips_test
+About to call the FIPS_POST function in the corecrypto.dylib
+Tracing: disabled
+FIPSPOST_USER [788004706] fipspost_post:152: [FIPSPOST][Module-ID] Apple corecrypto Module v13.0 [Apple ARM, User, Software, SL1]
+FIPSPOST_USER [788063628] fipspost_post:160: PASSED: (2 ms) - fipspost_post_hmac
+FIPSPOST_USER [788227819] fipspost_post:164: PASSED: (8 ms) - fipspost_post_integrity
+FIPSPOST_USER [788242470] fipspost_post:168: PASSED: (0 ms) - fipspost_post_indicator
+FIPSPOST_USER [788248987] fipspost_post:169: PASSED: (0 ms) - fipspost_post_aes_ecb
+FIPSPOST_USER [788255092] fipspost_post:170: PASSED: (0 ms) - fipspost_post_aes_cbc
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+FIPSPOST_USER [788829384] fipspost_post:171: PASSED: (29 ms) - fipspost_post_rsa_sig
+SWEET I2C: asserted scan found 0 device(s)
+SWEET I2C: amp 0x34 no ack
+SWEET I2C: amp 0x35 no ack
+SWEET I2C: 0 amplifier(s) answered 0x2032
+FIPSPOST_USER [789491238] fipspost_post:172: PASSED: (34 ms) - fipspost_post_ecdsa
+FIPSPOST_USER [789512475] fipspost_post:173: PASSED: (0 ms) - fipspost_post_ecdh
+FIPSPOST_USER [789518233] fipspost_post:174: PASSED: (0 ms) - fipspost_post_aes_ccm
+FIPSPOST_USER [789524576] fipspost_post:175: PASSED: (0 ms) - fipspost_post_aes_cmac
+FIPSPOST_USER [789531933] fipspost_post:176: PASSED: (0 ms) - fipspost_post_hkdf
+FIPSPOST_USER [790200195] fipspost_post:177: PASSED: (34 ms) - fipspost_post_pbkdf
+FIPSPOST_USER [790207922] fipspost_post:178: PASSED: (0 ms) - fipspost_post_drbg_hmac
+FIPSPOST_USER [790214437] fipspost_post:180: PASSED: (0 ms) - fipspost_post_kdf_ctr
+FIPSPOST_USER [790220113] fipspost_post:181: PASSED: (0 ms) - fipspost_post_aes_gcm
+FIPSPOST_USER [790227051] fipspost_post:182: PASSED: (0 ms) - fipspost_post_aes_xts
+FIPSPOST_USER [790235911] fipspost_post:183: PASSED: (0 ms) - fipspost_post_tdes_ecb
+FIPSPOST_USER [790241782] fipspost_post:184: PASSED: (0 ms) - fipspost_post_drbg_ctr
+SWEET USB: event 0x0000c046
+FIPSPOST_USER [791183017] fipspost_post:186: PASSED: (48 ms) - fipspost_post_ffdh
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+FIPSPOST_USER [791696588] fipspost_post:187: PASSED: (26 ms) - fipspost_post_rsa_enc_dec
+FIPSPOST_USER [791702364] fipspost_post:206: all tests PASSED (192 ms)
+Returned from calling the FIPS_POST function in the corecrypto.dylib: result = true
+com.apple.xpc.launchd|1969-12-31 16:00:41.235641 (keybag) <Notice>: Doing boot task
+exec keybagd
+SWEET USB: event 0x0000c046
+****** IN MKB_INIT ****
+MKB_INIT: mount is with NO CPROTECT:0x1480d000 on  (/private/var/)
+MKB_INIT: mount point (/private/var/) does not support Data Protection
+MKB_INIT: System Keybag loaded
+MKB_INIT: Could not get options entry from the device tree
+Unable to set /private/var//tmp to class D!****** DONE MKB_INIT ****
+com.apple.xpc.launchd|1969-12-31 16:00:41.325954 (usermanagerd) <Notice>: Doing boot task
+exec usermanagerd
+SWEET USB: event 0x0000c046
+****** IN UMD_INIT ****
+****** STARTING EARLYBOOT SETUP ****
+UMD_INIT: STARTING EARLYBOOT SETUP
+UMD_INIT: LOADING USER SESSIONS
+UMD_INIT: Device Configuration Type:0
+UMD_INIT: BOOTEDUSER is:501
+UMD_INIT: diskLoadUserSessions, APNSID:, set to 18446744073709551615
+SWEET USB: event 0x0000c046
+UMD_INIT: Reloaded _gUserSessionTable (
+        {
+        MKBUserSessionCreateTimeStamp = "1970-01-01 00:00:48 +0000";
+        MKBUserSessionDirty = 0;
+        MKBUserSessionDisplayName = mobile;
+        MKBUserSessionFirstName = mobile;
+        MKBUserSessionForeground = 1;
+        MKBUserSessionGroupID = 501;
+        MKBUserSessionID = 501;
+        MKBUserSessionLanguage = "en_US";
+        MKBUserSessionLastName = mobile;
+        MKBUserSessionLibinfoHomeDir = "/var/mobile";
+        MKBUserSessionLoginTimeStamp = "1970-01-01 00:00:48 +0000";
+        MKBUserSessionLoginUser = 0;
+        MKBUserSessionName = mobile;
+        MKBUserSessionNeedsMount = 1;
+        MKBUserSessionShortName = mobile;
+        MKBUserSessionType = UserSessionOther;
+        MKBUserSessionUUID = "10E32093-E439-4E22-ABD1-E3AD9BC5B152";
+        MKBUserSessionVolumeFSType = UserVolumeAPFSNative;
+        MKBUserSessionisAdminKey = 1;
+        MKBUserSessionisPrimary = 1;
+    }
+)
+UMD_INIT: FOUND NO SYNC BUBBLE UIDS:0
+UMD_INIT: FOUND NO LRU TABLE UIDS:0
+UMD_INIT: FOUND NO VOLUMETYPE, setting up volume type
+UMD_INIT: Set the new volume type to APFSNativeDevice
+UMD_INIT: SAVING SESSION TODISK
+UMD_INIT: SESSION TABLE TO BLOB
+UMD_INIT: NOTHING TO SAVE IN LRU UID LIST
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000e044
+UMD_INIT: diskSaveUserSessions Success
+UMD_INIT: Read user sessions in _gUserSessionTable (
+        {
+        MKBUserSessionCreateTimeStamp = "1970-01-01 00:00:48 +0000";
+        MKBUserSessionDirty = 0;
+        MKBUserSessionDisplayName = mobile;
+        MKBUserSessionFirstName = mobile;
+        MKBUserSessionForeground = 1;
+        MKBUserSessionGroupID = 501;
+        MKBUserSessionID = 501;
+        MKBUserSessionLanguage = "en_US";
+        MKBUserSessionLastName = mobile;
+        MKBUserSessionLibinfoHomeDir = "/var/mobile";
+        MKBUserSessionLoginTimeStamp = "1970-01-01 00:00:48 +0000";
+        MKBUserSessionLoginUser = 0;
+        MKBUserSessionName = mobile;
+        MKBUserSessionNeedsMount = 1;
+        MKBUserSessionShortName = mobile;
+        MKBUserSessionType = UserSessionOther;
+        MKBUserSessionUUID = "10E32093-E439-4E22-ABD1-E3AD9BC5B152";
+        MKBUserSessionVolumeFSType = UserVolumeAPFSNative;
+        MKBUserSessionisAdminKey = 1;
+        MKBUserSessionisPrimary = 1;
+    }
+)
+UMD_INIT: LOADED USER SESSIONS
+UMD_INIT: failed to read nextsession dict
+UMD_INIT: Unable to Obtained foreground, curFG:502, nextID:-1
+UMD_INIT: Failed to get next session, booting with default id to be Loginwindow UID
+UMD_INIT: BootedUser is:501
+UMD_INIT: Regular mode Setup for user:501: Num Sessions:1, CurrentsessionID:-1
+UMD_INIT: FAILED to Set Foreground ID + multiuser in commpage successfully
+UMD_INIT: LOADING PERSONA..
+UMD_INIT: Manifest version: 1
+UMD_INIT: Loaded Persona Generation ID from manifest:1
+UMD_INIT: Adding 200 entry to persona Table for user:10E32093-E439-4E22-ABD1-E3AD9BC5B152
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+UMD_INIT: Adding 100 entry to persona Table for user:10E32093-E439-4E22-ABD1-E3AD9BC5B152
+SWEET USB: event 0x0000c046
+UMD_INIT: Adding 0 entry to persona Table for user:10E32093-E439-4E22-ABD1-E3AD9BC5B152
+UMD_INIT: Adding 1000 entry to persona Table for user:10E32093-E439-4E22-ABD1-E3AD9BC5B152
+UMD_INIT: Adding 99 entry to persona Table for user:FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF
+SWEET USB: event 0x0000c046
+UMD_INIT: Adding 199 entry to persona Table for user:FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+UMD_INIT: Loaded persona manifest
+UMD_INIT: Failed to retrieve info for kernel persona 99: No such process
+UMD_INIT: PersonaID:99 not loaded, loading..
+UMD_INIT: Allocated kernel persona with ID: 99, Type: 4, UID: 4294967295
+UMD_INIT: Failed to retrieve info for kernel persona 199: No such process
+UMD_INIT: PersonaID:199 not loaded, loading..
+UMD_INIT: Allocated kernel persona with ID: 199, Type: 6, UID: 4294967295
+UMD_INIT: Failed to retrieve info for kernel persona 200: No such process
+UMD_INIT: PersonaID:200 not loaded, loading..
+UMD_INIT: Allocated kernel persona with ID: 200, Type: 6, UID: 501
+UMD_INIT: Failed to retrieve info for kernel persona 100: No such process
+UMD_INIT: PersonaID:100 not loaded, loading..
+UMD_INIT: Allocated kernel persona with ID: 100, Type: 4, UID: 501
+UMD_INIT: Failed to retrieve info for kernel persona 1000: No such process
+UMD_INIT: PersonaID:1000 not loaded, loading..
+UMD_INIT: Allocated kernel persona with ID: 1000, Type: 5, UID: 501
+UMD_INIT: setup kernel personas
+UMD_INIT: Failed to notify_register_check com.apple.mobile.usermanagerd.personageneration_changed: 8
+UMD_INIT: Failed to notify generation changed: Failed to register for darwin notification token
+UMD_INIT: DONE EARLYBOOT SETUP
+****** DONE EARLYBOOT SETUP ****
+****** DONE UMD_INIT ****
+com.apple.xpc.launchd|1969-12-31 16:00:41.591754 (dirs_cleaner) <Notice>: Doing boot task
+exec dirs_cleaner
+dc_reset: /tmp: Invalid argument
+dc_reset: /var/run: Invalid argument
+exec xpcroleaccountd
+exec init_featureflags
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+[System Event] [804347190] [INFO] [Subsystem: launchd] [Event: mount-phase-1] Doing boot task
+[System Event] [804353875] [INFO] [Subsystem: launchd] [Event: data-protection] Doing boot task
+exec auearlyboot
+auearlyboot: -[FudEarlyBoot doFUDEarlyBoot:](): Starting Early Boot
+auearlyboot: -[AppleFirmwareUpdateController getEarlyBootListInternal:]: Pending critical earlyBoot entries (
+)
+auearlyboot: No Early Boot Accessories
+auearlyboot: -[FudEarlyBoot calculateTimeTakenForEarlyBootEntries] Time Taken to wait for critical earlyBoot entries: 0.000000 sec
+auearlyboot: -[FudEarlyBoot doFUDEarlyBoot:](): End Early Boot
+auearlyboot: Exitng Early Boot
+[System Event] [805345027] [INFO] [Subsystem: launchd] [Event: finish-obliteration] Doing boot task
+[System Event] [805352448] [INFO] [Subsystem: launchd] [Event: detect-installed-roots] Doing boot task
+[System Event] [805362155] [INFO] [Subsystem: launchd] [Event: commit-boot-mode] Doing boot task
+exec tzinit
+[System Event] [805623375] [INFO] [Subsystem: launchd] [Event: restore-datapartition] Doing boot task
+[System Event] [805630193] [INFO] [Subsystem: launchd] [Event: restore-datapartition] optional boot task not present
+exec FinishRestoreFromBackup
+[System Event] [805813924] [INFO] [Subsystem: launchd] [Event: mount-phase-2] Doing boot task
+[System Event] [805820748] [INFO] [Subsystem: launchd] [Event: init-with-data-volume] Doing boot task
+[System Event] [805827498] [INFO] [Subsystem: launchd] [Event: MSUEarlyBootTask] Doing boot task
+exec finish_demo_restore
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+[System Event] [806321331] [INFO] [Subsystem: launchd] [Event: fips] Doing boot task
+[System Event] [806327887] [INFO] [Subsystem: launchd] [Event: keybag] Doing boot task
+[System Event] [806334365] [INFO] [Subsystem: launchd] [Event: usermanagerd] Doing boot task
+exec sysstatuscheck
+[System Event] [806534368] [INFO] [Subsystem: launchd] [Event: dirs_cleaner] Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:41.603153 <Notice>: launchd logging initialized. name: com.apple.xpc.launchd pid: 1
+com.apple.xpc.launchd|1969-12-31 16:00:41.603161 (xpcroleaccountd) <Notice>: Doing boot task
+exec prng_seedctl
+kern.prng.user_reseed_count: (-1) (2) No such file or directory
+failed to load virtual random: (-147) (-536870212)
+[System Event] [806766879] [INFO] [Subsystem: launchd] [Event: xpcroleaccountd] Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:41.619607 (init_featureflags) <Notice>: Doing boot task
+[System Event] [806781604] [INFO] [Subsystem: launchd] [Event: init_featureflags] Doing boot task
+exec launchd_cache_loader
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+0 Found valid port: 2819 Valid: 1
+1 Found valid port: 0 Valid: 0
+2 Found valid port: 0 Valid: 0
+Using default cache paths
+Code: /System/Library/xpc/launchd.plist Sig: /System/Library/xpc/launchd.plist.sig
+cdhash: {length = 20, bytes = 0x17f4f2e748701d9e2d79ec16fdfd96a76e528bc2} is trusted
+Attached signature to file, checking ...
+Trying to send bytes to launchd: 2819 16384
+Sending validated cache to launchd
+CODE SIGNING: cs_invalid_page(0x102a00000): p=22[launchd_cache_lo] final status 0x22000000, allowing (remove VALID) page
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+Cache sent to launchd successfully
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+com.apple.xpc.launchd|1969-12-31 16:00:41.892407 (auearlyboot) <Notice>: Doing boot task
+[System Event] [812370729] [INFO] [Subsystem: launchd] [Event: auearlyboot] Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:41.944701 (tzinit) <Notice>: Doing boot task
+[System Event] [812382993] [INFO] [Subsystem: launchd] [Event: tzinit] Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:41.959112 (finish-restore) <Notice>: Doing boot task
+[System Event] [812395818] [INFO] [Subsystem: launchd] [Event: finish-restore] Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:41.969182 (finish-demo-restore) <Notice>: Doing boot task
+[System Event] [812409323] [INFO] [Subsystem: launchd] [Event: finish-demo-restore] Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:41.995523 (sysstatuscheck) <Notice>: Doing boot task
+[System Event] [812423480] [INFO] [Subsystem: launchd] [Event: sysstatuscheck] Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:42.006626 (prng_seedctl) <Notice>: Doing boot task
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+[System Event] [813964692] [INFO] [Subsystem: launchd] [Event: prng_seedctl] Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:42.018804 (launchd_cache_loader) <Notice>: Doing boot task
+[System Event] [814565031] [INFO] [Subsystem: launchd] [Event: launchd_cache_loader] Doing boot task
+exec xpcproxy
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+com.apple.xpc.launchd|1969-12-31 16:00:42.393523 <Notice>: launchd UUID: 5C15DB07-B3BC-3DF3-B62F-3E498B993B8E
+com.apple.xpc.launchd|1969-12-31 16:00:42.393534 (boot) <Notice>: Early boot complete. Continuing system boot.
+[System Event] [816934269] [INFO] [Subsystem: launchd] [Event: boot] Early boot complete. Continuing system boot.
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+exec xpcproxy
+exec xpcproxy
+exec SpringBoard
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec notifyd
+exec mediaserverd
+exec configd
+exec remoted
+exec wifid
+exec mobiletimerd
+exec nfcd
+exec fseventsd
+exec fairplayd.H2
+exec bluetoothd
+exec mtmergeprops
+exec AppleCredentialManagerDaemon
+exec sleepd
+exec imagent
+exec backboardd
+exec timed
+exec sharingd
+exec thermalmonitord
+exec identityservicesd
+exec lockdownd
+exec DumpPanic
+exec amfid
+exec containermanagerd
+exec rapportd
+exec distnoted
+exec keybagd
+exec driverkitd
+exec watchdogd
+exec locationd
+exec ptpd
+exec usermanagerd
+exec UserEventAgent
+exec logd
+exec IOMFB_FDR_Loader
+SWEET Sandbox: logd privilege 1002 denied
+KextLog: kernelmanagerd is not active
+KextLog: Loading FileSet KC(s)
+deferred rematching count 0
+SWEET WDT: watchdogd sel 0 in 0/0 out 1/0 -> ok
+exec xpcproxy
+exec cfprefsd
+KextLog: kernelmanagerd is active
+exec xpcproxy
+exec powerd
+exec runningboardd
+exec xpcproxy
+exec chronod
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec com.apple.datamigrator
+SWEET Sandbox: distnoted op 28
+exec xpcproxy
+exec biomed
+SWEET Sandbox: containermanager op 16
+SWEET Sandbox: containermanager op 15
+exec dasd
+|backboardd| objc[57]: Class _GCHapticEvent is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182e20) and /System/Library/HIDPlugins/ServicePlugins/DualShock4HIDServicePlugin.|backboardd| ck4HIDServicePlugin (0x1011a6bc0). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCHapticMotor is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182e70) and /System/Library/HIDPlugins/ServicePlugins/DualShock4HIDServicePlugin.p|backboardd| k4HIDServicePlugin (0x1011a6c10). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCGamepadHIDServicePlugin is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182ec0) and /System/Library/HIDPlugins/ServicePlugins/DualShock4HIDSer|backboardd| gin/DualShock4HIDServicePlugin (0x1011a6cb0). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCGamepadHIDServicePlugin is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182ec0) and /System/Library/HIDPlugins/ServicePlugins/GenericGamepadHI|backboardd| .plugin/GenericGamepadHIDServicePlugin (0x1011caa88). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCHapticMotor is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182e70) and /System/Library/HIDPlugins/ServicePlugins/GenericGamepadHIDServicePlug|backboardd| ricGamepadHIDServicePlugin (0x1011caad8). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class _GCHapticEvent is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182e20) and /System/Library/HIDPlugins/ServicePlugins/GenericGamepadHIDServicePlu|backboardd| ericGamepadHIDServicePlugin (0x1011cab78). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCGamepadHIDServicePlugin is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182ec0) and /System/Library/HIDPlugins/ServicePlugins/JoyConHIDService|backboardd| JoyConHIDServicePlugin (0x10122aba0). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCHapticMotor is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182e70) and /System/Library/HIDPlugins/ServicePlugins/JoyConHIDServicePlugin.plugi|backboardd| vicePlugin (0x10122abf0). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class _GCHapticEvent is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182e20) and /System/Library/HIDPlugins/ServicePlugins/JoyConHIDServicePlugin.plug|backboardd| rvicePlugin (0x10122ac40). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class _GCHapticEvent is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182e20) and /System/Library/HIDPlugins/ServicePlugins/LunaHIDServicePlugin.plugin|backboardd| ePlugin (0x1011e6628). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCHapticMotor is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182e70) and /System/Library/HIDPlugins/ServicePlugins/LunaHIDServicePlugin.plugin/|backboardd| Plugin (0x1011e6678). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCGamepadHIDServicePlugin is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182ec0) and /System/Library/HIDPlugins/ServicePlugins/LunaHIDServicePl|backboardd| naHIDServicePlugin (0x1011e6718). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class _GCHapticEvent is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182e20) and /System/Library/HIDPlugins/ServicePlugins/XboxOneHIDServicePlugin.plu|backboardd| ServicePlugin (0x10124a780). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCHapticMotor is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182e70) and /System/Library/HIDPlugins/ServicePlugins/XboxOneHIDServicePlugin.plug|backboardd| ervicePlugin (0x10124a7d0). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCGamepadHIDServicePlugin is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x101182ec0) and /System/Library/HIDPlugins/ServicePlugins/XboxOneHIDServic|backboardd| /XboxOneHIDServicePlugin (0x10124a870). One of the two will be used. Which one is undefined.
+SWEET HID: SweetHIDTouch open by IOHIDEventServiceUserClient -> 1
+SWEET HID: SweetHIDButtons open by IOHIDEventServiceUserClient -> 1
+SWEET FB: backboardd sel 57 in 0/0 out 1/0 -> 0x0
+SWEET FB: backboardd sel 15 in 2/0 out 1/0 -> 0x0
+SWEET FB: backboardd sel 22 in 1/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 8 in 0/0 out 2/0 -> 0x0
+SWEET FB: backboardd sel 28 in 0/0 out 1/0 -> 0x0
+SWEET FB: backboardd sel 29 in 0/0 out 0/8 -> 0x0
+SWEET FB: backboardd sel 33 in 1/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 79 in 2/0 out 0/1580 -> 0x0
+SWEET FB: backboardd sel 74 in 1/0 out 1/64 -> 0x0
+exec contextstored
+exec xpcproxy
+exec mobileassetd
+exec lsd
+exec apfs_iosd
+exec passd
+exec PowerUIAgent
+SWEET Sandbox: cfprefsd op 12
+exec xpcproxy
+exec xpcproxy
+exec MobileGestaltHelper
+exec aggregated
+exec xpcproxy
+exec analyticsd
+exec audioclocksyncd
+SWEET MARBLE TOUCH: map gcc=0xfffffe44081fc000 gpio=0xfffffe44083f4000 se=0xfffffe44086f4000
+SWEET MARBLE TOUCH: GCC read in 2s
+exec xpcproxy
+exec fairplayd.H2
+exec xpcproxy
+exec bluetoothd
+exec ACCHWComponentAuthService
+exec xpcproxy
+exec xpcproxy
+exec nehelper
+exec xpcproxy
+exec nsurlsessiond
+exec awdd
+SWEET MARBLE TOUCH: gcc vote=0x400283c0 core_halt=0x4220 se4_halt=0x80004220
+SWEET MARBLE TOUCH: se4 rcg cmd=0x80000000 cfg=0x100000 m=0 n=0 d=0 dfs=0x21
+SWEET MARBLE TOUCH: se4 RCG is DFS-owned; not rewriting
+SWEET MARBLE TOUCH: voting QUP0 clocks
+exec xpcproxy
+exec securityd
+exec xpcproxy
+exec nanoregistryd
+exec WirelessRadioManagerd
+exec misd
+exec xpcproxy
+exec apsd
+exec xpcproxy
+exec donotdisturbd
+exec xpcproxy
+exec WiFiCloudAssetsXPCService
+exec xpcproxy
+exec accountsd
+ifnet_attach: Waiting for all kernel threads created for interface utun0 to get scheduled at least once.
+ifnet_attach: All kernel threads created for interface utun0 have been scheduled at least once. Proceeding.
+_dlil_attach_flowswitch_nexus: not attaching flowswitch to utun0
+SWEET Sandbox: rapportd privilege 12000 denied
+SWEET MARBLE TOUCH: gcc vote=0x4002c3c0 (mask 0x43c0)
+SWEET MARBLE TOUCH: halt 0x33000 clear value=0x4220
+SWEET MARBLE TOUCH: halt 0x3300c clear value=0x4220
+SWEET MARBLE TOUCH: halt 0x27004 clear value=0
+SWEET MARBLE TOUCH: halt 0x27008 TIMEOUT value=0x80000002
+SWEET MARBLE TOUCH: halt 0x274dc clear value=0x4220
+SWEET MARBLE TOUCH: SE after-clock read in 2s
+exec xpcproxy
+exec xpcproxy
+exec carkitd
+exec coreduetd
+exec xpcproxy
+exec geod
+exec xpcproxy
+exec mobileactivationd
+exec xpcproxy
+exec findmydeviced
+SWEET MARBLE TOUCH: SE after-clock fw=0x102 protocol=1 revision=2
+SWEET MARBLE TOUCH: SE after-clock status=0 if_dis=0x1 hwtx=0x20102864 hwrx=0x20104800
+SWEET MARBLE TOUCH: SE after-clock tx_count=0 rx_count=0 ios=0 clk_sel=0 m_clk_cfg=0x11
+SWEET MARBLE TOUCH: SE after-clock irq=0
+SWEET MARBLE TOUCH: rails in 1s
+exec xpcproxy
+exec liveactivitiesd
+exec xpcproxy
+exec xpcproxy
+exec corespeechd
+exec dmd
+SWEET RPMH: rsc=0x17a20000 tcs=0x17a20d00 DRV=2 id=0x20700 solver=0x4010100 config=0x800c8104 TCS=8 ncpt=16
+SWEET RPMH: ACTIVE TCS0 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: ACTIVE TCS1 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: TCS0 ACTIVE 1800 mV mode=7 enable=1 irq-enable=0x1
+SWEET RPMH: TCS0 done=1 irq=0 idle=0x1 control=0x1010000 cmd-status=0x10101/0x10101/0x10101
+SWEET RPMH: L11C ACTIVE vote complete (rail voltage requires hardware verification)
+SWEET MARBLE TOUCH: ldoc2 err=0
+SWEET RPMH: rsc=0x17a20000 tcs=0x17a20d00 DRV=2 id=0x20700 solver=0x4010100 config=0x800c8104 TCS=8 ncpt=16
+SWEET RPMH: ACTIVE TCS0 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: ACTIVE TCS1 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: TCS0 ACTIVE 3224 mV mode=7 enable=1 irq-enable=0x1
+SWEET RPMH: TCS0 done=1 irq=0 idle=0x1 control=0x1010000 cmd-status=0x10101/0x10101/0x10101
+SWEET RPMH: L11C ACTIVE vote complete (rail voltage requires hardware verification)
+SWEET MARBLE TOUCH: ldoc9 err=0
+SWEET MARBLE TOUCH: IC reset low in 1s
+exec xpcproxy
+exec mDNSResponder
+SWEET MARBLE TOUCH: IC reset done gpio20=0x3 gpio21=0x1
+SWEET MARBLE TOUCH: se4 fw=0x102 proto=1 fifodis=1 depth=16 width=32
+SWEET MARBLE TOUCH: SE4 not usable for SPI
+SWEET MARBLE TOUCH: geni spi unavailable (mux=1)
+SWEET MARBLE TOUCH: pre-confirm: 21 86 e7 e4 6f a1 64 58
+SWEET MARBLE TOUCH: post-confirm: aa aa aa aa aa aa aa aa MATCH
+SWEET MARBLE TOUCH: ver first=42
+SWEET MARBLE TOUCH: ver 0000: 42 45 52 4c 49 4e 02 00 04 00 39 39 31 36 52 00 00 00 00 80 02 94 00 ff 00 00 02 05 71 45 32 43  |BERLIN....9916R.............qE2C|
+SWEET MARBLE TOUCH: ver pid=BERLIN patch=9916R sum=0x502 want=0x502 ok
+SWEET MARBLE TOUCH: icinfo first=bf len=191 raw=bf 00 01 00
+SWEET MARBLE TOUCH: icinfo len=191 off=47 touch_data_addr=0x10308
+SWEET MARBLE TOUCH: polling IRQ gpio21
+exec tccd
+SWEET Sandbox: tccd op 22
+SWEET Sandbox: tccd op 1
+SWEET Sandbox: tccd op 5
+exec safetyalertsd
+exec peakpowermanagerd
+exec xpcproxy
+exec fmfd
+SWEET NET: configd lo0 add address 127.0.0.1
+SWEET NET: configd route add 127.0.0.0 gw 127.0.0.1 ifindex 0 flags 0x901
+exec xpcproxy
+exec healthd
+exec xpcproxy
+exec coreidvd
+exec fairplayd.H2
+SWEET NET: configd route add 224.0.0.0 gw 0.0.0.0 ifindex 0 flags 0x901
+exec xpcproxy
+exec symptomsd
+exec xpcproxy
+exec bluetoothd
+exec xpcproxy
+exec fmflocatord
+exec bluetoothuserd
+exec cloudpaird
+exec xpcproxy
+exec CAReportingService
+exec xpcproxy
+exec syncdefaultsd
+exec xpcproxy
+exec contactsd
+exec xpcproxy
+exec com.apple.siri.embeddedspeech
+exec xpcproxy
+exec mobilerepaird
+SWEET HID: touch 0 down at 709,2167
+SWEET HID: touch 0 up at 648,2189
+exec xpcproxy
+exec profiled
+SWEET HID: touch 0 down at 800,2138
+SWEET HID: touch 0 up at 707,2187
+exec xpcproxy
+exec triald
+SWEET HID: touch 0 down at 806,1802
+SWEET HID: touch 1 down at 555,1608
+SWEET HID: touch 2 down at 198,1802
+SWEET HID: touch 0 up at 806,1802
+SWEET HID: touch 1 up at 555,1608
+SWEET HID: touch 2 up at 198,1802
+exec wcd
+SWEET HID: touch 0 down at 827,1691
+SWEET HID: touch 1 down at 581,1471
+SWEET HID: touch 2 down at 191,1606
+SWEET HID: touch 1 up at 581,1471
+SWEET HID: touch 2 up at 191,1606
+SWEET HID: touch 0 up at 827,1691
+exec xpcproxy
+exec cloudd
+SWEET HID: touch 0 down at 761,1610
+SWEET HID: touch 1 down at 502,1351
+SWEET HID: touch 2 down at 223,1530
+SWEET HID: touch 0 up at 761,1610
+SWEET HID: touch 1 up at 502,1351
+SWEET HID: touch 2 up at 223,1530
+SWEET HID: touch 0 down at 772,1453
+SWEET HID: touch 1 down at 507,1236
+SWEET HID: touch 2 down at 260,1423
+SWEET HID: touch 1 up at 507,1236
+SWEET HID: touch 2 up at 260,1423
+SWEET HID: touch 0 up at 772,1453
+SWEET HID: touch 0 down at 321,1354
+SWEET HID: touch 1 down at 898,1444
+SWEET HID: touch 2 down at 613,1193
+SWEET HID: touch 2 up at 613,1193
+exec xpcproxy
+SWEET HID: touch 0 up at 315,1365
+SWEET HID: touch 1 up at 898,1444
+exec appleaccountd
+exec xpcproxy
+exec akd
+exec xpcproxy
+exec amsaccountsd
+exec askpermissiond
+exec xpcproxy
+exec followupd
+exec xpcproxy
+exec suggestd
+exec xpcproxy
+exec gamed
+exec xpcproxy
+exec nanotimekitcompaniond
+exec kbd
+exec xpcproxy
+exec amsengagementd
+exec xpcproxy
+exec symptomsd-diag
+exec routined
+exec remindd
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec adprivacyd
+exec FamilyControlsAgent
+SWEET HID: touch 0 down at 37,59 edge
+exec IMDPersistenceAgent
+exec CallHistorySyncHelper
+exec assistantd
+SWEET HID: touch 0 up at 37,59 edge
+exec atc
+exec xpcproxy
+exec misagent
+SWEET HID: touch 0 down at 1035,1706 edge
+SWEET HID: touch 0 up at 1035,1706 edge
+exec seld
+exec nanoprefsyncd
+exec xpcproxy
+exec homed
+exec xpcproxy
+exec transparencyd
+exec xpcproxy
+exec sociallayerd
+exec xpcproxy
+exec fitcored
+exec xpcproxy
+exec SafariBookmarksSyncAgent
+exec xpcproxy
+exec familycircled
+exec accessoryupdaterd
+exec xpcproxy
+exec siriknowledged
+exec xpcproxy
+exec mapspushd
+SWEET HID: touch 0 down at 1015,1723
+exec xpcproxy
+exec seserviced
+exec xpcproxy
+exec CloudKeychainProxy
+exec ManagedSettingsAgent
+exec navd
+exec xpcproxy
+exec xpcproxy
+exec coreauthd
+exec xpcproxy
+exec fairplayd.H2
+SWEET HID: touch 0 up at 921,1753
+exec xpcproxy
+SWEET USB: ue0 rx 205 tx 172 frames
+exec bluetoothd
+SWEET HID: touch 0 down at 23,28 edge
+SWEET HID: touch 0 up at 23,28 edge
+SWEET HID: touch 0 down at 75,167
+SWEET HID: touch 0 up at 75,167
+SWEET HID: touch 0 down at 608,29 edge
+SWEET HID: touch 0 up at 608,29 edge
+exec softwareupdated
+SWEET HID: touch 0 down at 587,4 edge
+SWEET HID: touch 1 down at 709,2020
+SWEET HID: touch 1 up at 707,2026
+SWEET HID: touch 1 down at 720,2000
+exec xpcproxy
+exec pfd
+exec xpcproxy
+exec ContextService
+exec xpcproxy
+exec duetexpertd
+SWEET HID: touch 0 up at 951,76 edge
+SWEET HID: touch 1 up at 722,1886
+exec xpcproxy
+exec ScreenTimeAgent
+exec xpcproxy
+SWEET HID: touch 1 down at 989,1007
+exec adid
+SWEET HID: touch 1 up at 967,1036
+SWEET HID: touch 1 down at 969,1138
+SWEET HID: touch 1 up at 1079,1143
+exec xpcproxy
+exec announced
+exec xpcproxy
+exec com.apple.siri.embeddedspeech
+exec mediaremoted
+exec peopled
+exec xpcproxy
+exec fairplayd.H2
+exec xpcproxy
+exec xpcproxy
+exec siriactionsd
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec ind
+exec remotepairingdeviced
+exec installcoordinationd
+exec calaccessd
+SWEET HID: touch 0 down at 339,2312
+exec bluetoothd
+exec CircleJoinRequested
+SWEET HID: touch 0 up at 115,2151
+SWEET USB: bus reset
+SWEET USB: connected, speed 0
+SWEET USB: setup 00 05 0001 0000 len 0
+SWEET USB: address 1
+SWEET USB: setup 80 06 0100 0000 len 18
+SWEET USB: setup 80 06 0302 0409 len 2
+SWEET USB: setup 80 06 0302 0409 len 50
+SWEET USB: setup 80 06 0301 0409 len 2
+SWEET USB: setup 80 06 0301 0409 len 20
+SWEET USB: setup 80 06 0303 0409 len 2
+SWEET USB: setup 80 06 0303 0409 len 10
+SWEET USB: setup 80 06 0200 0000 len 9
+SWEET USB: setup 80 06 0200 0000 len 80
+SWEET USB: setup 00 09 0001 0000 len 0
+SWEET USB: configured (1)
+SWEET FB: display on
+SWEET FB: backboardd sel 12 in 1/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 79 in 2/0 out 0/40 -> 0x0
+SWEET FB: backboardd sel 6 in 3/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 27 in 0/0 out 0/3084 -> 0x0
+SWEET FB: backboardd sel 17 in 0/3084 out 0/0 -> 0x0
+SWEET FB: backboardd sel 84 in 0/4 out 0/0 -> 0x0
+SWEET FB: backboardd sel 50 in 2/0 out 0/0 -> 0x0
+SWEET SURF: backboardd sel 13
+SWEET USB: setup 01 0b 0000 0001 len 0
+SWEET USB: setup 01 0b 0001 0001 len 0
+SWEET USB: setup 21 43 0000 0000 len 0
+SWEET USB: setup 80 06 0304 0409 len 2
+SWEET USB: setup 80 06 0304 0409 len 26
+SWEET USB: setup 80 06 0300 0000 len 255
+SWEET HID: touch 0 down at 122,2341
+SWEET USB: setup 21 43 000c 0000 len 0
+SWEET FB: backboardd sel 68 in 1/8 out 0/0 -> 0x0
+SWEET USB: setup 21 43 000c 0000 len 0
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET SURF: backboardd create id 2 1125x2436 fmt 0x42475241 bpe 4 bpr 4608 planes 0 size 11239424 keys 11 -> 0x0
+SWEET SURF: backboardd sel 9
+SWEET SURF: backboardd sel 27
+SWEET SURF: backboardd sel 5
+SWEET SURF: backboardd trap 2
+SWEET SURF: backboardd trap 3
+SWEET FB: backboardd sel 4 in 0/0 out 1/0 -> 0x0
+SWEET FB: backboardd sel 68 in 1/8 out 0/0 -> 0x0
+SWEET FB: backboardd sel 5 in 0/1132 out 0/0 -> 0x0
+SWEET FB: backboardd sel 3 in 2/0 out 1/0 -> 0x0
+SWEET SURF: backboardd sel 34
+SWEET FB: backboardd sel 55 in 1/72 out 0/0 -> 0x0
+SWEET FB: swap 2 layer 0 surface 2 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 1 down at 706,1823
+SWEET HID: touch 0 up at 367,1771
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 1 up at 946,1348
+SWEET HID: touch 0 down at 203,1834
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 up at 204,1832
+SWEET HID: touch 0 down at 645,1546
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 up at 252,1976
+exec xpcproxy
+SWEET HID: touch 0 down at 233,2194
+SWEET HID: touch 1 down at 845,1797
+SWEET HID: touch 1 up at 839,1868
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 1 down at 855,1933
+SWEET HID: touch 0 up at 366,2265
+SWEET HID: touch 0 down at 372,2219
+SWEET HID: touch 1 up at 857,1935
+SWEET HID: touch 0 up at 373,2219
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 down at 464,2254
+SWEET HID: touch 1 down at 902,2046
+SWEET HID: touch 1 up at 902,2046
+SWEET HID: touch 0 up at 471,2256
+SWEET SURF: backboardd create id 3 1125x2436 fmt 0x42475241 bpe 4 bpr 4608 planes 0 size 11239424 keys 11 -> 0x0
+exec xpcproxy
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 1 down at 506,2330
+SWEET HID: touch 0 down at 956,2119
+SWEET FB: swap 4 layer 0 surface 2 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+SWEET HID: touch 0 up at 956,2119
+SWEET HID: touch 1 up at 506,2330
+SWEET USB: setup 02 01 0000 0082 len 0
+exec com.apple.datamigrator
+SWEET HID: touch 1 down at 554,2352 edge
+SWEET FB: thermalmonitord sel 78 in 2/1788 out 0/0 -> 0x0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec pkd
+SWEET HID: touch 1 up at 612,2322 edge
+SWEET HID: touch 0 down at 1050,2237 edge
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 1 down at 589,2356 edge
+SWEET HID: touch 0 up at 1050,2237 edge
+SWEET HID: touch 1 up at 589,2356 edge
+SWEET HID: touch 0 down at 1073,2237 edge
+SWEET Sandbox: SpringBoard privilege 1007 denied
+SWEET HID: touch 1 down at 697,2331
+SWEET HID: touch 0 up at 1073,2237 edge
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 1 up at 699,2332
+SWEET HID: touch 1 down at 712,2323
+SWEET HID: touch 0 down at 1072,2251 edge
+SWEET HID: touch 0 up at 1072,2251 edge
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 1 up at 712,2323
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 1 down at 735,2322
+SWEET FB: display off
+SWEET HID: touch 1 up at 735,2322
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET Sandbox: symptomsd privilege 10003 denied
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 down at 656,2284
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 1 down at 952,1886
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+SWEET HID: touch 1 up at 1026,1984
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+SWEET SURF: SpringBoard sel 40
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 up at 792,2229
+exec xpcproxy
+exec localizationswitcherd
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec familynotificationd
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: firmware blob at 0x8424e8000 size 0x15a8000
+SWEET ADSP: MDT phnum=27 entry=0x86300000
+SWEET ADSP:   seg  1 paddr=0x86300000 filesz=0x1a68 memsz=0x2000 flags=0x8000005
+SWEET ADSP:   seg  2 paddr=0x86302000 filesz=0x291624 memsz=0x292000 flags=0x8000007
+SWEET ADSP:   seg  3 paddr=0x86594000 filesz=0x64f8 memsz=0x7000 flags=0x8000005
+SWEET ADSP:   seg  4 paddr=0x8659b000 filesz=0x8748 memsz=0x9000 flags=0x8000007
+SWEET ADSP:   seg  5 paddr=0x865a4000 filesz=0x5c000 memsz=0x5c000 flags=0x8000004
+SWEET ADSP:   seg  6 paddr=0x86600000 filesz=0xdc memsz=0x1000 flags=0x8000005
+SWEET ADSP:   seg  7 paddr=0x86601000 filesz=0x131c memsz=0x2000 flags=0x8000006
+SWEET ADSP:   seg  8 paddr=0x86603000 filesz=0x22e868 memsz=0x22f000 flags=0x8000005
+SWEET ADSP:   seg  9 paddr=0x86832000 filesz=0x3a008 memsz=0x4d42c0 flags=0x8000006
+SWEET ADSP:   seg 10 paddr=0x86d062c0 filesz=0x2d0 memsz=0xd40 flags=0x8000006
+SWEET ADSP:   seg 11 paddr=0x86d07000 filesz=0x2748 memsz=0x3000 flags=0x8000004
+SWEET ADSP:   seg 12 paddr=0x86d0a000 filesz=0x203e0 memsz=0x21000 flags=0x8000006
+SWEET ADSP:   seg 13 paddr=0x86d2b000 filesz=0x145d4 memsz=0x15000 flags=0x8000005
+SWEET ADSP:   seg 14 paddr=0x86d40000 filesz=0x4d300 memsz=0x4d300 flags=0x8000004
+SWEET ADSP:   seg 15 paddr=0x86e00000 filesz=0x32e7e4 memsz=0x32f000 flags=0x8000005
+SWEET ADSP:   seg 16 paddr=0x8712f000 filesz=0x1a4ec memsz=0xde000 flags=0x8000006
+SWEET ADSP:   seg 17 paddr=0x8720d000 filesz=0x118 memsz=0x1000 flags=0x8000006
+SWEET ADSP:   seg 18 paddr=0x8720e000 filesz=0x332c4 memsz=0x34000 flags=0x8000004
+SWEET ADSP:   seg 19 paddr=0x87300000 filesz=0xaf4b58 memsz=0xaf5000 flags=0x8000005
+SWEET ADSP:   seg 20 paddr=0x87df5000 filesz=0x7c008 memsz=0xce9000 flags=0x8000006
+SWEET ADSP:   seg 21 paddr=0x88ade000 filesz=0x790 memsz=0x1000 flags=0x8000006
+SWEET ADSP:   seg 22 paddr=0x88adf000 filesz=0x2a694 memsz=0x2b000 flags=0x8000004
+SWEET ADSP:   seg 23 paddr=0x88b0a000 filesz=0x15728 memsz=0x16000 flags=0x8000006
+SWEET ADSP:   seg 24 paddr=0x88b20000 filesz=0x8941c memsz=0x8a000 flags=0x8000005
+SWEET ADSP:   seg 25 paddr=0x88baa000 filesz=0 memsz=0x856000 flags=0x8000004
+SWEET ADSP: image 0x86300000..0x89400000 (49 MiB), region 0x9fd00000+51380224
+SWEET ADSP: metadata 0x394+0x13b8 at 0x84599c000
+SWEET ADSP: scm 2/1 resumed 9 times
+SWEET ADSP: pas_init_image -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: pas_mem_setup -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: loaded adsp2.b01 0x1a68 bytes -> 0x9fd00000
+exec callservicesd
+SWEET SURF: mediaserverd create id 4 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+SWEET SURF: mediaserverd trap 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: loaded adsp2.b02 0x291624 bytes -> 0x9fd02000
+SWEET ADSP: loaded adsp2.b03 0x64f8 bytes -> 0x9ff94000
+SWEET ADSP: loaded adsp2.b04 0x8748 bytes -> 0x9ff9b000
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: loaded adsp2.b05 0x5c000 bytes -> 0x9ffa4000
+SWEET ADSP: loaded adsp2.b06 0xdc bytes -> 0xa0000000
+SWEET ADSP: loaded adsp2.b07 0x131c bytes -> 0xa0001000
+SWEET USB: setup 02 01 0000 0082 len 0
+exec fairplayd.H2
+SWEET ADSP: loaded adsp2.b08 0x22e868 bytes -> 0xa0003000
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: loaded adsp2.b09 0x3a008 bytes -> 0xa0232000
+exec itunescloudd
+SWEET ADSP: loaded adsp2.b10 0x2d0 bytes -> 0xa07062c0
+exec xpcproxy
+exec languageassetd
+SWEET USB: setup 02 01 0000 0082 len 0
+exec deleted
+SWEET ADSP: loaded adsp2.b11 0x2748 bytes -> 0xa0707000
+SWEET ADSP: loaded adsp2.b12 0x203e0 bytes -> 0xa070a000
+SWEET ADSP: loaded adsp2.b13 0x145d4 bytes -> 0xa072b000
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: loaded adsp2.b14 0x4d300 bytes -> 0xa0740000
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: loaded adsp2.b15 0x32e7e4 bytes -> 0xa0800000
+SWEET ADSP: loaded adsp2.b16 0x1a4ec bytes -> 0xa0b2f000
+SWEET ADSP: loaded adsp2.b17 0x118 bytes -> 0xa0c0d000
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: loaded adsp2.b18 0x332c4 bytes -> 0xa0c0e000
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: loaded adsp2.b19 0xaf4b58 bytes -> 0xa0d00000
+exec bluetoothd
+exec appstored
+exec CommCenterMobileHelper
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: loaded adsp2.b20 0x7c008 bytes -> 0xa17f5000
+exec watchlistd
+SWEET ADSP: loaded adsp2.b21 0x790 bytes -> 0xa24de000
+SWEET ADSP: loaded adsp2.b22 0x2a694 bytes -> 0xa24df000
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: loaded adsp2.b23 0x15728 bytes -> 0xa250a000
+SWEET ADSP: loaded adsp2.b24 0x8941c bytes -> 0xa2520000
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: loaded adsp2.b25 0 bytes -> 0xa25aa000
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET ADSP: scm 2/5 resumed 49 times
+SWEET ADSP: pas_auth_and_reset -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: Q6 released, waiting 3s
+exec PosterBoard
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec matd
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec cdpd
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec xpcproxy
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET GLINK: ===== minimal GLINK/GPR client =====
+SWEET AUDIO: build v65 (bypass control: sweets1off)
+SWEET RTC: clock set from sweettime=1793009864
+SWEET BATTERY: SPMI arb=0x70000000 APIDs=768 obs-stride=0x20 hap-rev=0x2
+SWEET BATTERY: ppid 0x8 apid=4 map=0x1000800 owner=4
+SWEET BATTERY: ppid 0x4c1 apid=247 map=0x104c100 owner=4
+SWEET BATTERY: ppid 0x61 apid=51 map=0x1006100 owner=4
+SWEET BATTERY: ppid 0x3f0 apid=465 map=0x103f000 owner=0
+SWEET BATTERY: ppid 0x3f1 apid=466 map=0x103f100 owner=0
+SWEET BATTERY: ppid 0x3f2 apid=400 map=0x103f200 owner=3
+SWEET BATTERY: ppid 0x319 apid=454 map=0x1031900 owner=0
+SWEET BATTERY: ppid 0x71 apid=412 map=0x1007100 owner=0
+SWEET BATTERY: ppid 0x7d apid=414 map=0x1007d00 owner=0
+SWEET BATTERY: ppid 0x9d apid=428 map=0x1009d00 owner=0
+SWEET BATTERY: ppid 0x39d absent from the APID map
+SWEET BATTERY: gpio subtype stride20=0x10 stride80=0 (want 0x11)
+SWEET HAP: cfg=0/0x2 ptn=0x10 boost-vreg=0x1 SWEET KEYS: key=1 down=1 pon=0 gpio6:8d10=0xe0
+SWEET HID: key 0xe9 down (1 clients)
+hboost-follow=0xe0
+SWEET BATTERY: RW slot verified at stride 0x1000
+SWEET HAP: vmax 0xf048<-48 rc=0
+SWEET HAP: wave 0xf049<-01 rc=0
+SWEET HAP: tlra 0x498 rc=0
+SWEET HAP: direct amplitude 0xf126<-ff rc=0
+SWEET HAP: autores off 0xf063<-8a rc=0
+SWEET HAP: boost vreg=0
+SWEET KEYS: key=1 down=0 pon=0 gpio6:8d10=0x1
+SWEET HID: key 0xe9 up (1 clients)
+SWEET HAP: hboost trigger rc=0/0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HAP: boost vreg now=0x80
+SWEET HAP: vreg ready 0xf068<-01 rc=0
+SWEET HAP: fault clear 0xf066<-07 rc=0
+SWEET HAP: enable 0xf046<-80 rc=0
+SWEET HAP: play 0xf04c<-81 rc=0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HAP: fault during play=0x2
+SWEET HAP: stop 0xf04c<-00 rc=0
+SWEET HAP: disable 0xf046<-00 rc=0
+SWEET HAP: fault=0x2 auto_res=0x26/0x5b irt=0x10
+SWEET HAP: final en=0
+SWEET RTC: pmic=63609599 implausible, clock untouched
+SWEET SPMI: rtc sid=0 base=0x6100: 6100=00 6101=05 6102=10 6103=01 6104=07 6105=01 6106=00 6107=00 6108=80 6109=00 610a=00 610b=00 610c=00 610d=00 610e=00 610f=00
+SWEET SPMI: hap sid=3 base=0xf000: f000=00 f001=02 f002=00 f003=05 f004=15 f005=10 f006=01SWEET KEYS: key=1 down=1 pon=0 gpio6:8d10=0
+SWEET HID: key 0xe9 down (1 clients)
+ f007=00 f008=00 f009=26 f00a=5b f00b=00 f00c=02 f00d=00 f00e=00 f00f=00
+SWEET SPMI: hap sid=3 base=0xf100: f100=00 f101=02 f102=00 f103=00 f104=15SWEET USB: setup 02 01 0000 0082 len 0
+ f105=0b f106=00 f107=00 f108=10 f109=01 f10a=00 f10b=00 f10c=00 f10d=00 f10e=00 f10f=00
+SWEET MMIO: apps_smmu @0x15000000: +00=00200406 +04=00000000 +08=00000000 +0c=00000000 +10=0000001c +14=00000000 +18=00000000 +1c=00000000
+SWEET GLINK: smem sbl version 0xc0000 initialized 1
+SWEET GLINK: ptable version 1 entries 19
+SWEET GLINK: part[0] off=0x1ff000 size=0x1000 hosts=65535,65535
+SWEET GLINK: part[1] off=0x1cf000 size=0x30000 hosts=0,2
+SWEET GLINK: part[2] off=0x1af000 size=0x20000 hosts=0,5
+SWEET GLINK: part[3] off=0x17f000 size=0x30000 hosts=0,3
+SWEET GLINK: part[4] off=0x173000 size=0xc000 hosts=2,3
+SWEET GLINK: part[5] off=0x16b000 size=0x8000 hosts=0,8
+SWEET GLINK: part[6] off=0x167000 size=0x4000 hosts=7,11
+SWEET GLINK: part[7] off=0x165000 size=0x2000 hosts=7,5
+SWEET GLINK: part[8] off=0x163000 size=0x2000 hosts=7,2
+SWEET GLINK: part[9] off=0x161000 size=0x2000 hosts=7,1
+SWEET GLINK: part[10] off=0x15f000 size=0x2000 hosts=7,3
+SWEET GLINK: part[11] off=0x15b000 size=0x4000 hosts=1,11
+SWEET GLINK: part[12] off=0xdf000 size=0x7c000 hosts=0,1
+SWEET GLINK: part[13] off=0xbf000 size=0x20000 hosts=1,2
+SWEET GLINK: part[14] off=0xaf000 size=0x10000 hosts=1,3
+SWEET GLINK: part[15] off=0xad000 size=0x2000 hosts=0,14
+SWEET GLINK: part[16] off=0xab000 size=0x2000 hosts=1,14
+SWEET GLINK: part[17] off=0x1000 size=0xaa000 hosts=65534,65534
+SWEET GLINK: partition apps/adsp free_uncached=0x9368
+SWEET GLINK: descriptor 0x1cf030 (32 bytes): 0 0 0 8
+SWEET GLINK: tx 0x1cf060 (16384) rx 0x1d31d8 (16384)
+SWEET GLINK: item 478 size 32
+SWEET GLINK: item 479 size 16384
+SWEET GLINK: item 443 size 344
+SWEET GLINK: item 480 size 16384
+SWEET GLINK: item 606 size 32
+SWEET GLINK: item 613 size 32
+SWEET GLINK: item 611 size 4096
+SWEET GLINK: item 624 size 56
+SWEET GLINK: item 634 size 200
+SWEET GLINK: 9 items scanned
+SWEET GLINK: remote VERSION 1 features 0x7
+SWEET GLINK: version ok
+SWEET GLINK: VERSION_ACK 1 features 0x1
+SWEET GLINK: remote OPEN rcid=1 name=IPCRTR
+SWEET GLINK: remote OPEN rcid=2 name=pcie_drv
+SWEET GLINK: remote OPEN rcid=3 name=adsp_apps
+SWEET GLINK: remote OPEN rcid=4 name=fastrpcglink-apps-dsp
+SWEET GLINK: remote OPEN rcid=5 name=LOOPBACK_CTL_LPASS
+SWEET GLINK: OPEN_ACK lcid=1
+SWEET GLINK: open ack=1 remote_open=1 rcid=3
+SWEET GLINK: OPEN_ACK sent for rcid=3
+SWEET GLINK: 8 intents advertised
+SWEET KEYS: key=1 down=0 pon=0x10 gpio6:8d10=0x1
+SWEET HID: key 0xe9 up (1 clients)
+SWEET GLINK: remote intent id=0 size=128
+SWEET GLINK: remote intent id=1 size=128
+SWEET GLINK: remote intent id=2 size=128
+SWEET GLINK: remote intent id=3 size=128
+SWEET GLINK: remote intent id=4 size=128
+SWEET GLINK: remote intent id=5 size=128
+SWEET GLINK: remote intent id=6 size=128
+SWEET GLINK: remote intent id=7 size=128
+SWEET GLINK: remote intent id=8 size=128
+SWEET GLINK: remote intent id=9 size=128
+SWEET GLINK: remote intent id=10 size=128
+SWEET GLINK: remote intent id=11 size=128
+SWEET GLINK: remote intent id=12 size=128
+SWEET GLINK: remote intent id=13 size=128
+SWEET GLINK: remote intent id=14 size=128
+SWEET GLINK: remote intent id=15 size=128
+SWEET GLINK: remote intent id=16 size=128
+SWEET GLINK: remote intent id=17 size=128
+SWEET GLINK: remote intent id=18 size=128
+SWEET GLINK: remote intent id=19 size=128
+SWEET GLINK: remote intent id=20 size=128
+SWEET GLINK: remote intent id=21 size=128
+SWEET GLINK: remote intent id=22 size=128
+SWEET GLINK: remote intent id=23 size=128
+SWEET GLINK: remote intent id=24 size=128
+SWEET GLINK: remote intent id=25 size=128
+SWEET GLINK: remote intent id=26 size=128
+SWEET GLINK: remote intent id=27 size=128
+SWEET GLINK: remote intent id=28 size=128
+SWEET GLINK: remote intent id=29 size=128
+SWEET GLINK: remote intent id=30 size=128
+SWEET GLINK: remote intent id=31 size=128
+SWEET GLINK: remote intent id=32 size=128
+SWEET GLINK: remote intent id=33 size=128
+SWEET GLINK: remote intent id=34 size=128
+SWEET GLINK: remote intent id=35 size=128
+SWEET GLINK: remote intent id=36 size=128
+SWEET GLINK: remote intent id=37 size=128
+SWEET GLINK: remote intent id=38 size=128
+SWEET GLINK: remote intent id=39 size=128
+SWEET GLINK: remote intent id=40 size=128
+SWEET GLINK: remote intent id=41 size=128
+SWEET GLINK: remote intent id=42 size=128
+SWEET GLINK: remote intent id=43 size=128
+SWEET GLINK: remote intent id=44 size=128
+SWEET GLINK: remote intent id=45 size=128
+SWEET GLINK: remote intent id=46 size=128
+SWEET GLINK: remote intent id=47 size=128
+SWEET GLINK: remote intent id=48 size=128
+SWEET GLINK: remote intent id=49 size=128
+SWEET GLINK: remote intent id=50 size=128
+SWEET GLINK: remote intent id=51 size=128
+SWEET GLINK: remote intent id=52 size=128
+SWEET GLINK: remote intent id=53 size=128
+SWEET GLINK: remote intent id=54 size=128
+SWEET GLINK: remote intent id=55 size=128
+SWEET GLINK: remote intent id=56 size=128
+SWEET GLINK: remote intent id=57 size=128
+SWEET GLINK: remote intent id=58 size=128
+SWEET GLINK: remote intent id=59 size=128
+SWEET GLINK: remote intent id=60 size=128
+SWEET GLINK: remote intent id=61 size=128
+SWEET GLINK: remote intent id=62 size=128
+SWEET GLINK: remote intent id=63 size=128
+SWEET GLINK: remote intent id=64 size=512
+SWEET GLINK: remote intent id=65 size=512
+SWEET GLINK: remote intent id=66 size=512
+SWEET GLINK: remote intent id=67 size=512
+SWEET GLINK: remote intent id=68 size=512
+SWEET GLINK: remote intent id=69 size=512
+SWEET GLINK: remote intent id=70 size=512
+SWEET GLINK: remote intent id=71 size=512
+SWEET GLINK: remote intent id=72 size=512
+SWEET GLINK: remote intent id=73 size=512
+SWEET GLINK: remote intent id=74 size=512
+SWEET GLINK: remote intent id=75 size=512
+SWEET GLINK: remote intent id=76 size=512
+SWEET GLINK: remote intent id=77 size=512
+SWEET GLINK: remote intent id=78 size=512
+SWEET GLINK: remote intent id=79 size=512
+SWEET GLINK: remote intent id=80 size=512
+SWEET GLINK: remote intent id=81 size=512
+SWEET GLINK: remote intent id=82 size=512
+SWEET GLINK: remote intent id=83 size=512
+SWEET GLINK: remote intent id=84 size=512
+SWEET GLINK: remote intent id=85 size=512
+SWEET GLINK: remote intent id=86 size=512
+SWEET GLINK: remote intent id=87 size=512
+SWEET GLINK: remote intent id=88 size=512
+SWEET GLINK: remote intent id=89 size=512
+SWEET GLINK: remote intent id=90 size=512
+SWEET GLINK: remote intent id=91 size=512
+SWEET GLINK: remote intent id=92 size=512
+SWEET GLINK: remote intent id=93 size=512
+SWEET GLINK: remote intent id=94 size=512
+SWEET GLINK: remote intent id=95 size=512
+SWEET GLINK: remote intent id=96 size=1024
+SWEET GLINK: remote intent id=97 size=1024
+SWEET GLINK: remote intent id=98 size=1024
+SWEET GLINK: remote intent id=99 size=1024
+SWEET GLINK: remote intent id=100 size=1024
+SWEET GLINK: remote intent id=101 size=1024
+SWEET GLINK: remote intent id=102 size=1024
+SWEET GLINK: remote intent id=103 size=1024
+SWEET GLINK: remote intent id=104 size=1024
+SWEET GLINK: remote intent id=105 size=1024
+SWEET GLINK: remote intent id=106 size=1024
+SWEET GLINK: remote intent id=107 size=1024
+SWEET GLINK: remote intent id=108 size=1024
+SWEET GLINK: remote intent id=109 size=1024
+SWEET GLINK: remote intent id=110 size=1024
+SWEET GLINK: remote intent id=111 size=1024
+SWEET GLINK: remote intent id=112 size=4096
+SWEET GLINK: remote intent id=113 size=4096
+SWEET GLINK: remote intent id=114 size=4096
+SWEET GLINK: remote intent id=115 size=4096
+SWEET GLINK: PRM vote lpass core (60 bytes)
+SWEET GLINK: TX_DATA iid=112 len=60
+SWEET GLINK: PRM response (32 bytes)
+SWEET GLINK:   +00 60 20 00 00 03 02 00 00 02 00 00 00 07 00 00 00 
+SWEET GLINK:   +10 01 00 00 00 02 10 00 02 32 10 00 08 00 00 00 00 
+SWEET GLINK: resp opcode 0x8001032 status 0
+SWEET GLINK: remote OPEN rcid=6 name=PMIC_RTR_ADSP_APPS
+SWEET GLINK: remote OPEN rcid=7 name=PMIC_LOGS_ADSP_APPS
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET GLINK: APM get_spf_state
+SWEET GLINK: TX_DATA iid=113 len=24
+SWEET GLINK: APM response (28 bytes)
+SWEET GLINK:   +00 60 1c 00 00 03 02 00 00 01 00 00 00 01 00 00 00 
+SWEET GLINK:   +10 02 00 00 00 07 10 00 02 01 00 00 00 
+SWEET GLINK: PRM clk 0x307 @ 19200000 attr=0 root=2
+SWEET GLINK: TX_DATA iid=114 len=76
+SWEET GLINK: clk 0x307 attr=0 root=2 status 0x1
+SWEET GLINK: PRM clk 0x307 @ 19200000 attr=1 root=2
+SWEET GLINK: TX_DATA iid=115 len=76
+SWEET GLINK: clk 0x307 attr=1 root=2 ok
+SWEET GLINK: PRM clk 0x30e @ 22579200 attr=0 root=5
+SWEET GLINK: TX_DATA iid=96 len=76
+SWEET GLINK: clk 0x30e attr=0 root=5 status 0x1
+SWEET GLINK: PRM clk 0x30e @ 22579200 attr=1 root=5
+SWEET GLINK: TX_DATA iid=97 len=76
+SWEET GLINK: clk 0x30e attr=1 root=5 ok
+SWEET GLINK: clocks va=0 rx=0
+SWEET GLINK: APM graph_open/vp-wr src=0x2010 dst=0x1 (800 bytes)
+SWEET GLINK: TX_DATA iid=98 len=800
+SWEET GLINK: graph_open/vp-wr rsp op=0x1001000 status=0 hop=0x2001005 len=32
+SWEET SMMU: id0=0x4c017e71 id1=0x6000004b scr0=0x200406
+SWEET SMMU: smr0 sid=0xe0 mask=0 s2cr=0
+SWEET SMMU: smr1 sid=0x4a0 mask=0 s2cr=0x1
+SWEET SMMU: smr2 sid=0xc0 mask=0 s2cr=0x2
+SWEET SMMU: smr3 sid=0x2800 mask=0x402 s2cr=0x3
+SWEET SMMU: smr4 sid=0 mask=0 s2cr=0x4
+SWEET SMMU: smr5 sid=0x584 mask=0x11 s2cr=0x5
+SWEET SMMU: 6 valid stream entries
+SWEET SMMU: s1 tables (EMPTY) va=0x1ffe8000 l1[0]=0 l2[255]=0 l3[488]=0 buf_pa=0xa2fe8000
+SWEET SMMU: ats1pr 0xa2e00000 -> par=0 | 0x10000000 -> par=0 mair=0xff cba2r=0x1 idr2=0x5111 tcr2=0x60
+SWEET SMMU: s1 cb5 cbar=0x1f000 sctlr=0xc00027 ttbr0=0xa3000000 tcr=0x3560 mair=0xff leaf=0x701 attr=0 off=0 smr=0x80001801 s2cr=0x5
+SWEET PHYS: va=0xfffffe44a5734000 pa=0x8e7014000
+SWEET PHYS: mirror=0x660c2533 MISMATCH
+SWEET GLINK: shm_map pool=3 pa=0xa2fe8000 flag=4 play=1
+SWEET GLINK: shm_flat pa=0x1ffe8000 (region addr, buffer PA differs) flag=4 size=20480
+SWEET GLINK: TX_DATA iid=99 len=44
+SWEET GLINK: shm_map rsp op=0x100100c status=0 hop=0x2001001 len=28
+SWEET GLINK: shm handle=0xb0e145f8 len=28
+SWEET GLINK: shm mapped pa=0xa2fe8000 mode=offset va=0xfffffe44a575c000
+SWEET GLINK: pcm: tone filled before start
+SWEET GLINK: APM vp/wr_mf src=0x2010 dst=0x40bd (88 bytes)
+SWEET GLINK: TX_DATA iid=100 len=88
+SWEET GLINK: vp/wr_mf rsp op=0x1001006 status=0 hop=0x2001005 len=32
+SWEET GLINK: APM vp/tdm_rate src=0x2010 dst=0x428f (72 bytes)
+SWEET GLINK: TX_DATA iid=101 len=72
+SWEET GLINK: vp/tdm_rate rsp op=0x1001006 status=0 hop=0x2001005 len=32
+SWEET GLINK: APM vp/tdm_cfg src=0x2010 dst=0x428f (88 bytes)
+SWEET GLINK: TX_DATA iid=102 len=88
+SWEET GLINK: vp/tdm_cfg rsp op=0x1001006 status=0 hop=0x2001005 len=32
+SWEET GLINK: APM vp/tdm_ep_mf src=0x2010 dst=0x428f (72 bytes)
+SWEET GLINK: TX_DATA iid=103 len=72
+SWEET GLINK: vp/tdm_ep_mf rsp op=0x1001006 status=0 hop=0x2001005 len=32
+SWEET GLINK: APM vp/tdm_frame src=0x2010 dst=0x428f (64 bytes)
+SWEET GLINK: TX_DATA iid=104 len=64
+SWEET GLINK: vp/tdm_frame rsp op=0x1001006 status=0 hop=0x2001005 len=32
+SWEET GLINK: APM vp/tdm_power src=0x2010 dst=0x428f (64 bytes)
+SWEET GLINK: TX_DATA iid=105 len=64
+SWEET GLINK: vp/tdm_power rsp op=0x1001006 status=0 hop=0x2001005 len=32
+SWEET GLINK: APM vp/tdm_clk src=0x2010 dst=0x428f (72 bytes)
+SWEET GLINK: TX_DATA iid=106 len=72
+SWEET GLINK: vp/tdm_clk rsp op=0x1001006 status=0 hop=0x2001005 len=32
+SWEET GLINK: APM vp/aw_cfg src=0x2010 dst=0x42d3 (88 bytes)
+SWEET GLINK: TX_DATA iid=107 len=88
+SWEET GLINK: vp/aw_cfg rsp op=0x1001006 status=0 hop=0x2001005 len=32
+SWEET GLINK: APM graph_prepare src=0x2010 dst=0x1 (64 bytes)
+SWEET GLINK: TX_DATA iid=108 len=64
+SWEET GLINK: graph_prepare rsp op=0x1001001 status=0 hop=0x2001005 len=32
+SWEET GLINK: APM graph_start src=0x2010 dst=0x1 (64 bytes)
+SWEET GLINK: TX_DATA iid=109 len=64
+SWEET GLINK: graph_start rsp op=0x1001002 status=0 hop=0x2001005 len=32
+SWEET GLINK: vendor graph + WR input started
+SWEET SMMU: pre  GFSR=0 FSYNR0=0 FSYNR1=0 FSYNR2=0
+SWEET SMMU: pre  cb0 FSR=0x400 FAR=0x34005043 FSYNR0=0xf0562 farhi=0x18010
+SWEET SMMU: pre  cb1 FSR=0x400 FAR=0x1494a002 FSYNR0=0x15085c farhi=0x84a4
+SWEET SMMU: pre  cb2 FSR=0x400 FAR=0xb4020c4 FSYNR0=0x540144 farhi=0x400
+SWEET SMMU: pre  cb3 FSR=0x400 FAR=0x58790210 FSYNR0=0x450011 farhi=0xc0c5
+SWEET SMMU: pre  cb4 FSR=0x400 FAR=0x20128906 FSYNR0=0x4c0574 farhi=0x12008
+SWEET SMMU: pre  cb5 FSR=0x400 FAR=0x62140450 FSYNR0=0x40d7f farhi=0x4300
+SWEET SMMU: s1 cb5 fsr clear 0x400 -> 0x400
+SWEET SMMU: gfsr cleared -> 0
+SWEET GLINK: data_buffer send
+SWEET GLINK: TX_DATA iid=110 len=68
+SWEET SMMU: post-send probe cb5 reading...
