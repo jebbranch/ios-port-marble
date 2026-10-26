@@ -39,7 +39,7 @@
  	uint32_t version, size;
 --- a/bsd/dev/sweet_usb.c
 +++ b/bsd/dev/sweet_usb.c
-@@ -764,6 +764,54 @@
+@@ -764,6 +764,64 @@
  	}
  }
  
@@ -60,8 +60,14 @@
 +	socket_t so = NULL;
 +	struct sockaddr_in to;
 +	uint64_t pos = sweet_log_position();
++	int announced = 0;
 +
 +	pos = pos > 65536 ? pos - 65536 : 0;
++	/* One-shot breadcrumbs: if the stream never reaches the host, the ring
++	 * still tells us whether this thread ran and whether a datagram ever
++	 * left the phone.  Never print inside the loop - it would feed itself. */
++	printf("SWEET USB: livelog thread started at %llu\n",
++	    (unsigned long long)pos);
 +	bzero(&to, sizeof(to));
 +	to.sin_len = sizeof(to);
 +	to.sin_family = AF_INET;
@@ -86,6 +92,10 @@
 +			size_t sent = 0;
 +			if (sock_send(so, &msg, 0, &sent) != 0) {
 +				break;          /* no route/ARP yet: retry later */
++			}
++			if (!announced) {
++				announced = 1;
++				printf("SWEET USB: livelog first datagram ok\n");
 +			}
 +		}
 +	}

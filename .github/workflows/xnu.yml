@@ -112,16 +112,19 @@ jobs:
 
       # dxb applies patches with a warning-and-continue policy, so a patch
       # that no longer applies still produces a green build with the change
-      # silently missing.  0181 and later are ours; any skip there is a bug.
+      # silently missing.  Every numbered patch in patches/ is ours, so a skip
+      # anywhere is a bug - a hand-edited hunk (0077) is exactly how that
+      # happens.  Failing here costs one CI run; not failing it ships a kernel
+      # that silently lacks the change being tested.
       - name: Verify our patches applied
         run: |
-          skipped=$(grep -oE 'Skipping patch [^ ]*/patches/01[89][0-9]-[^ ]*' /tmp/build.log || true)
+          skipped=$(grep -oE 'Skipping patch [^ ]*/patches/[0-9]{4}-[^ ]*' /tmp/build.log || true)
           if [ -n "$skipped" ]; then
             echo "$skipped"
             echo "::error::a repository patch was skipped"
             exit 1
           fi
-          echo "all 018x patches applied"
+          echo "all patch-series entries applied"
 
       # The job log needs admin rights to download, so publish the actual
       # compiler diagnostics as a release asset instead - that is readable.
