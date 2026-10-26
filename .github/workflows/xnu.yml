@@ -113,12 +113,15 @@ jobs:
       # dxb applies patches with a warning-and-continue policy, so a patch
       # that no longer applies still produces a green build with the change
       # silently missing.  Every numbered patch in patches/ is ours, so a skip
-      # anywhere is a bug - a hand-edited hunk (0077) is exactly how that
-      # happens.  Failing here costs one CI run; not failing it ships a kernel
+      # in xnu/patches is a bug - a hand-edited hunk (0077) is exactly how
+      # that happens.  dxb/patches is upstream backports and is excluded.  Failing here costs one CI run; not failing it ships a kernel
       # that silently lacks the change being tested.
       - name: Verify our patches applied
         run: |
-          skipped=$(grep -oE 'Skipping patch [^ ]*/patches/[0-9]{4}-[^ ]*' /tmp/build.log || true)
+          # Only OUR series lives in xnu/patches.  dxb/patches holds upstream
+          # backports that are expected to report "already upstream, previously
+          # applied" and must not fail the build (0172 does exactly that).
+          skipped=$(grep -oE 'Skipping patch [^ ]*/xnu/patches/[0-9]{4}-[^ ]*' /tmp/build.log || true)
           if [ -n "$skipped" ]; then
             echo "$skipped"
             echo "::error::a repository patch was skipped"
