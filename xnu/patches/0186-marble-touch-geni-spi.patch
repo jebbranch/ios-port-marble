@@ -8,7 +8,7 @@
  void marble_touch_init(void);
  
  #define MARBLE_SE_PA       0x00990000u   /* QUP wrapper 0 SE4, spi@990000 */
-@@ -379,10 +380,353 @@
+@@ -379,9 +380,353 @@
  	mt_wait(100);
  	printf("SWEET MARBLE TOUCH: IC reset done gpio20=%#x gpio21=%#x\n",
  	    mt_rd(gpio, GPIO_IO(20)), mt_rd(gpio, GPIO_IO(21)));
@@ -92,9 +92,9 @@
 +mts_rd(vm_offset_t se, uint32_t off)
 +{
 +	return *(volatile uint32_t *)(se + off);
-+}
-+
-+static void
+ }
+ 
+ static void
 +mts_wr(vm_offset_t se, uint32_t off, uint32_t val)
 +{
 +	*(volatile uint32_t *)(se + off) = val;
@@ -305,8 +305,8 @@
 +		sweet_log_sync();
 +	}
 +	return status;
- }
- 
++}
++
 +/* Read/write through GENI when it came up, else the bit-bang fallback. */
 +static int
 +mt_read(uint32_t addr, uint8_t *buf, unsigned len)
@@ -335,8 +335,8 @@
 +	}
 +	return bb_read(mtgpio, mt_clk, mt_mosi, mt_miso, addr, buf, len);
 +}
- 
- static void
++
++static void
 +mt_write(uint32_t addr, const uint8_t *buf, unsigned len)
 +{
 +	if (mts_ok) {
@@ -362,7 +362,7 @@
  marble_touch_thread(void *arg, wait_result_t result)
  {
  	int enabled = 0;
-@@ -427,24 +771,46 @@
+@@ -426,24 +771,46 @@
  
  	/* Mapping proven in stage 5: CLK=18 MOSI=17 MISO=16 CS=19. */
  	unsigned clk = 18, mosi = 17, miso = 16;
@@ -413,7 +413,7 @@
  	printf("SWEET MARBLE TOUCH: post-confirm:");
  	for (unsigned i = 0; i < sizeof(c); ++i) {
  		printf(" %02x", c[i]);
-@@ -453,7 +819,7 @@
+@@ -452,7 +819,7 @@
  
  	/* struct goodix_berlin_fw_version: 28 bytes at 0x10014 */
  	uint8_t ver[32] = {0};
@@ -422,7 +422,7 @@
  	    ver, sizeof(ver));
  	printf("SWEET MARBLE TOUCH: ver first=%02x\n", vfirst);
  	mt_hex("ver", ver, sizeof(ver));
-@@ -473,7 +839,7 @@
+@@ -472,7 +839,7 @@
  
  	/* GOODIX_BERLIN_IC_INFO_ADDR = 0x10070, u16 length first. */
  	uint8_t lraw[4] = {0};
@@ -431,7 +431,7 @@
  	    lraw, sizeof(lraw));
  	unsigned ilen = lraw[0] | (lraw[1] << 8);
  	printf("SWEET MARBLE TOUCH: icinfo first=%02x len=%u raw=%02x %02x %02x %02x\n",
-@@ -485,7 +851,7 @@
+@@ -484,7 +851,7 @@
  
  	static uint8_t info[1024];
  	memset(info, 0, sizeof(info));
@@ -440,7 +440,7 @@
  
  	/* u16 len + 16-byte version + 10-byte feature + 4 u8 counts */
  	unsigned off = 2 + 16 + 10 + 4;
-@@ -530,7 +896,7 @@
+@@ -529,7 +896,7 @@
  		}
  		uint8_t ev[8 + 10 * 8 + 2];
  		memset(ev, 0, sizeof(ev));
@@ -449,7 +449,7 @@
  		uint8_t status = ev[0];
  		if (dbg) {
  			printf("SWEET MARBLE TOUCH: ev st=%02x %02x tn=%u hdr:",
-@@ -557,7 +923,7 @@
+@@ -556,7 +923,7 @@
  				tn = 10;
  			}
  			if (tn > 2) {
@@ -458,7 +458,7 @@
  				    &ev[26], (tn - 2) * 8);
  			}
  			if (tn > 0) {
-@@ -618,7 +984,7 @@
+@@ -617,7 +984,7 @@
  			printf("SWEET MARBLE TOUCH: request code=%u\n", ev[2]);
  		}
  		uint8_t z[4] = {0};

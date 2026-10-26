@@ -110,6 +110,19 @@ jobs:
           bash build.sh 2>&1 | tee /tmp/build.log
           ccache -s
 
+      # dxb applies patches with a warning-and-continue policy, so a patch
+      # that no longer applies still produces a green build with the change
+      # silently missing.  0181 and later are ours; any skip there is a bug.
+      - name: Verify our patches applied
+        run: |
+          skipped=$(grep -oE 'Skipping patch [^ ]*/patches/01[89][0-9]-[^ ]*' /tmp/build.log || true)
+          if [ -n "$skipped" ]; then
+            echo "$skipped"
+            echo "::error::a repository patch was skipped"
+            exit 1
+          fi
+          echo "all 018x patches applied"
+
       # The job log needs admin rights to download, so publish the actual
       # compiler diagnostics as a release asset instead - that is readable.
       - name: Publish build errors
