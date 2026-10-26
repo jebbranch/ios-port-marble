@@ -66,19 +66,23 @@ ensure_fastboot() {
   return 1
 }
 
+# After the kernel resets itself the phone boots Android or TWRP (both have
+# adbd) - it does NOT come back to the bootloader, so waiting for fastboot is
+# pointless.  Only if the bootloader really shows up do we nudge it along;
+# otherwise just wait for adb, and let the caller handle a real hang.
 wait_for_adb() {
-  local t=0 saw_fastboot=0
-  while [ "$t" -lt 420 ]; do
+  local t=0
+  while [ "$t" -lt 480 ]; do
     if have_adb; then
-      sleep 8
+      sleep 8                      # let adbd settle before dd
       return 0
     fi
     if in_fastboot; then
-      saw_fastboot=1
-    elif [ "$saw_fastboot" = 1 ] && [ "$t" -ge 60 ]; then
-      echo "  device rebooted into the bootloader; rebooting to get adb"
+      echo "  device really is in the bootloader; rebooting to get adb"
       fastboot -s "$SERIAL" reboot >/dev/null 2>&1 || true
-      saw_fastboot=0
+      sleep 30
+      t=$((t + 30))
+      continue
     fi
     sleep 5
     t=$((t + 5))
@@ -147,7 +151,7 @@ for spec in "${RUNS[@]}"; do
   if ! wait_for_adb; then
     echo
     echo "  ------------------------------------------------------------"
-    echo "  no adb after 6 min.  Either the SoC hung (that IS a result)"
+    echo "  no adb after 8 min.  Either the SoC hung (that IS a result)"
     echo "  or the phone is just slow.  Hold Power ~10 s to force a"
     echo "  reboot, let it land in TWRP, then press Enter."
     echo "  ------------------------------------------------------------"
