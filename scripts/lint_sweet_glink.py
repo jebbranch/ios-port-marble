@@ -29,24 +29,51 @@ for name, dline in decl.items():
                 bad.append((i+1, "use of %s before its declaration at line %d" % (name, dline)))
             break
 
-# 3) locals used outside the block they are declared in: cheap check that any
-#    identifier declared inside a "{ ... }" is not referenced after the block
-#    closes. Only applied to the identifiers we added, to keep it simple.
-for local in ('iova_mode','s1empty','mapa','l3t','va'):
-    m = [i+1 for i,l in enumerate(lines) if re.search(r'\b(int|uint64_t|uint64_t \*|unsigned)\b[^;]*\b%s\b[^;]*;' % local, l)]
-    if len(m) != 1: continue      # several locals share the name: skip
-    dline = m[0]
+# 3) boot-arg knob variables used outside the block that declares them.
+#    This is the exact shape of the v63 build failure: `s1_fsrpoll` was parsed
+#    inside g_smmu_probe()'s inner block and then referenced from the data-path
+#    function, which the compiler rejected after a full CI cycle.  Structure
+#    fields, shadowed names and plain locals are ignored on purpose - only
+#    variables that are actually read by PE_parse_boot_argn() are checked.
+KNOB = re.compile(r'PE_parse_boot_argn\(\s*"[^"]+"\s*,\s*&(\w+)')
+TYPE = re.compile(r'^\s*(?:int|unsigned|uint32_t|uint64_t|vm_offset_t|'
+                  r'addr64_t|bool|char)\b')
+# strip string literals for every match below: "s1 cb%d" is not a use of s1
+CODE = [re.sub(r'"[^"]*"', '""', l) for l in lines]
+DECL_ANY = re.compile(r'\b(?:int|unsigned|uint32_t|uint64_t|vm_offset_t|'
+                      r'addr64_t|bool|char)\s+\**\s*(\w+)')
+
+
+def declares(line, name):
+    return any(n == name for n in DECL_ANY.findall(line))
+
+
+for m in KNOB.finditer('\n'.join(lines)):
+    name = m.group(1)
+    uline = '\n'.join(lines)[:m.start()].count('\n')
+    dline = None
+    for i in range(min(uline, len(CODE) - 1), -1, -1):
+        if declares(CODE[i], name):
+            dline = i + 1
+            break
+    if dline is None:
+        continue
+    # a name declared more than once is shadowing or unrelated: skip
+    if sum(1 for l in CODE if declares(l, name)) > 1:
+        continue
     depth = 0
     declared_depth = None
-    for i,l in enumerate(lines):
-        if i+1 == dline:
+    for i, l in enumerate(CODE):
+        if i + 1 == dline:
             declared_depth = depth
         depth += l.count('{') - l.count('}')
-        if i+1 > dline and declared_depth is not None and depth < declared_depth:
-            # block closed at this line; any later use is out of scope
-            for k in range(i+1, len(lines)):
-                if re.search(r'\b%s\b' % local, lines[k]) and not lines[k].lstrip().startswith(('*','/*','//')):
-                    bad.append((k+1, "%s used after its block closed (declared line %d)" % (local, dline)))
+        if i + 1 > dline and declared_depth is not None and depth < declared_depth:
+            for k in range(i + 1, len(CODE)):
+                if (re.search(r'\b%s\b' % name, CODE[k])
+                        and not CODE[k].lstrip().startswith(('*', '/*', '//'))):
+                    bad.append((k + 1,
+                                "knob %s used after its declaring block closed "
+                                "(declared line %d)" % (name, dline)))
                     break
             break
 

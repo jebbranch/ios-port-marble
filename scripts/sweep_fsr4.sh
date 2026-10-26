@@ -36,7 +36,7 @@ cd "$ROOT"
 
 SERIAL="${SERIAL:-2aa26095}"
 BASE="sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1"
-MARKER="build v63"
+MARKER="build v64"
 OUTDIR="$ROOT/images/sweep"
 
 if [ -z "${D22AP_ADT:-}" ] && [ ! -f "$ROOT/research/ipsw-x/d22ap.adt" ]; then
