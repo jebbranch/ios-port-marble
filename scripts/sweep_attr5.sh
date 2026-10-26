@@ -10,7 +10,12 @@
 # translation in run121/run124 (32-bit IOVA 0x1FFE8000 -> tone page), and
 # differ in exactly one knob, so a "no longer hangs" result is attributable.
 #
-#   BASE = sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1
+#   BASE = sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1
+#
+# `sweetpcm=1` is REQUIRED: the entire data-plane probe (DATA_BUFFER,
+# sweetnolpass) is behind that flag.  Without it every run stops at
+# "graph started" and resets cleanly, which looks like success and answers
+# nothing -- runs a1..a5 wasted five boots that way.
 #
 # `sweetnolpass=1` gives us the ~200 ms heartbeat after DATA_BUFFER without
 # touching LPASS; that heartbeat is the pass/fail signal.
@@ -21,7 +26,10 @@ ROOT="$(cd "$HERE/.." && pwd)"
 cd "$ROOT"
 
 SERIAL="${SERIAL:-2aa26095}"
-BASE="sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1"
+# sweetpcm=1 is mandatory: the whole data-plane probe (incl. sweetnolpass)
+# is behind it, and without it the run stops at "graph started" and resets
+# cleanly without ever sending DATA_BUFFER.
+BASE="sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1"
 MARKER="build v61"
 OUTDIR="$ROOT/images/sweep"
 
@@ -36,11 +44,11 @@ fi
 
 # label | extra boot args
 RUNS=(
-  "a1-attr1|sweets1attr=1"
-  "a2-attr2|sweets1attr=2"
-  "a3-attr3|sweets1attr=3"
-  "a4-attr4|sweets1attr=4"
-  "a5-attr1-cbar1|sweets1attr=1 sweets1cbar=1"
+  "b1-attr1|sweets1attr=1"
+  "b2-attr2|sweets1attr=2"
+  "b3-attr3|sweets1attr=3"
+  "b4-attr4|sweets1attr=4"
+  "b5-attr5|sweets1attr=5"
 )
 
 say() { printf '\n=== %s ===\n' "$*"; }
@@ -146,12 +154,27 @@ for spec in "${RUNS[@]}"; do
   fastboot -s "$SERIAL" boot "$OUTDIR/$label.img" || { echo "!! fastboot boot failed" >&2; exit 1; }
   echo "  kernel is running; waiting for it to reset (usually 2-5 min)"
   if ! wait_for_adb; then
-    echo "!! no adb after 7 min.  Pull the log by hand and stop the sweep:" >&2
-    echo "   ./scripts/pull_logs.sh $label" >&2
-    exit 1
+    echo
+    echo "  ------------------------------------------------------------"
+    echo "  no adb after 6 min.  Either the SoC hung (that IS a result:"
+    echo "  this attribute still kills the machine) or the phone is"
+    echo "  just slow.  Hold Power ~10 s to force a reboot, let it land"
+    echo "  in TWRP, then press Enter to continue the sweep."
+    echo "  ------------------------------------------------------------"
+    read -r _ || true
+    for _i in $(seq 1 150); do have_adb && break; sleep 2; done
+    have_adb || { echo "!! still no adb; pull the log by hand: ./scripts/pull_logs.sh $label" >&2; exit 1; }
   fi
   ./scripts/pull_logs.sh "$label" || { echo "!! pull_logs failed for $label" >&2; exit 1; }
   echo "  -> logs/ring-$label.txt"
+  # a quick in-log verdict so the operator sees progress without reading them
+  if grep -q "nolpass alive" "logs/ring-$label.txt" 2>/dev/null; then
+    echo "     VERDICT: survived past DATA_BUFFER (nolpass heartbeat present)"
+  elif grep -q "data_buffer sent" "logs/ring-$label.txt" 2>/dev/null; then
+    echo "     VERDICT: hung right after DATA_BUFFER"
+  else
+    echo "     VERDICT: never reached DATA_BUFFER - check the log"
+  fi
 done
 
 say "done: 5 runs"
