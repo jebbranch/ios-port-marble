@@ -136,7 +136,7 @@ done
 
 if [ "${DRY_RUN:-0}" = 1 ]; then
   say "DRY_RUN=1: images built, not booting"
-  ls -lh "$OUTDIR" | grep -E "e[0-9]-"
+  ls -lh "$OUTDIR" | grep -E "f[0-9]-"
   exit 0
 fi
 
