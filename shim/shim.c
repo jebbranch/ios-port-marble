@@ -579,6 +579,31 @@ extern const uint32_t splash_img[];
  * Two 1152-byte buffers, 144 frames of 32-bit stereo at 96 kHz.
  */
 #define TONE_PA		0xa2e00000UL
+/* Bytes copied in front of the DSP: the kernel declares the same size as the
+ * shared-memory region, so the offsets it streams are all inside this. */
+#define PCM_REGION	0x5000UL
+
+extern const uint8_t pcm_img[];
+extern const uint8_t pcm_img_end[];
+
+/* Copy the embedded raw PCM (48 kHz / 24-bit LE / stereo) into low DRAM,
+ * looping if the clip is shorter than the region.  Falls back to the built-in
+ * sine only if the image carries no PCM at all. */
+static void
+fill_pcm_low(void)
+{
+	const uint8_t *src = pcm_img;
+	uint32_t n = (uint32_t)(pcm_img_end - pcm_img);
+	volatile uint8_t *p = (volatile uint8_t *)TONE_PA;
+
+	if (n == 0) {
+		return;
+	}
+	for (uint32_t i = 0; i < PCM_REGION; i++) {
+		p[i] = src[i % n];
+	}
+	__asm__ volatile("dsb sy" ::: "memory");
+}
 static const int16_t tone48[48] = {
 	0, 1069, 2120, 3135, 4096, 4987, 5793, 6499,
 	7094, 7568, 7913, 8122, 8192, 8122, 7913, 7568,
@@ -610,8 +635,14 @@ void shim_main(uint64_t dtb)
 	stage = "xnu";
 	con_image(splash_img, FB_W, FB_H);
 	con_str("SHIM", "marble XNU loader");
-	fill_tone_low();
-	con_str("TONE", "prefilled at 0xa2e00000");
+	if ((uint32_t)(pcm_img_end - pcm_img) != 0) {
+		fill_pcm_low();
+		con_hex2("PCM", "bytes=", (uint32_t)(pcm_img_end - pcm_img),
+		    " at=", (uint32_t)TONE_PA);
+	} else {
+		fill_tone_low();
+		con_str("TONE", "prefilled at 0xa2e00000");
+	}
 
 	uint64_t mmfr0 = rsr("id_aa64mmfr0_el1");
 	con_hex2("MMFR0", "lo=", (uint32_t)mmfr0, "tg16=", (mmfr0 >> 20) & 0xf);

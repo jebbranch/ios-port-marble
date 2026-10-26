@@ -581,7 +581,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -1631,568 +1938,1732 @@
+@@ -1631,568 +1938,1744 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -2786,9 +2786,21 @@
 +	 * the DSP actually replies.  Fire-and-forget needs a few seconds of
 +	 * audio, not five minutes. */
 +	const int tone_buffers = nw ? 300 : 2000;
++	/*
++	 * The shim fills the whole shared-memory region with raw PCM
++	 * (48 kHz/24-bit/stereo), not just the two 1152-byte buffers the vendor
++	 * ping-pongs.  Streaming across the region plays that clip instead of a
++	 * synthetic tone.  Stay one buffer short of the end so no offset runs
++	 * past what SHM_MAP declared - the DSP validates the range.
++	 */
++	const uint32_t region = (uint32_t)G_SHM_SIZE;
++	const uint32_t blocks = (region > G_PCM_BYTES) ?
++	    ((region - G_PCM_BYTES) / G_PCM_BYTES + 1u) : 1u;
 +
 +	for (int n = 0; n < tone_buffers; n++) {
-+		uint32_t off = (n & 1) ? G_PCM_OFF_B : G_PCM_OFF_A;
++		uint32_t off = nw ?
++		    ((uint32_t)((unsigned)n % blocks) * G_PCM_BYTES) :
++		    ((n & 1) ? G_PCM_OFF_B : G_PCM_OFF_A);
 +
 +		if (g_apm_data_buffer(0x2011u, dst_port, off, G_PCM_BYTES,
 +		    (uint32_t)(n & 1)) != 0 && !nw) {
@@ -2842,7 +2854,7 @@
  	(void)g_apm_set_cfg(src_port, G_CDMA_IID, 0x08001018, &v, 4,
  	    "cdma/frame_size");
  
-@@ -2332,24 +3803,40 @@
+@@ -2332,24 +3815,40 @@
  	uint32_t v;
  	int rc;
  
@@ -2892,7 +2904,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2361,12 +3848,34 @@
+@@ -2361,12 +3860,34 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 3;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2; mf[30] = 3;
@@ -2931,7 +2943,7 @@
  	g_put32(mf + 0, 96000);
  	g_put32(mf + 4, 32u | (3u << 16));
  	g_put32(mf + 8, 1);
-@@ -2425,12 +3934,82 @@
+@@ -2425,12 +3946,82 @@
  g_apm_graph_bringup(void)
  {
  	/* The vendor's AGM clients send from 0x2010/0x2011. */
@@ -3018,7 +3030,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2448,7 +4027,8 @@
+@@ -2448,7 +4039,8 @@
  	 * command; a handle owned by another port may be rejected. */
  	if (g_apm_shm_map(port) == 0) {
  		if (g_apm_graph_open_shm(port, g_graph_vp,
@@ -3028,7 +3040,7 @@
  			g_audio_graph_cfg_vp(port);
  			if (g_apm_graph_start(port, APM_VP_SG_ID) == 0) {
  				g_audio_tone(port, G_VP_SAL_IID);
-@@ -2500,7 +4080,8 @@
+@@ -2500,7 +4092,8 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_open_payload,
@@ -3038,7 +3050,7 @@
  		g_audio_graph_cfg(port);
  		if (g_apm_graph_start(port, APM_GRAPH_SG_ID) == 0) {
  			/* The tone needs a mapped region for the PCM buffers. */
-@@ -2513,7 +4094,8 @@
+@@ -2513,7 +4106,8 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_vendor_payload,
@@ -3048,7 +3060,7 @@
  		g_apm_graph_start(port, APM_VENDOR_SG_ID);
  		return;
  	}
-@@ -2521,6 +4103,150 @@
+@@ -2521,6 +4115,150 @@
  }
  
  
@@ -3199,17 +3211,17 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2533,6 +4259,9 @@
+@@ -2533,6 +4271,9 @@
  		return;
  	}
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v69 (sweetnowait: fire-and-forget tone)\n");
++	printf("SWEET AUDIO: build v70 (real PCM clip + fire-and-forget)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
-@@ -2587,6 +4316,7 @@
+@@ -2587,6 +4328,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);

@@ -41,7 +41,42 @@ print('splash.bgra: %dx%d, %d bytes' % (w, h, out.size))
 PY
 fi
 
-for f in start.S shim.c console.c mmu.c fdt.c loader.c splash.S; do
+# PCM handed to the DSP: raw 48 kHz / 24-bit LE / stereo.  PCM_SRC can point
+# at any audio file (ffmpeg converts it); without one we build a 1 kHz sine.
+# Length is what the kernel declares as the shared-memory region: 0x5000.
+PCM_BYTES="${PCM_BYTES:-20480}"
+PCM_SRC="${PCM_SRC:-}"
+if [ -n "$PCM_SRC" ] && [ ! -f "$PCM_SRC" ]; then
+  echo "error: PCM_SRC not found: $PCM_SRC" >&2
+  exit 1
+fi
+if [ ! -f pcm.raw ] || [ -n "$PCM_SRC" ] || [ pcm.raw -ot splash.png ]; then
+  if [ ! -f pcm.raw ] || [ -n "$PCM_SRC" ]; then
+    tmp="pcm.tmp.s24le"
+    if [ -n "$PCM_SRC" ]; then
+      ffmpeg -y -loglevel error -i "$PCM_SRC" -f s24le -acodec pcm_s24le \
+        -ac 2 -ar 48000 "$tmp"
+    else
+      ffmpeg -y -loglevel error -f lavfi \
+        -i "sine=frequency=1000:sample_rate=48000:duration=30" \
+        -f s24le -acodec pcm_s24le -ac 2 "$tmp"
+    fi
+    python3 - "$tmp" pcm.raw "$PCM_BYTES" <<'PYPCM'
+import sys
+src, out, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
+n -= n % 6                       # whole 24-bit stereo frames (6 bytes)
+d = open(src, 'rb').read()[:n]
+if not d:
+    d = b'\0' * n
+d = (d * ((n // len(d)) + 1))[:n]
+open(out, 'wb').write(d)
+print('pcm.raw: %d bytes (%.2f s at 48k/24/stereo)' % (n, n / 288000.0))
+PYPCM
+    rm -f "$tmp"
+  fi
+fi
+
+for f in start.S shim.c console.c mmu.c fdt.c loader.c splash.S pcm.S; do
   $CC $CFLAGS -DFB_STRIDE=$STRIDE -c "$f" -o "$OUT/${f%.*}.o"
 done
 
@@ -55,7 +90,7 @@ fi
 
 $CC $CFLAGS -fuse-ld=lld -static -T shim.ld -Wl,--build-id=none -Wl,-N \
   "$OUT/start.o" "$OUT/shim.o" "$OUT/console.o" "$OUT/mmu.o" \
-  "$OUT/fdt.o" "$OUT/loader.o" "$OUT/splash.o" -o "$OUT/shim.elf"
+  "$OUT/fdt.o" "$OUT/loader.o" "$OUT/splash.o" "$OUT/pcm.o" -o "$OUT/shim.elf"
 
 llvm-objcopy -O binary "$OUT/shim.elf" "$OUT/Image"
 SIZE_HEX="$(llvm-nm "$OUT/shim.elf" | awk '$3=="_end"{print $1}')"
