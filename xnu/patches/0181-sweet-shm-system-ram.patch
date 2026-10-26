@@ -96,18 +96,18 @@
  g_send_version(void)
  {
  	g_send(CMD_VERSION, (uint16_t)GLINK_VERSION_1, GLINK_FEATURE_REUSE,
-@@ -392,7 +433,27 @@
+@@ -392,13 +433,33 @@
  }
  
  static struct g_riid *
 -g_pick_riid(uint32_t len)
 +g_pick_riid(uint32_t chan, uint32_t len)
-+{
-+	struct g_riid *best = NULL;
-+
-+	for (int i = 0; i < g_nriids; i++) {
-+		struct g_riid *r = &g_riids[i];
-+
+ {
+ 	struct g_riid *best = NULL;
+ 
+ 	for (int i = 0; i < g_nriids; i++) {
+ 		struct g_riid *r = &g_riids[i];
+ 
 +		if (r->in_use || r->size < len || r->chan != chan) {
 +			continue;
 +		}
@@ -122,9 +122,15 @@
 + * channel tag can never stop the GPR/audio path from transmitting. */
 +static struct g_riid *
 +g_pick_riid_any(uint32_t len)
- {
- 	struct g_riid *best = NULL;
- 
++{
++	struct g_riid *best = NULL;
++
++	for (int i = 0; i < g_nriids; i++) {
++		struct g_riid *r = &g_riids[i];
++
+ 		if (r->in_use || r->size < len) {
+ 			continue;
+ 		}
 @@ -409,6 +470,17 @@
  	return best;
  }
@@ -289,12 +295,10 @@
  static void
  g_dump(const char *tag, const uint8_t *p, uint32_t len)
  {
-@@ -1522,6 +1651,63 @@
- 	0x33, 0x43, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00,
- 	0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+@@ -1524,6 +1653,63 @@
  	0x00, 0x00, 0x00, 0x00,
-+};
-+
+ };
+ 
 +/* Vendor device graph 0xb0000002 with a WR_SHARED_MEM_EP (0x07001000,
 + * iid 0x40bd) prepended and wired to SAL input port 2.  The vendor does
 + * this with a second (stream) subgraph and a cross-graph connection; a
@@ -350,9 +354,11 @@
 +	0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0xbd, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x12, 0x40, 0x00, 0x00,
 +	0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
- };
- 
++};
++
  #define APM_CMD_GRAPH_OPEN                  0x01001000u
+ #define APM_CMD_GRAPH_PREPARE               0x01001001u
+ #define APM_CMD_GRAPH_START                 0x01001002u
 @@ -1537,13 +1723,26 @@
  #define G_TDM_MODULE_ID                     0x0700100eu
  #define G_INPUT_MODULE_OFF                  216u
@@ -381,13 +387,13 @@
  /*
   * The DSP can only reach memory within its own reserved region
   * (adsp_region@9fd00000, 49 MiB).  XNU's physical allocator manages only the
-@@ -1553,8 +1752,55 @@
+@@ -1553,7 +1752,54 @@
   */
  #define G_SHM_FIXED_PA                      0xa2d00000u
  
 -/* Send one APM command with the payload inlined in the GPR packet. */
 +/* Send a fully built packet and decode its reply. */
- static int
++static int
 +g_apm_xfer(uint8_t *pkt, uint32_t pkt_size, const char *what)
 +{
 +	g_rsp_ready = 0;
@@ -434,10 +440,9 @@
 +
 +/* Send one APM command with the payload inlined behind the 16-byte payload
 + * descriptor (graph and data commands use this form). */
-+static int
+ static int
  g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
      uint32_t plen, uint32_t opcode, const char *what)
- {
 @@ -1580,30 +1826,46 @@
  	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes)\n", what,
  	    src_port, dst_port, pkt_size);
@@ -552,7 +557,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -1631,32 +1923,659 @@
+@@ -1631,32 +1923,727 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -715,7 +720,11 @@
 +		if (s1) {
 +			int cbn = 5, iova_mode = 0;
 +			int s1_ns = 0, s1_ttbr1 = 0, s1_tcr2 = 0, wide = 0;
++			int s1_attr = 0, s1_cbar = 0;
++			uint32_t s1_tcr = 0, s1_sctlr = 0;
 +			uint64_t s1_tbl = 0, s1_va = 0, s1_pa = 0;
++			uint64_t s1_leaf = 0x701ull;
++			uint32_t s1_mair = 0xffu, cbar_val = 0x10000u;
 +			vm_offset_t cbw, tb1;
 +			uint32_t cbar, sc, re_sctlr, re_ttbr, re_tcr, re_mair;
 +
@@ -737,6 +746,64 @@
 +			    sizeof(s1_va));
 +			(void)PE_parse_boot_argn("sweets1pa", &s1_pa,
 +			    sizeof(s1_pa));
++			/*
++			 * sweets1attr selects the *leaf* memory attributes, i.e.
++			 * how the SMMU presents the buffer to the DSP on the AXI
++			 * side.  The ADSP is not in the AP coherency domain, so an
++			 * Inner-Shareable Normal-WB transaction makes the
++			 * interconnect snoop AP caches for a master that cannot
++			 * participate in coherency; a stall there looks exactly
++			 * like the ~200 ms hang we see.  Sweep this first.
++			 *   0  Attr0 = Normal WB  + SH inner   (current, 0x701)
++			 *   1  Attr1 = Normal NC  + SH inner
++			 *   2  Attr1 = Normal NC  + SH outer
++			 *   3  Attr1 = Normal NC  + non-shareable
++			 *   4  Attr1 = Device nGnRE + non-shareable
++			 *   5  Attr1 = Device nGnRnE + non-shareable
++			 * MAIR0 always keeps Attr0 = 0xff (Normal WB) so the entry
++			 * stays valid for any index we pick.
++			 */
++			(void)PE_parse_boot_argn("sweets1attr", &s1_attr,
++			    sizeof(s1_attr));
++			(void)PE_parse_boot_argn("sweets1cbar", &s1_cbar,
++			    sizeof(s1_cbar));
++			(void)PE_parse_boot_argn("sweets1tcr", &s1_tcr,
++			    sizeof(s1_tcr));
++			(void)PE_parse_boot_argn("sweets1sctlr", &s1_sctlr,
++			    sizeof(s1_sctlr));
++			switch (s1_attr) {
++			case 1:		/* Normal NC, inner shareable */
++				s1_mair = 0xff44u;
++				s1_leaf = 0x705ull;
++				break;
++			case 2:		/* Normal NC, outer shareable */
++				s1_mair = 0xff44u;
++				s1_leaf = 0x505ull;
++				break;
++			case 3:		/* Normal NC, non-shareable */
++				s1_mair = 0xff44u;
++				s1_leaf = 0x305ull;
++				break;
++			case 4:		/* Device nGnRE, non-shareable */
++				s1_mair = 0xff04u;
++				s1_leaf = 0x305ull;
++				break;
++			case 5:		/* Device nGnRnE, non-shareable */
++				s1_mair = 0xff00u;
++				s1_leaf = 0x305ull;
++				break;
++			default:	/* 0 (and anything else) = as before */
++				s1_attr = 0;
++				break;
++			}
++			/* sweets1cbar=1 uses the exact value the vendor arm-smmu
++			 * driver writes for a stage-1 bank:
++			 * TYPE=1 (bits 17:16) | S1_MEMATTR=0xf (bits 15:12) |
++			 * BPSHCFG=3 (bits 9:8) = 0x1f300.  We used to write a
++			 * bare 0x10000, which leaves S1_MEMATTR=0. */
++			if (s1_cbar) {
++				cbar_val = 0x1f300u;
++			}
 +			/* Banks 6..74 exist but CBAR reads 0 for them; they are
 +			 * only usable once CBAR says Type=1.  SmmuBypass.h in the
 +			 * UniXNU touch work shows that write succeeding at the
@@ -844,10 +911,10 @@
 +						 * (0b01) + AF + SH inner
 +						 * + AttrIndx 0 = | 0x701 */
 +						l2[i2] = (g_map_pa &
-+						    ~0x1fffffull) | 0x701ull | (s1_ns ? 0x20ull : 0ull);
++						    ~0x1fffffull) | s1_leaf | (s1_ns ? 0x20ull : 0ull);
 +					} else {
 +						l2[i2] = ((uint64_t)G_IPA_BASE &
-+						    ~0x1fffffull) | 0x701ull | (s1_ns ? 0x20ull : 0ull);
++						    ~0x1fffffull) | s1_leaf | (s1_ns ? 0x20ull : 0ull);
 +					}
 +				}
 +				__asm__ volatile("dsb sy" ::: "memory");
@@ -869,7 +936,7 @@
 +				*(volatile uint32_t *)(v + 0x1800u + 4u * cbn) = 1u;
 +				__asm__ volatile("dsb sy" ::: "memory");
 +				*(volatile uint32_t *)(v + 0x1000u + 4u * cbn) =
-+				    0x10000u;
++				    cbar_val;
 +				__asm__ volatile("dsb sy" ::: "memory");
 +				cbar = *(volatile uint32_t *)
 +				    (v + 0x1000u + 4u * cbn);
@@ -877,7 +944,7 @@
 +				    "%s\n", cbn, cbar,
 +				    *(volatile uint32_t *)(v + 0x1800u +
 +				    4u * cbn),
-+				    cbar == 0x10000u ? "" : " (READBACK BAD)");
++				    cbar == cbar_val ? "" : " (READBACK BAD)");
 +				sweet_log_sync();
 +			}
 +			*(volatile uint32_t *)(cbw + 0x20u) =
@@ -902,13 +969,18 @@
 +			 * would be T0SZ=0 + EAE=1 instead - do not mix.) */
 +			/* T0SZ = 64 - input width: 0x20 for 32 bit, 0x1f for
 +			 * the vendor's 33-bit IOVA space. */
-+			*(volatile uint32_t *)(cbw + 0x30u) =
-+			    (iova_mode && wide) ? 0x351fu : 0x3560u;	/* TCR */
-+			*(volatile uint32_t *)(cbw + 0x38u) = 0xffu;	/* MAIR0 */
++			*(volatile uint32_t *)(cbw + 0x30u) = s1_tcr ?
++			    s1_tcr :
++			    ((iova_mode && wide) ? 0x351fu : 0x3560u);	/* TCR */
++			*(volatile uint32_t *)(cbw + 0x38u) = s1_mair;	/* MAIR0 */
 +			__asm__ volatile("dsb sy" ::: "memory");
 +			/* M | TRE | AFE | S1_ASIDPNE | CFRE | SHCFG=NSH;
-+			 * CFCFG=0 and CFIE=0 on purpose. */
-+			*(volatile uint32_t *)(cbw + 0x00u) = 0x00c01027u;
++			 * CFCFG=0 and CFIE=0 on purpose.
++			 * The vendor arm-smmu driver's stage-1 value for an
++			 * io-incoherent client is 0x00c010e7 (same, plus
++			 * CFCFG=1 = stall); sweets1sctlr overrides. */
++			*(volatile uint32_t *)(cbw + 0x00u) = s1_sctlr ?
++			    s1_sctlr : 0x00c01027u;
 +			__asm__ volatile("dsb sy" ::: "memory");
 +			re_sctlr = *(volatile uint32_t *)(cbw + 0x00u);
 +			re_ttbr = *(volatile uint32_t *)(cbw + 0x20u);
@@ -973,8 +1045,9 @@
 +			}
 +			sc = *(volatile uint32_t *)(v + 0xc00 + 4 * free_slot);
 +			printf("SWEET SMMU: s1 cb%u cbar=%#x sctlr=%#x ttbr0=%#x "
-+			    "tcr=%#x mair=%#x smr=%#x s2cr=%#x\n", cbn, cbar,
-+			    re_sctlr, re_ttbr, re_tcr, re_mair,
++			    "tcr=%#x mair=%#x leaf=%#llx attr=%d smr=%#x s2cr=%#x\n",
++			    cbn, cbar, re_sctlr, re_ttbr, re_tcr, re_mair,
++			    (unsigned long long)s1_leaf, s1_attr,
 +			    *(volatile uint32_t *)(v + 0x800 + 4 * free_slot),
 +			    sc);
 +			sweet_log_sync();
@@ -1222,7 +1295,7 @@
  	sweet_log_sync();
  }
  
-@@ -1687,7 +2606,7 @@
+@@ -1687,7 +2674,7 @@
  	printf("SWEET PHYS: va=%#llx pa=%#llx\n", (uint64_t)va, pa);
  	*(volatile uint32_t *)va = 0x5a5a1234u;
  	__asm__ volatile("dsb sy" ::: "memory");
@@ -1231,7 +1304,7 @@
  	if (!mirror) {
  		printf("SWEET PHYS: mirror map failed\n");
  	} else {
-@@ -1696,52 +2615,110 @@
+@@ -1696,52 +2683,110 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -1367,7 +1440,7 @@
  			return 0;
  		}
  	}
-@@ -1761,7 +2738,7 @@
+@@ -1761,7 +2806,7 @@
  		return 0;
  	}
  	if (!g_shm_va) {
@@ -1376,7 +1449,7 @@
  		if (g_shm_va) {
  			g_shm_pa = G_SHM_FIXED_PA;
  			printf("SWEET GLINK: shm: fixed pa=%#llx size=%#x\n",
-@@ -1904,16 +2881,19 @@
+@@ -1904,16 +2949,19 @@
  /* GRAPH_OPEN with the payload in the mapped region, as the vendor does. */
  static int
  g_apm_graph_open_shm(uint32_t src_port, const uint8_t *payload, uint32_t len,
@@ -1400,7 +1473,7 @@
  
  	memset(pkt, 0, sizeof(pkt));
  	g_put32(pkt + 0, (6u << 4) | (pkt_size << 8));
-@@ -1922,7 +2902,7 @@
+@@ -1922,7 +2970,7 @@
  	g_put32(pkt + 12, 1);
  	g_put32(pkt + 16, 0x400u);
  	g_put32(pkt + 20, APM_CMD_GRAPH_OPEN);
@@ -1409,7 +1482,7 @@
  	g_put32(pkt + 24 + 4, 0);
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
-@@ -2015,6 +2995,45 @@
+@@ -2015,6 +3063,45 @@
  	}
  }
  
@@ -1455,7 +1528,7 @@
  static int
  g_apm_data_buffer(uint32_t src_port, uint32_t dst_port, uint32_t off,
      uint32_t len, uint32_t token)
-@@ -2027,15 +3046,187 @@
+@@ -2027,15 +3114,187 @@
  	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
  	g_put32(pkt + 8, src_port);
  	g_put32(pkt + 12, dst_port);
@@ -1647,7 +1720,7 @@
  	for (unsigned i = 0; i < 100; i += 5) {
  		g_drain(0);
  		if (g_rsp_ready) {
-@@ -2073,72 +3264,94 @@
+@@ -2073,70 +3332,92 @@
  		if (w36 != 0 && dbg++ < 4) {
  			printf("SWEET GLINK: data_buffer: dst=%#x done status=%#x "
  			    "w28=%#x w32=%#x\n", dst_port, w36, w28, w32);
@@ -1770,8 +1843,8 @@
 -				break;
 -			}
 +			return;
- 		}
- 	}
++		}
++	}
 +	/* Only the WR module accepts buffers (vendor trace: every
 +	 * DATA_BUFFER_V2 goes to the WR instance; SAL never answers).  Send
 +	 * exactly one probe there and stop guessing. */
@@ -1784,12 +1857,10 @@
 +		sweet_log_sync();
 +		if (r != 0) {
 +			return;
-+		}
-+	}
+ 		}
+ 	}
  	printf("SWEET GLINK: pcm tone start (dst=%#x)\n", dst_port);
- 
- 	for (int n = 0; n < 2000; n++) {
-@@ -2332,24 +3545,31 @@
+@@ -2332,24 +3613,31 @@
  	uint32_t v;
  	int rc;
  
@@ -1830,7 +1901,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2361,12 +3581,34 @@
+@@ -2361,12 +3649,34 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 3;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2; mf[30] = 3;
@@ -1869,7 +1940,7 @@
  	g_put32(mf + 0, 96000);
  	g_put32(mf + 4, 32u | (3u << 16));
  	g_put32(mf + 8, 1);
-@@ -2428,9 +3670,60 @@
+@@ -2428,9 +3738,60 @@
  	const uint32_t port = 0x2010u;
  	uint8_t tdm_payload[sizeof(g_graph_open_payload)];
  
@@ -1933,7 +2004,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2448,7 +3741,8 @@
+@@ -2448,7 +3809,8 @@
  	 * command; a handle owned by another port may be rejected. */
  	if (g_apm_shm_map(port) == 0) {
  		if (g_apm_graph_open_shm(port, g_graph_vp,
@@ -1943,7 +2014,7 @@
  			g_audio_graph_cfg_vp(port);
  			if (g_apm_graph_start(port, APM_VP_SG_ID) == 0) {
  				g_audio_tone(port, G_VP_SAL_IID);
-@@ -2500,7 +3794,8 @@
+@@ -2500,7 +3862,8 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_open_payload,
@@ -1953,7 +2024,7 @@
  		g_audio_graph_cfg(port);
  		if (g_apm_graph_start(port, APM_GRAPH_SG_ID) == 0) {
  			/* The tone needs a mapped region for the PCM buffers. */
-@@ -2513,7 +3808,8 @@
+@@ -2513,14 +3876,159 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_vendor_payload,
@@ -1963,10 +2034,10 @@
  		g_apm_graph_start(port, APM_VENDOR_SG_ID);
  		return;
  	}
-@@ -2521,6 +3817,150 @@
- }
- 
- 
+ 	printf("SWEET GLINK: graph_open failed on every payload\n");
++}
++
++
 +
 +/* One 24-byte battmgr GET_PROP round trip.  The response echoes the
 + * property id at +12 and carries the value at +16 (from the kprobe
@@ -2028,8 +2099,8 @@
 +	} else {
 +		g_dump(tag, g_batt_rsp, g_batt_rsp_len);
 +	}
-+}
-+
+ }
+ 
 +/*
 + * Last battery sample for SweetBattery.  Returns 0 until the pmic_glink
 + * probe has both a status and a capacity, so iOS keeps using its own
@@ -2049,7 +2120,7 @@
 +	*usb = g_batt_s_usb < 0 ? 0 : (unsigned)g_batt_s_usb;
 +	return 1;
 +}
-+
+ 
 +/*
 + * Optional battery read-out.  sweetbatt=1 opens our side of
 + * PMIC_RTR_ADSP_APPS, answers the ADSP's own OPEN, and asks the battmgr
@@ -2114,17 +2185,17 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2533,6 +3973,9 @@
+@@ -2533,6 +4041,9 @@
  		return;
  	}
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v60 (target PA knob)\n");
++	printf("SWEET AUDIO: build v61 (leaf attr + vendor cbar knobs)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
-@@ -2587,6 +4030,7 @@
+@@ -2587,6 +4098,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
