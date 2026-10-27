@@ -166,9 +166,38 @@ static void irq_handler(void)
 #ifndef GPU_PROBE_LEVEL
 #define GPU_PROBE_LEVEL		1
 #endif
+/* Optional register matrix; every one is a separate build. */
+#ifndef GP_CBAR_BANK
+#define GP_CBAR_BANK		-1	/* -1 = skip */
+#endif
+#ifndef GP_CBAR_WRITE
+#define GP_CBAR_WRITE		0	/* 1 = write 0, 2 = write 0x10000 */
+#endif
+#ifndef GP_CBAR_COUNT
+#define GP_CBAR_COUNT		0	/* read CBAR(0..n-1) */
+#endif
+#ifndef GP_SCTLR_BANK
+#define GP_SCTLR_BANK		-1
+#endif
+#ifndef GP_SCTLR_WRITE
+#define GP_SCTLR_WRITE		0
+#endif
+#ifndef GP_CB_REGS
+#define GP_CB_REGS		0	/* read CB0 TTBR0/TCR/MAIR */
+#endif
+#ifndef GP_GR1_READ
+#define GP_GR1_READ		0	/* read CBA2R/CBFRSYNRA */
+#endif
+#ifndef GP_KGSL_SCAN
+#define GP_KGSL_SCAN		0	/* read four KGSL offsets */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
-static const char gp_level_tag[] __attribute__((used)) = "gpuprobe-level-" GP_STR(GPU_PROBE_LEVEL);
+static const char gp_level_tag[] __attribute__((used)) =
+    "gpuprobe-" GP_STR(GPU_PROBE_LEVEL)
+    "-c" GP_STR(GP_CBAR_BANK) "w" GP_STR(GP_CBAR_WRITE)
+    "-s" GP_STR(GP_SCTLR_BANK) "w" GP_STR(GP_SCTLR_WRITE)
+    "-r" GP_STR(GP_CB_REGS) GP_STR(GP_GR1_READ) GP_STR(GP_KGSL_SCAN);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -203,9 +232,33 @@ struct gpu_probe_result {
 	uint32_t wcbar;		/* 0x78 CBAR(0) after writing 0 */
 	uint32_t wsctlr_old;	/* 0x7c CB0.SCTLR before */
 	uint32_t wsctlr;	/* 0x80 CB0.SCTLR after writing 0 */
-	uint32_t pad2;		/* 0x84 */
+	uint32_t op_fault;	/* 0x84 bitmask for the optional matrix */
 	uint64_t pad3;		/* 0x88 */
-};				/* 0x90 */
+	uint32_t cbar_bank;	/* 0x90 bank selected by GP_CBAR_BANK */
+	uint32_t cbar_r;	/* 0x94 */
+	uint32_t cbar_w;	/* 0x98 readback after the write */
+	uint32_t sctlr_bank;	/* 0x9c */
+	uint32_t sctlr_r;	/* 0xa0 */
+	uint32_t sctlr_w;	/* 0xa4 */
+	uint32_t ttbr0;		/* 0xa8 CB0+0x20 */
+	uint32_t tcr;		/* 0xac CB0+0x30 */
+	uint32_t mair;		/* 0xb0 CB0+0x38 */
+	uint32_t cba2r;		/* 0xb4 GR1+0x800 */
+	uint32_t cbfrsynra;	/* 0xb8 GR1+0x400 */
+	uint32_t cbar_count;	/* 0xbc */
+	uint32_t cbar1;		/* 0xc0 */
+	uint32_t cbar2;		/* 0xc4 */
+	uint32_t cbar3;		/* 0xc8 */
+	uint32_t last_step;	/* 0xcc written before every risky access */
+	uint32_t prev_step;	/* 0xd0 last_step found at entry */
+	uint32_t prev_magic;	/* 0xd4 */
+	uint32_t kg0;		/* 0xd8 */
+	uint32_t kg1;		/* 0xdc */
+	uint32_t kg2;		/* 0xe0 */
+	uint32_t kg3;		/* 0xe4 */
+	uint32_t pad4;		/* 0xe8 */
+	uint64_t pad5;		/* 0xf0 */
+};				/* 0xf8 */
 
 static volatile int gp_busy;
 static volatile int gp_fault;
@@ -286,14 +339,19 @@ gpu_probe_boot(void)
 	uintptr_t s = GPU_SMMU_BASE;
 	uint32_t id0, id1, num_smr, num_cb, smr, s2cr;
 	uint32_t rf = 0, wf = 0;
+	uint32_t prev_magic = r->magic, prev_step = r->last_step;
 	int slot0 = -1, free_slot = -1;
 	unsigned i;
 
 	for (i = 0; i < sizeof(*r); i++)
 		((volatile uint8_t *)r)[i] = 0;
+	r->prev_magic = prev_magic;
+	r->prev_step = prev_step;
 	r->version = GPU_PROBE_LEVEL;
 	r->sid0_slot = 0xffffffffu;
 	r->wsid = 0xffffffffu;
+	r->cbar_bank = 0xffffffffu;
+	r->sctlr_bank = 0xffffffffu;
 
 	/* gp_fault is cleared by every access, so latch it after each one. */
 	r->scr0 = gp_rd32(s + 0x00);
@@ -414,6 +472,122 @@ wdone:
 			r->wfault = wf;
 		}
 	}
+
+	/*
+	 * Optional register matrix.  Each block is a separate build so one
+	 * fatal access does not hide the answer to the others.  last_step is
+	 * written before every access, so a boot that dies leaves the step in
+	 * DRAM for the next variant to report as prev_step (if DRAM survives).
+	 */
+	r->op_fault = 0;
+
+#if GP_KGSL_SCAN
+	r->last_step = 20;
+	r->kg0 = gp_rd32(GPU_KGSL_BASE + 0x0000u);
+	if (gp_fault)
+		r->op_fault |= 1u;
+	r->last_step = 21;
+	r->kg1 = gp_rd32(GPU_KGSL_BASE + 0x0840u);	/* RBBM_STATUS */
+	if (gp_fault)
+		r->op_fault |= 2u;
+	r->last_step = 22;
+	r->kg2 = gp_rd32(GPU_KGSL_BASE + 0x1000u);
+	if (gp_fault)
+		r->op_fault |= 4u;
+	r->last_step = 23;
+	r->kg3 = gp_rd32(GPU_KGSL_BASE + 0x2000u);
+	if (gp_fault)
+		r->op_fault |= 8u;
+#endif
+
+#if GP_GR1_READ
+	r->last_step = 30;
+	r->cba2r = gp_rd32(s + 0x1800u);		/* GR1+0x800 */
+	if (gp_fault)
+		r->op_fault |= 0x10u;
+	r->last_step = 31;
+	r->cbfrsynra = gp_rd32(s + 0x1400u);		/* GR1+0x400 */
+	if (gp_fault)
+		r->op_fault |= 0x20u;
+#endif
+
+#if GP_CBAR_COUNT > 0
+	r->last_step = 40;
+	r->cbar_count = GP_CBAR_COUNT;
+	r->cbar_r = gp_rd32(s + 0x1000u);
+	if (gp_fault)
+		r->op_fault |= 0x40u;
+#if GP_CBAR_COUNT > 1
+	r->last_step = 41;
+	r->cbar1 = gp_rd32(s + 0x1004u);
+	if (gp_fault)
+		r->op_fault |= 0x40u;
+#endif
+#if GP_CBAR_COUNT > 2
+	r->last_step = 42;
+	r->cbar2 = gp_rd32(s + 0x1008u);
+	if (gp_fault)
+		r->op_fault |= 0x40u;
+#endif
+#if GP_CBAR_COUNT > 3
+	r->last_step = 43;
+	r->cbar3 = gp_rd32(s + 0x100cu);
+	if (gp_fault)
+		r->op_fault |= 0x40u;
+#endif
+#endif
+
+#if GP_CBAR_BANK >= 0
+	r->cbar_bank = GP_CBAR_BANK;
+	r->last_step = 50;
+	r->cbar_r = gp_rd32(s + 0x1000u + 4u * GP_CBAR_BANK);
+	if (gp_fault)
+		r->op_fault |= 0x80u;
+#if GP_CBAR_WRITE
+	r->last_step = 51;
+	gp_wr32(s + 0x1000u + 4u * GP_CBAR_BANK,
+	    (GP_CBAR_WRITE == 1) ? 0u : 0x10000u);
+	if (gp_fault)
+		r->op_fault |= 0x100u;
+	r->last_step = 52;
+	r->cbar_w = gp_rd32(s + 0x1000u + 4u * GP_CBAR_BANK);
+	if (gp_fault)
+		r->op_fault |= 0x200u;
+#endif
+#endif
+
+#if GP_SCTLR_BANK >= 0
+	r->sctlr_bank = GP_SCTLR_BANK;
+	r->last_step = 60;
+	r->sctlr_r = gp_rd32(s + 0x80000u + 0x1000u * GP_SCTLR_BANK);
+	if (gp_fault)
+		r->op_fault |= 0x400u;
+#if GP_SCTLR_WRITE
+	r->last_step = 61;
+	gp_wr32(s + 0x80000u + 0x1000u * GP_SCTLR_BANK, 0u);
+	if (gp_fault)
+		r->op_fault |= 0x800u;
+	r->last_step = 62;
+	r->sctlr_w = gp_rd32(s + 0x80000u + 0x1000u * GP_SCTLR_BANK);
+	if (gp_fault)
+		r->op_fault |= 0x1000u;
+#endif
+#endif
+
+#if GP_CB_REGS
+	r->last_step = 70;
+	r->ttbr0 = gp_rd32(s + 0x80020u);
+	if (gp_fault)
+		r->op_fault |= 0x2000u;
+	r->last_step = 71;
+	r->tcr = gp_rd32(s + 0x80030u);
+	if (gp_fault)
+		r->op_fault |= 0x4000u;
+	r->last_step = 72;
+	r->mair = gp_rd32(s + 0x80038u);
+	if (gp_fault)
+		r->op_fault |= 0x8000u;
+#endif
 
 	if (GPU_PROBE_LEVEL >= 3) {
 		/* kgsl register offsets are in dwords: RBBM_STATUS = 0x210. */

@@ -12,7 +12,15 @@ CC="clang --target=aarch64-none-elf"
 CFLAGS="-O2 -ffreestanding -nostdlib -fno-pic -fno-jump-tables \
 -mgeneral-regs-only -mstrict-align -fno-stack-protector \
 -Wall -Wextra -Wno-unused-function -Wno-unused-variable \
--DGPU_PROBE_LEVEL=${GPU_PROBE_LEVEL:-0}"
+-DGPU_PROBE_LEVEL=${GPU_PROBE_LEVEL:-0} \
+-DGP_CBAR_BANK=${GP_CBAR_BANK:--1} \
+-DGP_CBAR_WRITE=${GP_CBAR_WRITE:-0} \
+-DGP_CBAR_COUNT=${GP_CBAR_COUNT:-0} \
+-DGP_SCTLR_BANK=${GP_SCTLR_BANK:--1} \
+-DGP_SCTLR_WRITE=${GP_SCTLR_WRITE:-0} \
+-DGP_CB_REGS=${GP_CB_REGS:-0} \
+-DGP_GR1_READ=${GP_GR1_READ:-0} \
+-DGP_KGSL_SCAN=${GP_KGSL_SCAN:-0}"
 STRIDE=4320
 OUT="out-xnu"
 PAYLOAD="${1:-../xnu/out/marble.payload}"
