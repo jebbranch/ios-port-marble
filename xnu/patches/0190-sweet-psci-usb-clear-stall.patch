@@ -1,0 +1,123 @@
+--- a/bsd/dev/sweet_usb.c
++++ b/bsd/dev/sweet_usb.c
+@@ -280,6 +280,7 @@
+ #define DEPCMD_SETEPCONFIG      1
+ #define DEPCMD_SETTRANSFRESOURCE 2
+ #define DEPCMD_SETSTALL         4
++#define DEPCMD_CLEARSTALL       5
+ #define DEPCMD_STARTTRANSFER    6
+ #define DEPCMD_DEPSTARTCFG      9
+ #define DEPCMD_CMDACT           (1u << 10)
+@@ -526,7 +527,20 @@
+ 	uint16_t length = (uint16_t)(st[6] | st[7] << 8);
+ 	uint32_t n = 0;
+ 	bool ok = true;
+-	printf("SWEET USB: setup %02x %02x %04x %04x len %u\n", type, req, value, index, length);
++	static uint32_t setup_n, clear_n;
++	bool log = true;
++
++	/* macOS retries CLEAR_FEATURE every frame when the endpoint stays
++	 * halted; logging every one floods the console ring and burns CPU. */
++	if (req == 1) {
++		log = ++clear_n <= 8;
++	} else {
++		log = setup_n++ < 64 || (setup_n & 0xff) == 0;
++	}
++	if (log) {
++		printf("SWEET USB: setup %02x %02x %04x %04x len %u\n",
++		    type, req, value, index, length);
++	}
+ 	ud.data_in = (type & 0x80) != 0;
+ 	if ((type & 0x60) == 0x20) {    /* class request (e.g. SET_ETHERNET_PACKET_FILTER) */
+ 		ok = (length == 0);
+@@ -562,7 +576,32 @@
+ 		}
+ 	} else if (req == 10) {         /* GET_INTERFACE */
+ 		data[0] = index == 1 ? ud.data_alt : 0; n = 1;
+-	} else if (req == 1 || req == 3) { /* CLEAR/SET_FEATURE (halt, remote wakeup) */
++	} else if (req == 1) {          /* CLEAR_FEATURE */
++		/* ENDPOINT_HALT (value 0): actually clear the DWC3 stall.
++		 * Ignoring this left the endpoint halted, so the host kept
++		 * re-sending CLEAR_FEATURE for endpoint 0x82 (the ECM
++		 * interrupt endpoint) forever. */
++		if (value == 0) {
++			unsigned ep = 0;
++
++			switch (index & 0xff) {
++			case 0x01: ep = EP_RX; break;
++			case 0x81: ep = EP_TX; break;
++			case 0x82: ep = EP_INT; break;
++			}
++			if (ep) {
++				(void)ud_epcmd(ep, DEPCMD_CLEARSTALL, 0, 0, 0);
++				if (ep == EP_TX) {
++					lck_mtx_lock(ud.lock);
++					ud.tx_busy = false;
++					ud_tx_kick_locked();
++					lck_mtx_unlock(ud.lock);
++				} else if (ep == EP_RX) {
++					ud_rx_arm();
++				}
++			}
++		}
++	} else if (req == 3) {          /* SET_FEATURE (halt, remote wakeup) */
+ 	} else {
+ 		ok = false;
+ 	}
+--- a/iokit/Kernel/arm/SweetPlatformExpert.cpp
++++ b/iokit/Kernel/arm/SweetPlatformExpert.cpp
+@@ -22,6 +22,46 @@
+ 
+ OSDefineMetaClassAndStructors(SweetPlatformExpert, IODTPlatformExpert);
+ 
++/*
++ * PSCI SYSTEM_OFF / SYSTEM_RESET.  The shim already resets the SoC with
++ * the same SMC for sweetreboot=1; userland's "slide to power off" and
++ * "restart" end up in PEHaltRestart -> gIOPlatform->haltRestart(), and
++ * without this hook they return -1 and the machine just stays there.
++ */
++static void
++sweet_psci_call(uint64_t fn)
++{
++	register uint64_t x0 __asm("x0") = fn;
++
++	__asm__ volatile("dsb sy" ::: "memory");
++	__asm__ volatile("smc #0" : "+r"(x0) ::
++	    "x1", "x2", "x3", "memory");
++}
++
++static int
++sweet_platform_halt_restart(unsigned int type)
++{
++	switch (type) {
++	case kPEHaltCPU:
++	case kPEUPSDelayHaltCPU:
++		IOLog("SWEET: PSCI SYSTEM_OFF\n");
++		sweet_psci_call(0x84000008ull);	/* SYSTEM_OFF */
++		break;
++	case kPERestartCPU:
++		IOLog("SWEET: PSCI SYSTEM_RESET\n");
++		sweet_psci_call(0x84000009ull);	/* SYSTEM_RESET */
++		break;
++	case kPEPanicSync:
++		return 0;
++	default:
++		/* Leave panic restarts alone: the panic screen stays up. */
++		return -1;
++	}
++	for (;;) {
++		__asm__ volatile("wfi");
++	}
++}
++
+ bool
+ SweetPlatformExpert::start(IOService *provider)
+ {
+@@ -29,6 +69,7 @@
+ 	if (!IODTPlatformExpert::start(provider)) {
+ 		return false;
+ 	}
++	PE_halt_restart = sweet_platform_halt_restart;
+ 	registerService();
+ 	IOLog("SWEET: platform expert registered\n");
+ 	return true;

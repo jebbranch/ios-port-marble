@@ -3829,7 +3829,7 @@
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v93 (battmgr capacity is 0.01 %)\n");
++	printf("SWEET AUDIO: build v94 (PSCI off/reset, USB clear-stall)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();

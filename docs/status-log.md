@@ -2190,3 +2190,30 @@ proto=1、fifodis=1，不可用），一份报告约 35 字节 ≈ 1 ms，外加
 卡住**（无 GPU，控制中心动画在 CPU 上跑），HID 事件在队列里堆积，
 主线程恢复后一次处理；不是触摸驱动 100 ms 级的延迟。
 建议先用 辅助功能 → 动态效果 → 减弱动态效果 验证。
+
+### 2026-10-27 20:1x —— 日常镜像冻结：USB CLEAR_FEATURE 风暴；v94 接 PSCI + 清 stall
+
+daily-v93（8 核 + GLINK/电池，无 PCM、无 USB 日志）在 userland 使用中
+CPU 被打满、界面冻结。ring 尾部几乎全是：
+
+```
+SWEET USB: setup 02 01 0000 0082 len 0     (301 次)
+```
+
+`02 01 0000 0082` = CLEAR_FEATURE(ENDPOINT_HALT)，wIndex 0x82 是
+ECM 的**中断 IN 端点**。macOS 每帧重发，是因为我们 `req==1` 分支
+什么都不做，DWC3 端点仍然 halt → 主机永远重试；每次 setup 还要
+printf + 走控制状态机，把 CPU 和日志队列打满。
+
+v94 修法：
+- `CLEAR_FEATURE(value=0)`：按 wIndex 找 EP_RX(0x01)/EP_TX(0x81)/
+  EP_INT(0x82)，发 `DEPCMD_CLEARSTALL`；EP_TX 复位 tx_busy 并重踢，
+  EP_RX 重新 arm；
+- setup 日志限流（CLEAR_FEATURE 前 8 条，其它前 64 条 + 每 256 条）。
+
+同时接 PSCI（用户要求）：
+- `SweetPlatformExpert::start` 设置 `PE_halt_restart`；
+- `kPEHaltCPU`/`kPEUPSDelayHaltCPU` → PSCI `SYSTEM_OFF` (0x84000008)；
+- `kPERestartCPU` → `SYSTEM_RESET` (0x84000009)；
+- panic 类型不接管，保持 panic 屏。
+用户态“滑动关机/重启”现在应该能用了。
