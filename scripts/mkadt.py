@@ -255,6 +255,12 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
     # hw.model/hw.target (D22AP), model is hw.machine/hw.product
     # (iPhone10,3). 'xiaomi,sweet' and qcom,kryo470 stay because the
     # SweetPlatformExpert and CPU IONameMatch still use them.
+    # IOPlatformExpert publishes IOPlatformSerialNumber from these two
+    # strings; iOS reads them for "About this iPhone".  Do NOT put a real
+    # iPhone's serial in the repo: override at build time with
+    # D22AP_SERIAL=... D22AP_MLB=... and keep it out of git.
+    serial = os.environ.get('D22AP_SERIAL', 'F17WD3N5JCL7')
+    mlb = os.environ.get('D22AP_MLB', 'C07W9K3M5P8T')
     return node('device-tree', [
         ph(),
         ('compatible', cstr('D22AP') + cstr('iPhone10,3') + cstr('xiaomi,marble') + cstr('xiaomi,sweet') + cstr('qcom,sm7475') + cstr('AppleARM')),
@@ -262,6 +268,8 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
         ('target-type', cstr('D22')),
         ('target-sub-type', cstr('D22AP')),
         ('manufacturer', cstr('Apple Inc.')),
+        ('serial-number', cstr(serial)),
+        ('mlb-serial-number', cstr(mlb)),
         ('#address-cells', u32(2)),
         ('#size-cells', u32(2)),
     ], [chosen, defaults, cpus, arm_io, fbcon, buttons] + product + ([] if qemu else [ufs]))
