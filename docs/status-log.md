@@ -2073,3 +2073,33 @@ SWEET SMP: done, resetting
 
 注意：ADT 目前只列了 4 个 A510；A710/X2 还没加。要上 8 核需要先改
 `scripts/mkadt.py` 的 CPU 列表和 cluster-type。
+
+### 2026-10-27 17:2x —— 8 核全开（真机验证）
+
+ADT 加上 A710/X2（MPIDR 从 stock DTB 实测：`cpu@400`–`cpu@700`），
+保持 `cluster-type=0`（SWEET 的 `MAX_CPU_CLUSTERS` 是 1）。内核 v88 +
+`gicrstride=0x40000`，启动参数 `CPUS=8 sweetsmp=1 sweetglink=0`。
+
+```
+SWEET CPU: cpu=7 CPU_ON target=0x700 rc=0
+SWEET CPU: cpu=7 mpidr=0x700 came alive; SGI1 OK
+SWEET CPU: 8/8 CPUs initialized, SGI1 verified
+SWEET SMP: ncpu=8 samples=20 interval=1000ms
+SWEET SMP: cpu0 busy=10/20 last_tid=201
+SWEET SMP: cpu1 busy=7/20  last_tid=199
+SWEET SMP: cpu2 busy=9/20  last_tid=2862
+SWEET SMP: cpu3 busy=6/20  last_tid=221
+SWEET SMP: cpu4 busy=4/20  last_tid=2862
+SWEET SMP: cpu5 busy=2/20  last_tid=3789
+SWEET SMP: cpu6 busy=1/20  last_tid=3538
+SWEET SMP: cpu7 busy=1/20  last_tid=221
+```
+
+- 8/8 核 PSCI CPU_ON 成功，逐个 `mpidr came alive; SGI1 OK`；
+- 启动到 launchd/SpringBoard，无 panic；
+- 8 个核都拿到过调度样本。
+
+**当前限制**：所有核仍是 `CLUSTER_TYPE_SMP`（`MAX_CPU_CLUSTERS=1`），
+XNU 不知道 E/P 的区分，P 核占用低只是因为这些采样时系统很轻载。
+要验证 big.LITTLE 策略，需要把 `MAX_CPU_CLUSTERS` 改成 2、cluster-type 设为
+`'E'`/`'P'`，让 XNU 建两个 pset；那是下一步。

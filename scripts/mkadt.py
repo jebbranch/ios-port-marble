@@ -130,13 +130,25 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
         # with CSR_ALLOW_UNRESTRICTED_FS (vm_unix.c shared region checks).
         node('asmb', [ph(), ('lp-sip0', u64(0x6f)), ('lp-sip1', u32(1))])])
 
-    # MARBLE SMP: four Cortex-A510 at MPIDR 0x000-0x300 (one homogeneous
-    # cluster, all 16K-capable). The shim runs on CPU0 (MIDR 0x410FD463);
-    # X1 boots with cpus=1. The A710/X2 clusters are added once the early
-    # console works. Keep qcom,kryo470: the SweetCPU IONameMatch (0018) uses it.
+    # MARBLE SMP: all eight cores. MPIDRs come straight from the stock DTB
+    # (cpu@0..cpu@700): four A510 at 0x000-0x300, three A710 at 0x400-0x600,
+    # one X2 at 0x700.  SWEET builds with MAX_CPU_CLUSTERS=1, so every core
+    # stays CLUSTER_TYPE_SMP (cluster-id 0); set cluster to 'E'/'P' only
+    # together with a MAX_CPU_CLUSTERS=2 patch.  clock-frequency is the real
+    # per-core max, which the scheduler uses as a capacity hint even in SMP.
+    # Keep qcom,kryo470: the SweetCPU IONameMatch (0018) uses it.
     # QEMU retains its original single-CPU tree.
+    if qemu:
+        cpu_table = [(0, 1804800000)]  # (MPIDR, max kHz * 1000)
+    else:
+        cpu_table = [
+            (0x000, 1804800000), (0x100, 1804800000),
+            (0x200, 1804800000), (0x300, 1804800000),
+            (0x400, 2496000000), (0x500, 2496000000),
+            (0x600, 2496000000), (0x700, 2918400000),
+        ]
     cpu_nodes = []
-    for core, mpidr in enumerate([0] if qemu else [0x0, 0x100, 0x200, 0x300]):
+    for core, (mpidr, clk) in enumerate(cpu_table):
         cpu_nodes.append(node(f'cpu{core}', [
             ph(),
             ('device_type', cstr('cpu')),
@@ -144,14 +156,14 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
             ('reg', u32(mpidr)),  # actual MPIDR Aff1:Aff0, NOT logical ID
             ('cpu-id', u32(core)),   # descriptive: XNU assigns IDs by DT order
             ('cluster-id', u32(0)),  # descriptive; see ml_parse_cpu_topology
-            ('cluster-type', u32(0)),  # homogeneous CLUSTER_TYPE_SMP, not AMP
+            ('cluster-type', u32(0)),  # CLUSTER_TYPE_SMP (MAX_CPU_CLUSTERS=1)
             ('die-cluster-id', u32(0)),
             ('cluster-core-id', u32(core)),
-            ('l2-cache-id', u32(0)),  # A510 L2
+            ('l2-cache-id', u32(0)),
             ('l3-cache-id', u32(0)),
             ('state', cstr('running' if core == 0 else 'stopped')),
             ('timebase-frequency', u32(timebase)),
-            ('clock-frequency', u32(1804800000)),  # A510 max
+            ('clock-frequency', u32(clk)),
             ('bus-frequency', u32(100000000)),
             ('memory-frequency', u32(3200000000)),  # LPDDR5, descriptive
             ('peripheral-frequency', u32(timebase)),

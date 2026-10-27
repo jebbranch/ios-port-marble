@@ -164,7 +164,7 @@ SERIAL=2aa26095 bash scripts/boot_ram.sh images/shim-iosroot-adsp.img
 | `sweetnodata=1` | 只 START、不发 DATA_BUFFER（v30） |
 | `sweetbatt=1` | 打开 pmic_glink 电池读取 |
 | `KEEPALIVE=1` | 构建去掉 `sweetreboot=1`，停在 iOS |
-| `CPUS=n` | 覆盖 `cpus=1`（多核已修，`mkimage.sh` 默认带 `gicrstride=0x40000`） |
+| `CPUS=n` | 覆盖 `cpus=1`；`CPUS=8` 已验证 8/8 核（`mkimage.sh` 默认带 `gicrstride=0x40000`） |
 
 **build tag 规则**：每次改内核都改 `SWEET AUDIO: build vNN (…)` 里的字符串，
 看门狗靠它判断产物；marker 必须出现在二进制里（写注释会被编译器剥掉）。
