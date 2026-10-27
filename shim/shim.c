@@ -143,10 +143,82 @@ static void irq_handler(void)
 	isb();
 }
 
+/*
+ * ---- GPU SMMU / KGSL probe ----
+ *
+ * The GPU has its own SMMU-500 (kgsl-smmu@3da0000) and its own register block
+ * (kgsl-3d0@3d00000); neither is used by XNU yet, so both are exactly as ABL
+ * left them.  The question this answers is whether the non-secure AP can own
+ * that SMMU at all: the audio SID on apps-smmu cannot be taken away from the
+ * hypervisor, but kgsl-smmu is a different instance.
+ *
+ * Runs with the MMU on, before XNU.  Results go to low DRAM at GPU_PROBE_PA
+ * (outside the ADT bank, so XNU never allocates it); bsd/dev/sweet_glink.c
+ * maps that page and prints it into the normal kernel log.
+ *
+ * GPU_PROBE_LEVEL (build knob): 1 = SMMU reads, 2 = +S2CR write test,
+ * 3 = +KGSL RBBM_STATUS read, 4 = both extras.
+ */
+#define GPU_PROBE_PA		0xa2e0f000UL
+#define GPU_PROBE_MAGIC		0x47505550U	/* "GPUP" */
+#define GPU_SMMU_BASE		0x3da0000UL
+#define GPU_KGSL_BASE		0x3d00000UL
+#ifndef GPU_PROBE_LEVEL
+#define GPU_PROBE_LEVEL		1
+#endif
+
+/* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
+struct gpu_probe_result {
+	uint32_t magic;		/* 0x00 */
+	uint32_t version;	/* 0x04 */
+	uint32_t scr0;		/* 0x08 */
+	uint32_t id0;		/* 0x0c */
+	uint32_t id1;		/* 0x10 */
+	uint32_t id2;		/* 0x14 */
+	uint32_t num_smr;	/* 0x18 */
+	uint32_t num_cb;	/* 0x1c */
+	uint32_t valid_seen;	/* 0x20 */
+	uint32_t sid0_slot;	/* 0x24 */
+	uint32_t smr0;		/* 0x28 */
+	uint32_t s2cr0;		/* 0x2c */
+	uint32_t wsid;		/* 0x30 */
+	uint32_t w2cr_old;	/* 0x34 */
+	uint32_t wsmr;		/* 0x38 */
+	uint32_t w2cr;		/* 0x3c */
+	uint32_t w2cr_f;	/* 0x40 */
+	uint32_t w2cr_r;	/* 0x44 */
+	uint32_t rfault;	/* 0x48 */
+	uint32_t wfault;	/* 0x4c */
+	uint32_t kgsl_status;	/* 0x50 */
+	uint32_t kgsl_status2;	/* 0x54 */
+	uint32_t kfault;	/* 0x58 */
+	uint32_t pad;		/* 0x5c */
+	uint64_t far;		/* 0x60 */
+	uint64_t esr;		/* 0x68 */
+};				/* 0x70 */
+
+static volatile int gp_busy;
+static volatile int gp_fault;
+static volatile uint64_t gp_esr, gp_far;
+
 void exc_handler(uint64_t slot, uint64_t *regs)
 {
 	if (slot == 5) {	/* IRQ from current EL, SPx */
 		irq_handler();
+		return;
+	}
+	/*
+	 * The GPU probe reads blocks that may be powered down.  A synchronous
+	 * data abort there is an answer, not a panic: record ESR/FAR, skip the
+	 * load/store, and let the probe carry on with the next register.
+	 */
+	if (gp_busy && (slot & 3) == 0 &&
+	    ((rsr("esr_el1") >> 26) & 0x3f) == 0x25) {
+		gp_fault = 1;
+		gp_esr = rsr("esr_el1");
+		gp_far = rsr("far_el1");
+		wsr("elr_el1", rsr("elr_el1") + 4);
+		isb();
 		return;
 	}
 	con_clear(BLUE);
@@ -166,6 +238,171 @@ void exc_handler(uint64_t slot, uint64_t *regs)
 	con_hex("X1", regs[1]);
 	con_hex("X30", regs[29]);	/* stashed lr is just above the frame */
 	reset(40);
+}
+
+/* Probe-safe MMIO: the fault flag makes the caller ignore the value. */
+static uint32_t
+gp_rd32(uintptr_t a)
+{
+	uint32_t v = 0;
+
+	gp_fault = 0;
+	gp_busy = 1;
+	__asm__ volatile("dsb sy" ::: "memory");
+	v = rd32(a);
+	__asm__ volatile("dsb sy" ::: "memory");
+	gp_busy = 0;
+	if (gp_fault)
+		return 0xffffffffu;
+	return v;
+}
+
+static void
+gp_wr32(uintptr_t a, uint32_t v)
+{
+	gp_fault = 0;
+	gp_busy = 1;
+	__asm__ volatile("dsb sy" ::: "memory");
+	wr32(a, v);
+	__asm__ volatile("dsb sy" ::: "memory");
+	gp_busy = 0;
+}
+
+static void
+gpu_probe_boot(void)
+{
+	volatile struct gpu_probe_result *r =
+	    (volatile struct gpu_probe_result *)GPU_PROBE_PA;
+	uintptr_t s = GPU_SMMU_BASE;
+	uint32_t id0, id1, num_smr, num_cb, smr, s2cr;
+	uint32_t rf = 0, wf = 0;
+	int slot0 = -1, free_slot = -1;
+	unsigned i;
+
+	for (i = 0; i < sizeof(*r); i++)
+		((volatile uint8_t *)r)[i] = 0;
+	r->version = GPU_PROBE_LEVEL;
+	r->sid0_slot = 0xffffffffu;
+	r->wsid = 0xffffffffu;
+
+	/* gp_fault is cleared by every access, so latch it after each one. */
+	r->scr0 = gp_rd32(s + 0x00);
+	if (gp_fault && !rf) {
+		rf = 1;
+		r->far = gp_far;
+		r->esr = gp_esr;
+	}
+	r->id0 = gp_rd32(s + 0x20);
+	if (gp_fault && !rf) {
+		rf = 1;
+		r->far = gp_far;
+		r->esr = gp_esr;
+	}
+	r->id1 = gp_rd32(s + 0x24);
+	if (gp_fault && !rf) {
+		rf = 1;
+		r->far = gp_far;
+		r->esr = gp_esr;
+	}
+	r->id2 = gp_rd32(s + 0x28);
+	if (gp_fault && !rf) {
+		rf = 1;
+		r->far = gp_far;
+		r->esr = gp_esr;
+	}
+	r->rfault = rf;
+	con_hex2("GPU", "id0=", r->id0, "id1=", r->id1);
+	con_hex2("GPU", "scr=", r->scr0, "rflt=", r->rfault);
+	if (rf)
+		goto done;
+
+	id0 = r->id0;
+	id1 = r->id1;
+	num_smr = id0 & 0xffu;		/* IDR0[7:0]  NUMSMRG   */
+	num_cb = id1 & 0xffu;		/* IDR1[7:0]  NUMCB     */
+	if (num_smr > 32)
+		num_smr = 32;
+	r->num_smr = num_smr;
+	r->num_cb = num_cb;
+	r->rfault = 0;
+	r->far = 0;
+	r->esr = 0;
+
+	/* SMR/S2CR are at the same offsets on every SMMU-500 instance. */
+	for (i = 0; i < num_smr; i++) {
+		smr = gp_rd32(s + 0x800 + 4 * i);
+		if (gp_fault)
+			goto readfault;
+		s2cr = gp_rd32(s + 0xc00 + 4 * i);
+		if (gp_fault)
+			goto readfault;
+		if (!(smr & 0x80000000u)) {
+			if (free_slot < 0)
+				free_slot = (int)i;
+			continue;
+		}
+		r->valid_seen++;
+		if (((smr >> 16) & 0x7fffu) == 0 && slot0 < 0) {
+			slot0 = (int)i;
+			r->sid0_slot = (uint32_t)i;
+			r->smr0 = smr;
+			r->s2cr0 = s2cr;
+		}
+	}
+
+	if (GPU_PROBE_LEVEL >= 2) {
+		int w = (slot0 >= 0) ? slot0 : free_slot;
+
+		if (w >= 0) {
+			uint32_t old = gp_rd32(s + 0xc00 + 4 * w);
+
+			r->wsid = (uint32_t)w;
+			r->w2cr_old = old;
+			wf |= (uint32_t)gp_fault;
+			if (gp_fault)		/* cannot own what we cannot read */
+				goto wdone;
+			if (slot0 < 0) {
+				gp_wr32(s + 0x800 + 4 * w, 0x80000000u);
+				wf |= (uint32_t)gp_fault;
+				r->wsmr = gp_rd32(s + 0x800 + 4 * w);
+				wf |= (uint32_t)gp_fault;
+			}
+			gp_wr32(s + 0xc00 + 4 * w, 0x00010000u);	/* BYPASS */
+			wf |= (uint32_t)gp_fault;
+			r->w2cr = gp_rd32(s + 0xc00 + 4 * w);
+			wf |= (uint32_t)gp_fault;
+			gp_wr32(s + 0xc00 + 4 * w, 0x00020000u);	/* FAULT */
+			wf |= (uint32_t)gp_fault;
+			r->w2cr_f = gp_rd32(s + 0xc00 + 4 * w);
+			wf |= (uint32_t)gp_fault;
+			gp_wr32(s + 0xc00 + 4 * w, old);		/* restore */
+			wf |= (uint32_t)gp_fault;
+			r->w2cr_r = gp_rd32(s + 0xc00 + 4 * w);
+			wf |= (uint32_t)gp_fault;
+wdone:
+			r->wfault = wf;
+		}
+	}
+
+	if (GPU_PROBE_LEVEL >= 3) {
+		/* kgsl register offsets are in dwords: RBBM_STATUS = 0x210. */
+		r->kgsl_status = gp_rd32(GPU_KGSL_BASE + 0x840);
+		r->kfault = (uint32_t)gp_fault;
+		if (!gp_fault)
+			r->kgsl_status2 = gp_rd32(GPU_KGSL_BASE + 0x804);
+		if (gp_fault)
+			r->kfault = 1;
+	}
+	goto done;
+
+readfault:
+	r->rfault = 1;
+	r->far = gp_far;
+	r->esr = gp_esr;
+done:
+	__asm__ volatile("dsb sy" ::: "memory");
+	r->magic = GPU_PROBE_MAGIC;	/* publish last */
+	__asm__ volatile("dsb sy" ::: "memory");
 }
 
 /* ---- SMP ---- */
@@ -655,6 +892,10 @@ void shim_main(uint64_t dtb)
 		reset(20);
 	}
 	con_skip();
+
+#if GPU_PROBE_LEVEL > 0
+	gpu_probe_boot();
+#endif
 
 	/* loader_boot never returns on success; on failure it returns a reason. */
 	const char *why = loader_boot(dtb);

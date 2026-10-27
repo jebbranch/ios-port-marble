@@ -1,0 +1,97 @@
+#!/bin/bash
+# kgsl-smmu ownership probe for marble (GPU SMMU, not apps-smmu).
+#
+#   ./scripts/gpu_probe.sh build        # images/gpu-l1.img + images/gpu-l4.img
+#   ./scripts/gpu_probe.sh run 1        # read-only: ID/SMR/S2CR + KGSL skipped
+#   ./scripts/gpu_probe.sh run 4        # + S2CR BYPASS/FAULT write test + KGSL read
+#
+# Why the shim does the risky part: an access to a powered-down Qualcomm block
+# raises a synchronous external abort.  XNU would panic and the UFS log would
+# stop; the shim's exception handler skips that one instruction, records
+# ESR/FAR and carries on.  XNU only reads the result page at 0xa2e0f000 and
+# prints it into the normal SWEETLOG ring.
+#
+# What decides the GPU route:
+#   byp=0x10000  S2CR Bypass stuck      -> AP owns kgsl-smmu, port is viable
+#   byp=0x20000  rewritten to Fault     -> same hypervisor lock as apps-smmu
+#   rf=1         first read aborted     -> block is off/XPU; power it first
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/.." && pwd)"
+cd "$ROOT"
+
+SERIAL="${SERIAL:-2aa26095}"
+OUTDIR="$ROOT/images"
+
+build_one() {
+	local lvl="$1"
+	echo "=== build level $lvl ==="
+	GPU_PROBE_LEVEL="$lvl" ./scripts/mkimage.sh sweetgpu=1 \
+		> "$OUTDIR/gpu-l$lvl.build.log" 2>&1 || {
+		tail -20 "$OUTDIR/gpu-l$lvl.build.log" >&2
+		return 1
+	}
+	cp images/shim-iosroot-adsp.img "$OUTDIR/gpu-l$lvl.img" || return 1
+	grep -q "sweetgpu=1" "$OUTDIR/gpu-l$lvl.build.log" || {
+		echo "!! sweetgpu=1 missing from the cmdline" >&2
+		return 1
+	}
+	ls -lh "$OUTDIR/gpu-l$lvl.img"
+}
+
+run_one() {
+	local lvl="$1"
+	local img="$OUTDIR/gpu-l$lvl.img"
+	[ -f "$img" ] || { echo "missing $img; run: $0 build" >&2; return 1; }
+
+	if ! fastboot devices 2>/dev/null | awk '{print $1}' | grep -qx "$SERIAL"; then
+		echo "rebooting to bootloader..."
+		adb -s "$SERIAL" reboot bootloader >/dev/null 2>&1 || true
+		for _ in $(seq 1 90); do
+			fastboot devices 2>/dev/null | awk '{print $1}' | grep -qx "$SERIAL" && break
+			sleep 2
+		done
+	fi
+	fastboot devices 2>/dev/null | awk '{print $1}' | grep -qx "$SERIAL" || {
+		echo "!! $SERIAL is not in fastboot" >&2
+		return 1
+	}
+
+	echo "booting $img"
+	fastboot -s "$SERIAL" boot "$img" || return 1
+
+	echo "waiting for the kernel to reset and Android to answer adb..."
+	for _ in $(seq 1 120); do
+		local st
+		st=$(adb -s "$SERIAL" get-state 2>/dev/null || true)
+		[ "$st" = "device" ] || [ "$st" = "recovery" ] && break
+		sleep 5
+	done
+	sleep 5
+
+	SERIAL="$SERIAL" ./scripts/pull_logs.sh "gpu-l$lvl" >/dev/null 2>&1 || {
+		echo "!! log pull failed" >&2
+		return 1
+	}
+	echo "--- SWEET GPU ---"
+	grep -a "SWEET GPU" "logs/ring-gpu-l$lvl.txt" || echo "  (no SWEET GPU lines)"
+	echo "--- tail ---"
+	tail -6 "logs/ring-gpu-l$lvl.txt"
+}
+
+case "${1:-}" in
+build)
+	build_one 1 || exit 1
+	build_one 4 || exit 1
+	;;
+run)
+	lvl="${2:-1}"
+	case "$lvl" in 1|4) ;; *) echo "level must be 1 or 4" >&2; exit 2 ;; esac
+	run_one "$lvl"
+	;;
+*)
+	sed -n '2,26p' "$0"
+	exit 2
+	;;
+esac

@@ -11,7 +11,8 @@ export PATH="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin:$PATH"
 CC="clang --target=aarch64-none-elf"
 CFLAGS="-O2 -ffreestanding -nostdlib -fno-pic -fno-jump-tables \
 -mgeneral-regs-only -mstrict-align -fno-stack-protector \
--Wall -Wextra -Wno-unused-function -Wno-unused-variable"
+-Wall -Wextra -Wno-unused-function -Wno-unused-variable \
+-DGPU_PROBE_LEVEL=${GPU_PROBE_LEVEL:-0}"
 STRIDE=4320
 OUT="out-xnu"
 PAYLOAD="${1:-../xnu/out/marble.payload}"
