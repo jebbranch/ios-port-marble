@@ -853,7 +853,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -1631,298 +2213,1098 @@
+@@ -1631,298 +2213,1119 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -1211,7 +1211,7 @@
 +			uint64_t s1_tbl = 0, s1_va = 0, s1_pa = 0;
 +			uint64_t s1_leaf = 0x701ull;
 +			uint32_t s1_mair = 0xffu, cbar_val = 0x10000u;
-+			vm_offset_t cbw, tb1;
++			vm_offset_t cbw, tb1, gr1;
 +			uint32_t cbar, sc, re_sctlr, re_ttbr, re_tcr, re_mair;
  
 -	memset(pkt, 0, sizeof(pkt));
@@ -1372,10 +1372,30 @@
 +			}
 +			cbw = g_map_win(0x15080000u + 0x1000u * cbn,
 +			    0x1000u);
++			/* CBA2R lives in the GR1 page, not GR0: SMMU-500
++			 * puts it at GR1(0x8000) + 0x800 + 4*cbndx.  We used
++			 * to write 0x1800 + 4*cbndx, i.e. a reserved hole in
++			 * GR0, so VA64 never became 1 and the SMMU parsed our
++			 * AArch64 tables as AArch32.  Caught on 2026-10-27 by
++			 * watching the vendor driver do the same job: its
++			 * arm_smmu_write_context_bank touches base+0x8d0 for
++			 * cbndx 0x34, which is 0x800 + 4*0x34. */
++			{
++				/* ARM SMMU-500 puts GR1 at 0x8000; the
++				 * bootloader's read probe only covered
++				 * 0..0x3fff, so allow an override in case
++				 * this instance folds it elsewhere. */
++				int g1 = 0;
+ 
++				(void)PE_parse_boot_argn("sweetgr1", &g1,
++				    sizeof(g1));
++				gr1 = g_map_win(g1 > 0 ? (uint64_t)g1 :
++				    0x15008000u, 0x1000u);
++			}
 +			g_s1_tbl_pa = s1_tbl ? (s1_tbl & ~0xfffull) :
 +			    (uint64_t)G_S2_L1_PA;
 +			tb1 = g_map_win(g_s1_tbl_pa, 0x3000u);
-+			if (cbw == 0 || tb1 == 0) {
++			if (cbw == 0 || tb1 == 0 || gr1 == 0) {
 +				printf("SWEET SMMU: s1 windows failed\n");
 +				sweet_log_sync();
 +				return;
@@ -1390,7 +1410,7 @@
 +				uint64_t va;
 +				unsigned i1, i2, i3;
 +				int s1empty = 0;
- 
++
 +				(void)PE_parse_boot_argn("sweets1empty", &s1empty,
 +				    sizeof(s1empty));
 +				/*
@@ -1500,7 +1520,8 @@
 +				 * then CBAR = CBAR_TYPE_S1_TRANS_S2_BYPASS. */
 +				*(volatile uint32_t *)(cbw + 0x00u) = 0;
 +				__asm__ volatile("dsb sy" ::: "memory");
-+				*(volatile uint32_t *)(v + 0x1800u + 4u * cbn) = 1u;
++				*(volatile uint32_t *)(gr1 + 0x800u +
++				    4u * cbn) = 1u;
 +				__asm__ volatile("dsb sy" ::: "memory");
 +				*(volatile uint32_t *)(v + 0x1000u + 4u * cbn) =
 +				    cbar_val;
@@ -1509,7 +1530,7 @@
 +				    (v + 0x1000u + 4u * cbn);
 +				printf("SWEET SMMU: cb%u cbar set -> %#x cba2r=%#x"
 +				    "%s\n", cbn, cbar,
-+				    *(volatile uint32_t *)(v + 0x1800u +
++				    *(volatile uint32_t *)(gr1 + 0x800u +
 +				    4u * cbn),
 +				    cbar == cbar_val ? "" : " (READBACK BAD)");
 +				sweet_log_sync();
@@ -2202,7 +2223,7 @@
  	g_put32(pkt + 24 + 4, 0);
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
-@@ -2002,17 +3384,57 @@
+@@ -2002,19 +3405,59 @@
  static void
  g_fill_tone(uint32_t off)
  {
@@ -2223,9 +2244,9 @@
  
  		p[2 * i] = v;
  		p[2 * i + 1] = v;
-+	}
-+}
-+
+ 	}
+ }
+ 
 +/*
 + * SMMU fault snapshot.  Read BEFORE touching the GLINK FIFO after a
 + * DATA_BUFFER, because a stalled DSP can hang that read and we would lose
@@ -2261,12 +2282,14 @@
 +			    0x64u));
 +			}
 +		}
- 	}
++	}
 +	sweet_log_sync();
- }
- 
++}
++
  static int
-@@ -2026,23 +3448,326 @@
+ g_apm_data_buffer(uint32_t src_port, uint32_t dst_port, uint32_t off,
+     uint32_t len, uint32_t token)
+@@ -2026,23 +3469,326 @@
  	g_put32(pkt + 0, (6u << 4) | (pkt_size << 8));
  	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
  	g_put32(pkt + 8, src_port);
@@ -2345,7 +2368,7 @@
 +			printf("SWEET GLINK: data_buffer addr=%#llx (pamode)\n",
 +			    a);
 +		}
- 	}
++	}
 +	if (dst_port == G_VP_WR_IID) {
 +		static int first = 1;
 +
@@ -2559,7 +2582,7 @@
 +		}
 +	} else {
 +		g_send_gpr(pkt, pkt_size);
-+	}
+ 	}
 +	{
 +		static int nw_db = -1;
 +
@@ -2603,7 +2626,7 @@
  	static int dbg;
  	if (!g_rsp_ready || g_rsp_len < 40) {
  		if (dbg++ < 4) {
-@@ -2070,87 +3795,215 @@
+@@ -2070,87 +3816,215 @@
  			}
  			return -1;
  		}
@@ -2873,7 +2896,7 @@
  }
  
  /*
-@@ -2332,24 +4185,39 @@
+@@ -2332,24 +4206,39 @@
  	uint32_t v;
  	int rc;
  
@@ -2924,7 +2947,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2361,12 +4229,34 @@
+@@ -2361,12 +4250,34 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 3;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2; mf[30] = 3;
@@ -2963,7 +2986,7 @@
  	g_put32(mf + 0, 96000);
  	g_put32(mf + 4, 32u | (3u << 16));
  	g_put32(mf + 8, 1);
-@@ -2407,7 +4297,43 @@
+@@ -2407,7 +4318,43 @@
  	return g_apm_cmd(src_port, 1, pl, sizeof(pl), opcode, what);
  }
  
@@ -3007,7 +3030,7 @@
  g_apm_graph_start(uint32_t src_port, uint32_t sg_id)
  {
  	if (g_apm_graph_ctrl(src_port, sg_id, APM_CMD_GRAPH_PREPARE,
-@@ -2425,12 +4351,126 @@
+@@ -2425,12 +4372,126 @@
  g_apm_graph_bringup(void)
  {
  	/* The vendor's AGM clients send from 0x2010/0x2011. */
@@ -3138,7 +3161,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2448,7 +4488,8 @@
+@@ -2448,7 +4509,8 @@
  	 * command; a handle owned by another port may be rejected. */
  	if (g_apm_shm_map(port) == 0) {
  		if (g_apm_graph_open_shm(port, g_graph_vp,
@@ -3148,7 +3171,7 @@
  			g_audio_graph_cfg_vp(port);
  			if (g_apm_graph_start(port, APM_VP_SG_ID) == 0) {
  				g_audio_tone(port, G_VP_SAL_IID);
-@@ -2500,7 +4541,8 @@
+@@ -2500,7 +4562,8 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_open_payload,
@@ -3158,7 +3181,7 @@
  		g_audio_graph_cfg(port);
  		if (g_apm_graph_start(port, APM_GRAPH_SG_ID) == 0) {
  			/* The tone needs a mapped region for the PCM buffers. */
-@@ -2513,7 +4555,8 @@
+@@ -2513,14 +4576,159 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_vendor_payload,
@@ -3168,10 +3191,10 @@
  		g_apm_graph_start(port, APM_VENDOR_SG_ID);
  		return;
  	}
-@@ -2521,6 +4564,150 @@
- }
- 
- 
+ 	printf("SWEET GLINK: graph_open failed on every payload\n");
++}
++
++
 +
 +/* One 24-byte battmgr GET_PROP round trip.  The response echoes the
 + * property id at +12 and carries the value at +16 (from the kprobe
@@ -3233,8 +3256,8 @@
 +	} else {
 +		g_dump(tag, g_batt_rsp, g_batt_rsp_len);
 +	}
-+}
-+
+ }
+ 
 +/*
 + * Last battery sample for SweetBattery.  Returns 0 until the pmic_glink
 + * probe has both a status and a capacity, so iOS keeps using its own
@@ -3254,7 +3277,7 @@
 +	*usb = g_batt_s_usb < 0 ? 0 : (unsigned)g_batt_s_usb;
 +	return 1;
 +}
-+
+ 
 +/*
 + * Optional battery read-out.  sweetbatt=1 opens our side of
 + * PMIC_RTR_ADSP_APPS, answers the ADSP's own OPEN, and asks the battmgr
@@ -3319,17 +3342,17 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2533,6 +4720,9 @@
+@@ -2533,6 +4741,9 @@
  		return;
  	}
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v78 (v77 + sweetvgraph: the vendor 4-subgraph graph)\n");
++	printf("SWEET AUDIO: build v79 (CBA2R was at the wrong address: no VA64, no translation)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
-@@ -2587,6 +4777,7 @@
+@@ -2587,6 +4798,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
