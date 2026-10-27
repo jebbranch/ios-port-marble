@@ -2114,3 +2114,29 @@ XNU 不知道 E/P 的区分，P 核占用低只是因为这些采样时系统很
 
 另外：4 核和 8 核的 `launchd` 都在 **39.3s** 启动（39.315 vs 39.320），
 8 核在日志里并不慢；测试镜像里的 20 秒 sampler 是测试用的，正常启动没有。
+
+### 2026-10-27 18:2x —— v91：battmgr 属性偏移修正；RTC 的 AP 写权限已定性
+
+**电池（pmic_glink / battmgr）**：之前 6 个属性全部返回 `prop=0 value=1`，
+不是固件不响应，而是请求字段放错了位置。上游 `qcom_battmgr.c` 的
+`qcom_battmgr_property_request` 是：
+
+```
+{ hdr{owner,type,opcode}, battery_id, property, value }
+  +0       +4   +8        +12         +16      +20
+```
+
+我们把 `property` 写到了 **+12**（`battery_id` 的位置），固件于是把
+`property` 读成 0（BATT_STATUS），每次都只回答 `prop=0 value=1`。
+v91 改为 +12=`battery_id(0)`、+16=`property`、+20=0；响应按
+`{hdr, property@+12, value@+16, result@+20}` 解析，并检查
+opcode/property/result 后再采用（通道刚打开时的主动通知会被跳过重试）。
+另外温度属性是 **12**（BATT_TEMP），不是 13（13 是 BATT_TECHNOLOGY）。
+
+**RTC**：PMK8350 RTC 在 SPMI APID map 里是 `ppid 0x61 apid 51 owner 4`
+（EE4 = PMIC 固件），APPS(EE0) 的写会被 arbiter 拒绝，而且 Vendor DT 的
+`rtc@6100` 节点**没有 `allow-set-time`**，所以 Android/TWRP 也设不了
+（`hwclock -w` 直接 EPERM）。这不是 XNU 的问题，也不该去抢 APID 所有权
+（会碰 PMIC 固件负责的 PON/闹钟）。实际的时间来源是 `sweettime`
+（mkimage.sh 构建时写入 cmdline，精确到构建/启动之间的延迟），v91 起日志
+只打印 raw counter 并注明 EE4-owned，不再尝试注定失败的写入。
