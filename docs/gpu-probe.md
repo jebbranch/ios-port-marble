@@ -155,3 +155,37 @@ DRY_RUN=1 ./scripts/gpu_sweep.sh    # 只构建
 
 判定：每个组合都会用镜像的 `sweettime` 校验日志；`NO-XNU` 表示这次启动
 没进 XNU（同步中止会被 shim 恢复，所以这通常意味着 SError 或死挂）。
+
+## 组合扫描结果（2026-10-27，真机）
+
+启动参数统一为 `sweetgpu=1 sweetglink=0`（跳过音频数据面，否则 DSP 第一次访问
+会挂总线，和 GPU 探针无关）。
+
+| 变体 | 结果 | 访问 |
+|---|---|---|
+| `m0-base` | **OK**（进 GUI） | ID/SMR/S2CR |
+| `m1-kgsl` | **OK** | KGSL 0x0/0x840/0x1000/0x2000 |
+| `m2-gr1` | **OK** | CBA2R / CBFRSYNRA |
+| `m3-cbar0r` | **OK** | CBAR(0) 读 → 0 |
+| `m4-cbar03r` | **OK** | CBAR(0..3) 读 → 全 0 |
+| `m7-sctlr0r` | **NO-XNU**（无 panic，自己重启） | CB0 SCTLR (0x80000) 读 |
+| `m9-cb0regs` | **NO-XNU**（同上） | CB0 TTBR0/TCR/MAIR (0x80020+) 读 |
+| `mA-readall` | **NO-XNU**（同上） | 含上面两项 |
+| `m5-cbar0w0` | 启动后设备从 USB 消失 | CBAR(0) **写** 0 |
+| `m6-cbar0w1` / `m8-sctlr0w` | 未跑（设备已挂） | CBAR/SCTLR 写 |
+
+### 结论
+
+**kgsl-smmu 的全局寄存器可用，context bank 不可用。**
+
+- `0x0000..0x1FFF`（ID、SMR、S2CR、CBAR 读、KGSL 块）都能读，没有中止；
+- `0x80000+` 的 **CB 页**（SCTLR/TTBR0/TCR/MAIR）一碰就整机挂死：没有 panic 屏，
+  看门狗自己重启——这不是同步中止（同步中止会被 shim 恢复并继续启动）；
+- `CBAR` 的 **写**（m5）同样让设备掉出 USB。
+
+也就是说：我们可以读这颗 SMMU 的身份、可以写流匹配（SMR/S2CR），但**拿不到
+context bank**。建不了页表，也就没有 GPU 数据面。原因大概率是 GPUCC/GMU 没上电、
+CB 页在掉电域里；要打开它需要 GPUCC 时钟、GMU 固件和 kgsl 的上电序列——那是
+驱动移植量级的工作，不是再加几个探针能解决的。
+
+**GPU 这条线到此为止**，除非先做 GPUCC/GMU 上电。对音频没有影响。
