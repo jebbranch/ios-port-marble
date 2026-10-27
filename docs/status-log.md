@@ -2217,3 +2217,15 @@ v94 修法：
 - `kPERestartCPU` → `SYSTEM_RESET` (0x84000009)；
 - panic 类型不接管，保持 panic 屏。
 用户态“滑动关机/重启”现在应该能用了。
+
+### 2026-10-27 20:3x —— v95：触摸按下短震动（输入层接入）
+
+iOS 的 haptic 栈不在这个内核里（IOHIDFamily 的 haptic 驱动是 Apple
+私有 kext），所以先在输入层接入：`SweetHIDTouch::touch()` 在手指
+**首次按下**时调用 `sweet_haptics_tap()`，由专门的 `g_hap_thread`
+播一个 **15 ms** 的 PM8350B 短脉冲。
+- 和物理按键的 300 ms kick 共用 `g_hap_busy`，不会并发碰 SPMI；
+- 触摸线程只置位 + `thread_wakeup`，不阻塞触摸轮询；
+- `sweetvibetouch=0` 可关；`sweetvibems` 留给后面调脉宽。
+后续如果要做真正的系统 haptics（开关/通知不同波形），需要找到
+iOS 的 haptic 服务协议（backboardd/hapticsd → 内核），再对接到 HAP520。

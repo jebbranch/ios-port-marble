@@ -1,0 +1,20 @@
+--- a/iokit/Kernel/arm/hid/SweetHID.cpp
++++ b/iokit/Kernel/arm/hid/SweetHID.cpp
+@@ -30,6 +30,7 @@
+ #include "IOHIDUsageTables.h"
+ 
+ extern "C" uint64_t mach_absolute_time(void);
++extern "C" void sweet_haptics_tap(void);
+ 
+ /* One open client: the user client and its event callback. */
+ class IOHIDEventServiceClient : public OSObject {
+@@ -474,6 +475,9 @@
+ 	if (!was && down) {
+ 		fEdge[finger] = x < SWEET_TOUCH_EDGE_PX || x > 1079 - SWEET_TOUCH_EDGE_PX ||
+ 		    y < SWEET_TOUCH_EDGE_PX || y > 2399 - SWEET_TOUCH_EDGE_PX;
++		/* No Apple haptic stack here: give every touch-down a short
++		 * PM8350B pulse (sweetvibetouch=0 disables). */
++		sweet_haptics_tap();
+ 	}
+ 
+ 	collection = IOHIDEvent::digitizerEvent(now, 0, kIOHIDDigitizerTransducerTypeHand, false, 0, 0, 0);
