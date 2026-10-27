@@ -41,36 +41,39 @@ print('splash.bgra: %dx%d, %d bytes' % (w, h, out.size))
 PY
 fi
 
-# PCM handed to the DSP: raw 48 kHz / 24-bit LE / stereo.  PCM_SRC can point
+# PCM handed to the DSP: raw 48 kHz / 16-bit LE / stereo.  PCM_SRC can point
 # at any audio file (ffmpeg converts it); without one we build a 1 kHz sine.
 # Length is what the kernel declares as the shared-memory region: 0x5000.
 PCM_BYTES="${PCM_BYTES:-20480}"
 PCM_SRC="${PCM_SRC:-}"
+# Amplitude of the test clip.  The speaker graph only has to be proven to
+# play, and the operator is often somewhere quiet, so default to -40 dB.
+PCM_GAIN="${PCM_GAIN:--40dB}"
 if [ -n "$PCM_SRC" ] && [ ! -f "$PCM_SRC" ]; then
   echo "error: PCM_SRC not found: $PCM_SRC" >&2
   exit 1
 fi
 if [ ! -f pcm.raw ] || [ -n "$PCM_SRC" ] || [ pcm.raw -ot splash.png ]; then
   if [ ! -f pcm.raw ] || [ -n "$PCM_SRC" ]; then
-    tmp="pcm.tmp.s24le"
+    tmp="pcm.tmp.s16le"
     if [ -n "$PCM_SRC" ]; then
-      ffmpeg -y -loglevel error -i "$PCM_SRC" -f s24le -acodec pcm_s24le \
-        -ac 2 -ar 48000 "$tmp"
+      ffmpeg -y -loglevel error -i "$PCM_SRC" -af "volume=$PCM_GAIN" \
+        -f s16le -acodec pcm_s16le -ac 2 -ar 48000 "$tmp"
     else
       ffmpeg -y -loglevel error -f lavfi \
         -i "sine=frequency=1000:sample_rate=48000:duration=30" \
-        -f s24le -acodec pcm_s24le -ac 2 "$tmp"
+        -af "volume=$PCM_GAIN" -f s16le -acodec pcm_s16le -ac 2 "$tmp"
     fi
     python3 - "$tmp" pcm.raw "$PCM_BYTES" <<'PYPCM'
 import sys
 src, out, n = sys.argv[1], sys.argv[2], int(sys.argv[3], 0)
-n -= n % 6                       # whole 24-bit stereo frames (6 bytes)
+n -= n % 4                       # whole 16-bit stereo frames (4 bytes)
 d = open(src, 'rb').read()[:n]
 if not d:
     d = b'\0' * n
 d = (d * ((n // len(d)) + 1))[:n]
 open(out, 'wb').write(d)
-print('pcm.raw: %d bytes (%.2f s at 48k/24/stereo)' % (n, n / 288000.0))
+print('pcm.raw: %d bytes (%.2f s at 48k/16/stereo)' % (n, n / 192000.0))
 PYPCM
     rm -f "$tmp"
   fi
