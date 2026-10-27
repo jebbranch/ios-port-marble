@@ -166,6 +166,9 @@ static void irq_handler(void)
 #ifndef GPU_PROBE_LEVEL
 #define GPU_PROBE_LEVEL		1
 #endif
+#define GP_STR2(x) #x
+#define GP_STR(x) GP_STR2(x)
+static const char gp_level_tag[] __attribute__((used)) = "gpuprobe-level-" GP_STR(GPU_PROBE_LEVEL);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -390,31 +393,16 @@ gpu_probe_boot(void)
 			/*
 			 * Level 5: bypass is refused, but the GPU does not use
 			 * bypass - it uses stage-1 translation.  Does a TRANS
-			 * S2CR stick, and can we touch CBAR/CB0 at all?
+			 * S2CR stick?  Only this one register: CBAR/SCTLR are
+			 * a separate question and an SError there would take
+			 * the whole boot with it.
 			 */
 			if (GPU_PROBE_LEVEL >= 5 && !wf) {
 				gp_wr32(s + 0xc00 + 4 * w, 0x00000001u);  /* TRANS, CB0 */
 				wf |= (uint32_t)gp_fault;
 				r->w2cr_t = gp_rd32(s + 0xc00 + 4 * w);
 				wf |= (uint32_t)gp_fault;
-
-				r->wcbar_old = gp_rd32(s + 0x1000u);
-				wf |= (uint32_t)gp_fault;
-				gp_wr32(s + 0x1000u, 0);		/* stage-1 */
-				wf |= (uint32_t)gp_fault;
-				r->wcbar = gp_rd32(s + 0x1000u);
-				wf |= (uint32_t)gp_fault;
-
-				r->wsctlr_old = gp_rd32(s + 0x80000u);
-				wf |= (uint32_t)gp_fault;
-				gp_wr32(s + 0x80000u, 0);		/* translation off */
-				wf |= (uint32_t)gp_fault;
-				r->wsctlr = gp_rd32(s + 0x80000u);
-				wf |= (uint32_t)gp_fault;
-
-				gp_wr32(s + 0x1000u, r->wcbar_old);
-				gp_wr32(s + 0x80000u, r->wsctlr_old);
-				gp_wr32(s + 0xc00 + 4 * w, old);
+				gp_wr32(s + 0xc00 + 4 * w, old);	  /* restore */
 				wf |= (uint32_t)gp_fault;
 			}
 			if (slot0 < 0) {

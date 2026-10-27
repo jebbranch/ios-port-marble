@@ -38,6 +38,11 @@ build_one() {
 		echo "!! sweetgpu=1 missing from the cmdline" >&2
 		return 1
 	}
+	# The ring in userdata survives boots when XNU never runs, so the only
+	# proof that a pulled log belongs to THIS image is its sweettime.
+	sed -n 's/.*sweettime=\([0-9][0-9]*\).*/\1/p' "$OUTDIR/gpu-l$lvl.build.log" \
+		| tail -1 > "$OUTDIR/gpu-l$lvl.sweettime"
+	echo "sweettime: $(cat "$OUTDIR/gpu-l$lvl.sweettime")"
 	ls -lh "$OUTDIR/gpu-l$lvl.img"
 }
 
@@ -75,6 +80,16 @@ run_one() {
 		echo "!! log pull failed" >&2
 		return 1
 	}
+	local want got
+	want=$(cat "$OUTDIR/gpu-l$lvl.sweettime" 2>/dev/null || echo 0)
+	got=$(sed -n 's/.*SWEET RTC: clock set from sweettime=\([0-9][0-9]*\).*/\1/p' \
+		"logs/ring-gpu-l$lvl.txt" | tail -1)
+	echo "sweettime: image=$want log=$got"
+	if [ "$want" != "$got" ]; then
+		echo "!! STALE RING: the log is not from this image." >&2
+		echo "   XNU never ran (the shim most likely panicked)." >&2
+		return 2
+	fi
 	echo "--- SWEET GPU ---"
 	grep -a "SWEET GPU" "logs/ring-gpu-l$lvl.txt" || echo "  (no SWEET GPU lines)"
 	echo "--- tail ---"

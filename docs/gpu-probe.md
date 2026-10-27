@@ -90,7 +90,35 @@ boot 参数必须带 `sweetgpu=1`，否则 XNU 不打印结果页。脚本已经
 - 所有访问都在 shim 里带同步中止恢复；最坏情况是 shim 的 SError 路径
   （异步）仍然 panic，但那时结果页可能还没发布——所以先跑级别 1。
 
-## 当前结果
+## 当前结果（2026-10-27，真机）
 
-**待测。** 结果出来后补在下面，并同步到
-[`docs/gpu-feasibility.md`](gpu-feasibility.md) 的结论段。
+| 级别 | 结果 |
+|---|---|
+| 1（只读） | `id0=0x4c017e18` → NUMSMRG=**24**；`id1=0x40000016` → NUMCB=**22**；`id2=0x5511`。`scr0=0x2f0406`。上电时 **0 条有效 SMR**（`valid=0`）。`rf=0`，**没有中止** |
+| 4（写测试） | 写 `SMR[0]=0x80000000`（SID 0）**回读一致**；写 `S2CR[0]=BYPASS(0x10000)` **回读 0x20000(FAULT)**；写 FAULT/恢复都回读 0x20000；`wf=0`（没有总线中止）。KGSL `RBBM_STATUS=0`、`RBBM_INT_0_STATUS=0`，`kf=0` |
+| 5（TRANS） | 写 `S2CR[0]=0x1`（TYPE=TRANS, CB0）**回读 0x1**，`l5 trans=0x1` |
+| 5（含 CBAR/CB0） | **没有产生任何 XNU 日志**（ring 仍是上一轮的 sweettime）。CBAR(0)/CB0.SCTLR 的访问会把这次启动整个带走，暂时别在 shim 里做 |
+
+### 结论
+
+1. **kgsl-smmu 在上电时可读**，24 个 stream 组、22 个 context bank，和 DT/Android 日志一致。
+   它不是"掉电不可达"的块——这比最坏预期好。
+2. **hypervisor 的策略是"禁 BYPASS"，不是"禁一切"**：SMR 能写，`S2CR=TRANS` 也能写并保持。
+   这一点和 apps-smmu 一样（那边 `S2CR=0x34` 也能写），所以**不能**据此认为 GPU 数据面一定能通。
+3. **CB 配置是下一个未知数**：CBAR/CB0 的访问在 shim 里直接让启动消失，说明不能照搬
+   "寄存器能读就能写"的假设。要测就回到 XNU 里带 `sweet_log_sync()` 一步一步来。
+4. KGSL 寄存器读回 0 不一定是"没上电"：ABL 很可能只是把它保持在复位/时钟关闭，
+   总线仍然可达。真正要跑 GPU 还需要 GPUCC 时钟、GMU、CP 固件，这是另一个量级的工程。
+
+**对音频没有任何影响**：`apps-smmu` 的结论不变（见
+[`smmu-dead-ends.md`](smmu-dead-ends.md)）。
+
+## 一个必须记住的测试坑
+
+userdata 尾部的 SWEETLOG ring **不会因为一次失败的启动而被清空**。如果 shim 或 XNU
+在写日志前就死了，`pull_logs.sh` 拿到的还是**上一轮**的日志——看起来像"探针跑了"，
+其实那是旧的。
+
+`scripts/gpu_probe.sh` 现在会比较镜像构建时的 `sweettime` 和日志里的
+`SWEET RTC: clock set from sweettime=`；不一致就直接报 `STALE RING`。
+以后所有"启动后拉日志"的测试都应该带这个校验。

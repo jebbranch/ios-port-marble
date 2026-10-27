@@ -83,3 +83,16 @@ GPU 用的是 **`kgsl-smmu@3da0000`**——Qualcomm 给 GPU 单独做的一颗 S
 
 第 3 条是关键：如果 kgsl-smmu 的 BYPASS 能写进去，GPU 这条路就成立；
 如果也被改写，那这台机器上"AP 想用自己的 SMMU"这条路整体被关死了。
+
+## 六、2026-10-27 真机探针结果（详见 [gpu-probe.md](gpu-probe.md)）
+
+- **可读**：`kgsl-smmu@3da0000` 在上电时响应正常，`ID0=0x4c017e18`（24 个 stream 组）、
+  `ID1=0x40000016`（22 个 CB），没有总线中止。
+- **SMR 可写**：给 SID 0 建 `SMR=0x80000000` 能原样回读。
+- **BYPASS 被禁**：写 `S2CR=0x10000` 回读 `0x20000`（FAULT）——和 apps-smmu 同一策略。
+- **TRANS 可写**：写 `S2CR=0x1`（stage-1，CB0）能原样回读。
+- **CBAR/CB0 危险**：含 CBAR(0)/CB0.SCTLR 的版本**没有产生 XNU 日志**，启动没到 XNU。
+
+⇒ 结论从"可能被 hypervisor 完全锁死"修正为：**只禁 BYPASS，允许 stage-1 配置**。
+但 CB 页能否编程仍是未知数，而且离"GPU 真的能跑"还差 GPUCC、GMU、CP 固件
+和 a725 的 HW-init 表——不是一个探针能解决的问题。
