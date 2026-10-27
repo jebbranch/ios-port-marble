@@ -853,7 +853,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -1631,298 +2213,1120 @@
+@@ -1631,298 +2213,1137 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -1389,8 +1389,13 @@
 +
 +				(void)PE_parse_boot_argn("sweetgr1", &g1,
 +				    sizeof(g1));
++				/* 0x15008000 is the offset ARM documents,
++				 * but writing there panics this instance
++				 * with an external abort; 0x15002000 is
++				 * inside the range the bootloader probe
++				 * found readable and does not. */
 +				gr1 = g_map_win(g1 > 0 ? (uint64_t)g1 :
-+				    0x15008000u, 0x1000u);
++				    0x15002000u, 0x1000u);
 +			}
 +			g_s1_tbl_pa = s1_tbl ? (s1_tbl & ~0xfffull) :
 +			    (uint64_t)G_S2_L1_PA;
@@ -1536,6 +1541,10 @@
 +			 * CBA2R lives at GR1+0x800+4*cbndx, not at 0x1800. */
 +			*(volatile uint32_t *)(gr1 + 0x800u + 4u * cbn) = 1u;
 +			__asm__ volatile("dsb sy" ::: "memory");
++			printf("SWEET SMMU: cb%u cba2r(%#x) = %#x (want 1)\n",
++			    cbn, (unsigned)(gr1 + 0x800u + 4u * cbn),
++			    *(volatile uint32_t *)(gr1 + 0x800u + 4u * cbn));
++			sweet_log_sync();
 +			*(volatile uint32_t *)(cbw + 0x20u) =
 +			    (uint32_t)g_s1_tbl_pa;		/* TTBR0 */
 +			*(volatile uint32_t *)(cbw + 0x24u) = 0;
@@ -1617,16 +1626,24 @@
 +				 * access, waits for ATSR.ACTIVE to clear, and
 +				 * reads the 64-bit PAR at 0x50 (fault = BIT0,
 +				 * PA = PAR[39:12] | iova[11:0]). */
-+				par_ok = g_ats1pr(cbw, G_IPA_BASE);
-+				par_bad = g_ats1pr(cbw, 0x10000000u);
-+				printf("SWEET SMMU: ats1pr %#x -> par=%#llx "
-+				    "| %#x -> par=%#llx mair=%#x cba2r=%#x "
-+				    "idr2=%#x tcr2=%#x\n",
-+				    (unsigned)G_IPA_BASE,
-+				    (unsigned long long)par_ok, 0x10000000u,
++				uint32_t va32 = (uint32_t)(g_map_addr ?
++				    g_map_addr : G_IPA_BASE);
++				par_ok = g_ats1pr(cbw, va32);
++				par_bad = g_ats1pr(cbw, va32 + 0x200000u);
++				/* PAR bit0 set = fault.  4 KiB-aligned PA
++				 * in [47:12].  The old probe used the tone
++				 * PA and 0x10000000 as *IOVAs* - neither is
++				 * in the table, so its par=0 was correct and
++				 * told us nothing. */
++				printf("SWEET SMMU: ats1pr iova=%#x -> par=%#llx%s "
++				    "| +2M -> par=%#llx%s  mair=%#x cba2r=%#x "
++				    "idr2=%#x tcr2=%#x\n", va32,
++				    (unsigned long long)par_ok,
++				    (par_ok & 1ull) ? " FAULT" : " OK",
 +				    (unsigned long long)par_bad,
++				    (par_bad & 1ull) ? " FAULT" : " OK",
 +				    *(volatile uint32_t *)(cbw + 0x38u),
-+				    *(volatile uint32_t *)(v + 0x1800u +
++				    *(volatile uint32_t *)(gr1 + 0x800u +
 +				    4u * cbn),
 +				    *(volatile uint32_t *)(v + 0x28u),
 +				    *(volatile uint32_t *)(cbw + 0x10u));
@@ -2224,7 +2241,7 @@
  	g_put32(pkt + 24 + 4, 0);
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
-@@ -2002,17 +3406,57 @@
+@@ -2002,19 +3423,59 @@
  static void
  g_fill_tone(uint32_t off)
  {
@@ -2245,9 +2262,9 @@
  
  		p[2 * i] = v;
  		p[2 * i + 1] = v;
-+	}
-+}
-+
+ 	}
+ }
+ 
 +/*
 + * SMMU fault snapshot.  Read BEFORE touching the GLINK FIFO after a
 + * DATA_BUFFER, because a stalled DSP can hang that read and we would lose
@@ -2283,12 +2300,14 @@
 +			    0x64u));
 +			}
 +		}
- 	}
++	}
 +	sweet_log_sync();
- }
- 
++}
++
  static int
-@@ -2026,23 +3470,326 @@
+ g_apm_data_buffer(uint32_t src_port, uint32_t dst_port, uint32_t off,
+     uint32_t len, uint32_t token)
+@@ -2026,23 +3487,326 @@
  	g_put32(pkt + 0, (6u << 4) | (pkt_size << 8));
  	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
  	g_put32(pkt + 8, src_port);
@@ -2367,7 +2386,7 @@
 +			printf("SWEET GLINK: data_buffer addr=%#llx (pamode)\n",
 +			    a);
 +		}
-+	}
+ 	}
 +	if (dst_port == G_VP_WR_IID) {
 +		static int first = 1;
 +
@@ -2581,7 +2600,7 @@
 +		}
 +	} else {
 +		g_send_gpr(pkt, pkt_size);
- 	}
++	}
 +	{
 +		static int nw_db = -1;
 +
@@ -2625,7 +2644,7 @@
  	static int dbg;
  	if (!g_rsp_ready || g_rsp_len < 40) {
  		if (dbg++ < 4) {
-@@ -2070,87 +3817,215 @@
+@@ -2070,87 +3834,215 @@
  			}
  			return -1;
  		}
@@ -2895,7 +2914,7 @@
  }
  
  /*
-@@ -2332,24 +4207,39 @@
+@@ -2332,24 +4224,39 @@
  	uint32_t v;
  	int rc;
  
@@ -2946,7 +2965,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2361,12 +4251,34 @@
+@@ -2361,12 +4268,34 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 3;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2; mf[30] = 3;
@@ -2985,7 +3004,7 @@
  	g_put32(mf + 0, 96000);
  	g_put32(mf + 4, 32u | (3u << 16));
  	g_put32(mf + 8, 1);
-@@ -2407,7 +4319,43 @@
+@@ -2407,7 +4336,43 @@
  	return g_apm_cmd(src_port, 1, pl, sizeof(pl), opcode, what);
  }
  
@@ -3029,7 +3048,7 @@
  g_apm_graph_start(uint32_t src_port, uint32_t sg_id)
  {
  	if (g_apm_graph_ctrl(src_port, sg_id, APM_CMD_GRAPH_PREPARE,
-@@ -2425,12 +4373,126 @@
+@@ -2425,12 +4390,126 @@
  g_apm_graph_bringup(void)
  {
  	/* The vendor's AGM clients send from 0x2010/0x2011. */
@@ -3160,7 +3179,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2448,7 +4510,8 @@
+@@ -2448,7 +4527,8 @@
  	 * command; a handle owned by another port may be rejected. */
  	if (g_apm_shm_map(port) == 0) {
  		if (g_apm_graph_open_shm(port, g_graph_vp,
@@ -3170,7 +3189,7 @@
  			g_audio_graph_cfg_vp(port);
  			if (g_apm_graph_start(port, APM_VP_SG_ID) == 0) {
  				g_audio_tone(port, G_VP_SAL_IID);
-@@ -2500,7 +4563,8 @@
+@@ -2500,7 +4580,8 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_open_payload,
@@ -3180,7 +3199,7 @@
  		g_audio_graph_cfg(port);
  		if (g_apm_graph_start(port, APM_GRAPH_SG_ID) == 0) {
  			/* The tone needs a mapped region for the PCM buffers. */
-@@ -2513,14 +4577,159 @@
+@@ -2513,14 +4594,159 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_vendor_payload,
@@ -3341,17 +3360,17 @@
  void
  sweet_glink_probe(void)
  {
-@@ -2533,6 +4742,9 @@
+@@ -2533,6 +4759,9 @@
  		return;
  	}
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v80 (force CBA2R.VA64 on the bank we actually use)\n");
++	printf("SWEET AUDIO: build v81 (probe ATS1PR at the IOVA we actually mapped)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
-@@ -2587,6 +4799,7 @@
+@@ -2587,6 +4816,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
