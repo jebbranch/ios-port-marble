@@ -1,9 +1,10 @@
 #!/bin/bash
 # kgsl-smmu ownership probe for marble (GPU SMMU, not apps-smmu).
 #
-#   ./scripts/gpu_probe.sh build        # images/gpu-l1.img + images/gpu-l4.img
-#   ./scripts/gpu_probe.sh run 1        # read-only: ID/SMR/S2CR + KGSL skipped
+#   ./scripts/gpu_probe.sh build        # gpu-l1.img, gpu-l4.img, gpu-l5.img
+#   ./scripts/gpu_probe.sh run 1        # read-only: ID/SMR/S2CR
 #   ./scripts/gpu_probe.sh run 4        # + S2CR BYPASS/FAULT write test + KGSL read
+#   ./scripts/gpu_probe.sh run 5        # + TRANS S2CR, CBAR(0), CB0.SCTLR writes
 #
 # Why the shim does the risky part: an access to a powered-down Qualcomm block
 # raises a synchronous external abort.  XNU would panic and the UFS log would
@@ -84,10 +85,11 @@ case "${1:-}" in
 build)
 	build_one 1 || exit 1
 	build_one 4 || exit 1
+	build_one 5 || exit 1
 	;;
 run)
 	lvl="${2:-1}"
-	case "$lvl" in 1|4) ;; *) echo "level must be 1 or 4" >&2; exit 2 ;; esac
+	case "$lvl" in 1|4|5) ;; *) echo "level must be 1, 4 or 5" >&2; exit 2 ;; esac
 	run_one "$lvl"
 	;;
 *)

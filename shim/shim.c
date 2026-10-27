@@ -195,7 +195,14 @@ struct gpu_probe_result {
 	uint32_t pad;		/* 0x5c */
 	uint64_t far;		/* 0x60 */
 	uint64_t esr;		/* 0x68 */
-};				/* 0x70 */
+	uint32_t w2cr_t;	/* 0x70 readback after S2CR = TRANS|CB0 */
+	uint32_t wcbar_old;	/* 0x74 CBAR(0) before */
+	uint32_t wcbar;		/* 0x78 CBAR(0) after writing 0 */
+	uint32_t wsctlr_old;	/* 0x7c CB0.SCTLR before */
+	uint32_t wsctlr;	/* 0x80 CB0.SCTLR after writing 0 */
+	uint32_t pad2;		/* 0x84 */
+	uint64_t pad3;		/* 0x88 */
+};				/* 0x90 */
 
 static volatile int gp_busy;
 static volatile int gp_fault;
@@ -379,6 +386,42 @@ gpu_probe_boot(void)
 			wf |= (uint32_t)gp_fault;
 			r->w2cr_r = gp_rd32(s + 0xc00 + 4 * w);
 			wf |= (uint32_t)gp_fault;
+
+			/*
+			 * Level 5: bypass is refused, but the GPU does not use
+			 * bypass - it uses stage-1 translation.  Does a TRANS
+			 * S2CR stick, and can we touch CBAR/CB0 at all?
+			 */
+			if (GPU_PROBE_LEVEL >= 5 && !wf) {
+				gp_wr32(s + 0xc00 + 4 * w, 0x00000001u);  /* TRANS, CB0 */
+				wf |= (uint32_t)gp_fault;
+				r->w2cr_t = gp_rd32(s + 0xc00 + 4 * w);
+				wf |= (uint32_t)gp_fault;
+
+				r->wcbar_old = gp_rd32(s + 0x1000u);
+				wf |= (uint32_t)gp_fault;
+				gp_wr32(s + 0x1000u, 0);		/* stage-1 */
+				wf |= (uint32_t)gp_fault;
+				r->wcbar = gp_rd32(s + 0x1000u);
+				wf |= (uint32_t)gp_fault;
+
+				r->wsctlr_old = gp_rd32(s + 0x80000u);
+				wf |= (uint32_t)gp_fault;
+				gp_wr32(s + 0x80000u, 0);		/* translation off */
+				wf |= (uint32_t)gp_fault;
+				r->wsctlr = gp_rd32(s + 0x80000u);
+				wf |= (uint32_t)gp_fault;
+
+				gp_wr32(s + 0x1000u, r->wcbar_old);
+				gp_wr32(s + 0x80000u, r->wsctlr_old);
+				gp_wr32(s + 0xc00 + 4 * w, old);
+				wf |= (uint32_t)gp_fault;
+			}
+			if (slot0 < 0) {
+				/* Remove the SMR entry this probe created. */
+				gp_wr32(s + 0x800 + 4 * w, 0);
+				wf |= (uint32_t)gp_fault;
+			}
 wdone:
 			r->wfault = wf;
 		}
