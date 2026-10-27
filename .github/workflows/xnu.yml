@@ -62,8 +62,8 @@ jobs:
           # libfirehose_kernel is built arm64e-only; the marble kernel is plain arm64.
           # marble: A510/A710/X2 (ARMv9) -> build at ARMv8.2 with LSE via cortex-a55.
           # (cortex-a53 would disable LSE; a78/a710 can be tried later once it boots.)
-          sed -i '' 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="arm64" VALID_ARCHS="arm64" OTHER_CFLAGS="-mkernel -nostdinc -Wno-packed -mcpu=cortex-a55"/' dxb/build.sh
-          grep -c 'OTHER_CFLAGS="-mkernel -nostdinc -Wno-packed -mcpu=cortex-a55"' dxb/build.sh
+          sed -i '' 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="arm64" VALID_ARCHS="arm64" OTHER_CFLAGS="-mkernel -nostdinc -Wno-packed -mcpu=cortex-a55 -D__AMP__=1"/' dxb/build.sh
+          grep -c 'OTHER_CFLAGS="-mkernel -nostdinc -Wno-packed -mcpu=cortex-a55 -D__AMP__=1"' dxb/build.sh
           # xnu's makedefs take CC/CXX from the environment dxb exports; xcodebuild
           # (mig, ctf tools) needs a single executable, so point at wrappers
           sed -i '' 's|export CC="$(xcrun -find clang)"|export CC="$CCACHE_WRAP/clang"|; s|export CXX="$(xcrun -find clang++)"|export CXX="$CCACHE_WRAP/clang++"|' dxb/build.sh
