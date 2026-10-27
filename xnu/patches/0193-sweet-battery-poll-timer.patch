@@ -9,7 +9,21 @@
   * See report.md for binary evidence, register provenance and integration.
   */
  #if defined(ARM64_BOARD_CONFIG_SWEET)
-@@ -287,12 +289,15 @@
+@@ -214,8 +216,11 @@
+ 
+ 	/* Prefer the value read from the ADSP's battmgr service. */
+ 	if (sweet_batt_get(&bPercent, &bMv, &bMa, &bStatus, &bUsb)) {
+-		bool ext = bUsb != 0;
+-		bool charging = bStatus == 1;
++		/* bUsb (battmgr USB_PRESENT) reads 0 even while attached on
++		 * this firmware; a negative current is a second, reliable
++		 * charging signal.  Never claim charging without either. */
++		bool ext = bUsb != 0 || bMa < 0;
++		bool charging = ext && bStatus == 1;
+ 		bool full = bStatus == 4;
+ 
+ 		if (bPercent > 100) {
+@@ -287,12 +292,15 @@
  	if (!IOPMPowerSource::start(provider)) {
  		return false;
  	}

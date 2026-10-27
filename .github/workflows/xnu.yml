@@ -112,22 +112,43 @@ jobs:
 
       # dxb applies patches with a warning-and-continue policy, so a patch
       # that no longer applies still produces a green build with the change
-      # silently missing.  Every numbered patch in patches/ is ours, so a skip
-      # in xnu/patches is a bug - a hand-edited hunk (0077) is exactly how
-      # that happens.  dxb/patches is upstream backports and is excluded.  Failing here costs one CI run; not failing it ships a kernel
-      # that silently lacks the change being tested.
+      # silently missing.  Failing here costs one CI run; not failing it
+      # ships a kernel that silently lacks the change being tested.
       - name: Verify our patches applied
         run: |
-          # Only OUR series lives in xnu/patches.  dxb/patches holds upstream
-          # backports that are expected to report "already upstream, previously
-          # applied" and must not fail the build (0172 does exactly that).
-          skipped=$(grep -oE 'Skipping patch [^ ]*/xnu/patches/[0-9]{4}-[^ ]*' /tmp/build.log || true)
-          if [ -n "$skipped" ]; then
-            echo "$skipped"
+          # dxb copies xnu/patches into dxb/patches and applies from there,
+          # so the skip line names the COPY, not xnu/patches.  Match by
+          # basename against our series instead.  0172 is an obsolete
+          # experiment superseded by the later glink patches and is allowed
+          # to skip.
+          skipped=$(grep -oE 'Skipping patch [^ ]+' /tmp/build.log \
+            | sed 's|.*/||' || true)
+          bad=""
+          for b in $skipped; do
+            if [ -f "xnu/patches/$b" ] && [ "$b" != "0172-sweet-shm-plain-physical.patch" ]; then
+              bad="$bad $b"
+            fi
+          done
+          if [ -n "$bad" ]; then
+            echo "skipped:$bad"
             echo "::error::a repository patch was skipped"
             exit 1
           fi
           echo "all patch-series entries applied"
+
+          # A patch can also "apply" while a later edit reverts it.  Check
+          # the built kernel for one marker per recent patch that must be
+          # linked in.
+          K="dxb/fakeroot/System/Library/Kernels/kernel.development.sweet"
+          for s in "SWEET: PON shutdown" \
+                   "SWEET: skip PM halt/restart notifications" \
+                   "SWEET BATT: reclaimed"; do
+            if ! LC_ALL=C grep -aq "$s" "$K"; then
+              echo "::error::missing kernel marker: $s (patch skipped?)"
+              exit 1
+            fi
+          done
+          echo "expected markers present"
 
       # The job log needs admin rights to download, so publish the actual
       # compiler diagnostics as a release asset instead - that is readable.
