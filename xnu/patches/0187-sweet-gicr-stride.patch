@@ -1,0 +1,48 @@
+--- a/pexpert/arm/pe_fiq.c
++++ b/pexpert/arm/pe_fiq.c
+@@ -10,6 +10,7 @@
+ #include <machine/atomic.h>
+ #include <machine/machine_routines.h>
+ #include <pexpert/device_tree.h>
++#include <pexpert/pexpert.h>
+ #include <pexpert/arm64/board_config.h>
+ 
+ 
+@@ -25,6 +26,7 @@
+ static vm_offset_t gicd_base;
+ static vm_offset_t gicr_base;
+ static vm_offset_t gicr_size;
++static vm_offset_t gicr_pe_size = GICR_PE_SIZE;
+ 
+ static uint32_t
+ _gic_read32(vm_offset_t addr)
+@@ -56,7 +58,7 @@
+ 	// We only care about aff1 and aff0
+ 	uint32_t phys_id = __builtin_arm_rsr64("MPIDR_EL1") & (MPIDR_AFF1_MASK | MPIDR_AFF0_MASK);
+ 
+-	for (vm_offset_t offset = 0; offset < gicr_size; offset += GICR_PE_SIZE) {
++	for (vm_offset_t offset = 0; offset < gicr_size; offset += gicr_pe_size) {
+ 		vm_offset_t gicr_pe_base = gicr_base + offset;
+ 		uint64_t gicr_typer = gicr_read64(GICR_TYPER);
+ 		uint32_t aff_value = (uint32_t) (gicr_typer >> GICR_TYPER_AFFINITY_VALUE_SHIFT) & (MPIDR_AFF1_MASK | MPIDR_AFF0_MASK);
+@@ -141,6 +143,20 @@
+ 		}
+ 
+ 		gicr_size = gicr_size_prop;
++
++		/*
++		 * Marble's GIC-500 redistributors are 0x40000 apart, not the GICv3
++		 * default 0x20000.  QEMU virt keeps the default, so this is a boot
++		 * arg rather than a compile-time change.  cpus=1 never needed it:
++		 * CPU0 always uses frame 0.
++		 */
++		uint64_t stride = 0;
++		if (PE_parse_boot_argn("gicrstride", &stride, sizeof(stride)) &&
++		    stride >= 0x10000) {
++			gicr_pe_size = (vm_offset_t)stride;
++			kprintf("SWEET GIC: GICR stride %#llx\n",
++			    (unsigned long long)stride);
++		}
+ 	}
+ 
+ 	// Find the redistributor for this processor

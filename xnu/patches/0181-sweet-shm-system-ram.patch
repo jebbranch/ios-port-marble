@@ -3305,7 +3305,7 @@
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v85 (GPU probe matrix: CBAR/SCTLR/CB/KGSL/KGSL scan)\n");
++	printf("SWEET AUDIO: build v86 (gicrstride=0x40000 for marble multi-core)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
