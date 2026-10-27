@@ -2166,3 +2166,27 @@ v92：
 - 不再把 `g_self_pa` 放进 SHM 候选（低区 tone 0xa2e00000 才是厂商在用的）；
 - `g_phys_selftest()` 改为 **`sweetphys=1` 才运行**，正常启动不再对
   kernel-managed RAM 做 `pmap_map`。
+
+### 2026-10-27 19:4x —— v93：电池跑通（容量单位修正）；触摸延迟定性
+
+Test C v92 稳定，pmic_glink 电池拿到真实值：
+
+```
+batt-status prop=0 value=1        (charging)
+capacity    prop=4 value=10000    (0.01 % -> 100.00 %)
+vbat        prop=7 value=4427000  (4427 mV)
+ibat        prop=9 value=-249000  (-249 mA)
+temp        prop=12 value=2000000
+usb-online  prop=0 value=1
+```
+
+- 值合理（满电、插着 USB）。**capacity 是 0.01% 单位**，v93 改为 `/100`；
+  否则 50% 会被读成 5000，SweetBattery 截断成 100%。
+- 真实电量要拔线后看百分比变化才能最终确认。
+
+触摸：marble_touch 仍是 **GPIO bit-bang SPI**（GENI SE4 fw=0x102、
+proto=1、fifodis=1，不可用），一份报告约 35 字节 ≈ 1 ms，外加 2 ms
+等待。滑动后"没反应、然后一次性回放"的主因是 **UI 主线程被软件渲染
+卡住**（无 GPU，控制中心动画在 CPU 上跑），HID 事件在队列里堆积，
+主线程恢复后一次处理；不是触摸驱动 100 ms 级的延迟。
+建议先用 辅助功能 → 动态效果 → 减弱动态效果 验证。

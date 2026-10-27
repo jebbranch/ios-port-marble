@@ -2180,39 +2180,22 @@
  				continue;
  			}
  			g_shm_va = va;
-@@ -1803,246 +3373,592 @@
- 		if (!g_shm_va) {
- 			printf("SWEET GLINK: shm: no contiguous memory\n");
- 			return -1;
-+		}
-+	}
-+	memset(pkt, 0, sizeof(pkt));
-+	g_put32(pkt + 0, (6u << 4) | (pkt_size << 8));
-+	/* The vendor sets src_port_valid (bit 16) on SHM_MAP only: the APM
-+	 * needs the client port to bind the region's handle to it. */
-+	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8) |
-+	    0x10000u);
-+	g_put32(pkt + 8, src_port);
-+	g_put32(pkt + 12, 1);
-+	/* Linux' q6apm tags SHM_MAP with the graph id: use the same token as
-+	 * GRAPH_OPEN here instead of the old arbitrary 0x2000. */
-+	g_put32(pkt + 16, 0x100u + APM_CMD_GRAPH_OPEN);
-+	g_put32(pkt + 20, APM_CMD_SHARED_MEM_MAP_REGIONS);
-+	g_put32(pkt + 24, APM_SHM_POOL | (1u << 16));
-+	g_put32(pkt + 28, 4u);          /* property_flag, as the vendor sends */
-+	g_put32(pkt + 32, (uint32_t)g_shm_pa);
-+	g_put32(pkt + 36, (uint32_t)(g_shm_pa >> 32));
+@@ -1821,9 +3391,9 @@
+ 	g_put32(pkt + 28, 4u);          /* property_flag, as the vendor sends */
+ 	g_put32(pkt + 32, (uint32_t)g_shm_pa);
+ 	g_put32(pkt + 36, (uint32_t)(g_shm_pa >> 32));
+-	g_put32(pkt + 40, G_SHM_SIZE);
 +	g_put32(pkt + 40, g_shm_region_size());
-+	printf("SWEET GLINK: shm_map src=%#x pa=%#llx size=%#x "
+ 	printf("SWEET GLINK: shm_map src=%#x pa=%#llx size=%#x "
+-	    "valid=1\n", src_port, g_shm_pa, G_SHM_SIZE);
 +	    "valid=1\n", src_port, g_shm_pa, g_shm_region_size());
-+	sweet_log_sync();
-+	g_rsp_ready = 0;
-+	g_rsp_len = 0;
-+	g_send_gpr(pkt, pkt_size);
-+	for (unsigned i = 0; i < 5000; i += 5) {
-+		g_drain(0);
-+		if (g_rsp_ready) {
-+			break;
+ 	sweet_log_sync();
+ 	g_rsp_ready = 0;
+ 	g_rsp_len = 0;
+@@ -1832,216 +3402,562 @@
+ 		g_drain(0);
+ 		if (g_rsp_ready) {
+ 			break;
 +		}
 +		g_wait(5);
 +	}
@@ -2737,68 +2720,9 @@
 +			nw_db = 0;
 +			(void)PE_parse_boot_argn("sweetnowait", &nw_db,
 +			    sizeof(nw_db));
-+		}
-+		/* Fire-and-forget: the DSP answers nothing even when it is
-+		 * healthy, so a 100 ms wait per buffer would stall the tone
-+		 * loop for minutes.  Return success immediately. */
-+		if (nw_db) {
-+			g_drain(0);
-+			return 0;
-+		}
-+	}
-+	{
-+		/* 100 ms was a guess.  If the sink only starts pulling after the
-+		 * TDM comes up, the DONE reply can be late - sweetrspwait=<ms>
-+		 * widens the window for the single-buffer probe. */
-+		static int rspwait = -1;
-+		unsigned limit;
-+
-+		if (rspwait < 0) {
-+			rspwait = 100;
-+			(void)PE_parse_boot_argn("sweetrspwait", &rspwait,
-+			    sizeof(rspwait));
-+			if (rspwait < 100 || rspwait > 5000) {
-+				rspwait = 100;
-+			}
- 		}
--	}
--	memset(pkt, 0, sizeof(pkt));
--	g_put32(pkt + 0, (6u << 4) | (pkt_size << 8));
--	/* The vendor sets src_port_valid (bit 16) on SHM_MAP only: the APM
--	 * needs the client port to bind the region's handle to it. */
--	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8) |
--	    0x10000u);
--	g_put32(pkt + 8, src_port);
--	g_put32(pkt + 12, 1);
--	/* Linux' q6apm tags SHM_MAP with the graph id: use the same token as
--	 * GRAPH_OPEN here instead of the old arbitrary 0x2000. */
--	g_put32(pkt + 16, 0x100u + APM_CMD_GRAPH_OPEN);
--	g_put32(pkt + 20, APM_CMD_SHARED_MEM_MAP_REGIONS);
--	g_put32(pkt + 24, APM_SHM_POOL | (1u << 16));
--	g_put32(pkt + 28, 4u);          /* property_flag, as the vendor sends */
--	g_put32(pkt + 32, (uint32_t)g_shm_pa);
--	g_put32(pkt + 36, (uint32_t)(g_shm_pa >> 32));
--	g_put32(pkt + 40, G_SHM_SIZE);
--	printf("SWEET GLINK: shm_map src=%#x pa=%#llx size=%#x "
--	    "valid=1\n", src_port, g_shm_pa, G_SHM_SIZE);
--	sweet_log_sync();
--	g_rsp_ready = 0;
--	g_rsp_len = 0;
--	g_send_gpr(pkt, pkt_size);
--	for (unsigned i = 0; i < 5000; i += 5) {
--		g_drain(0);
--		if (g_rsp_ready) {
--			break;
-+		limit = (unsigned)rspwait;
-+		for (unsigned i = 0; i < limit; i += 5) {
-+			g_drain(0);
-+			if (g_rsp_ready) {
-+				break;
-+			}
-+			g_wait(5);
  		}
 -		g_wait(5);
- 	}
+-	}
 -	if (!g_rsp_ready || g_rsp_len < 28) {
 -		printf("SWEET GLINK: shm_map: no response (%u)\n", g_rsp_len);
 -		return -1;
@@ -2850,9 +2774,15 @@
 -		g_drain(0);
 -		if (g_rsp_ready) {
 -			break;
--		}
++		/* Fire-and-forget: the DSP answers nothing even when it is
++		 * healthy, so a 100 ms wait per buffer would stall the tone
++		 * loop for minutes.  Return success immediately. */
++		if (nw_db) {
++			g_drain(0);
++			return 0;
+ 		}
 -		g_wait(5);
--	}
+ 	}
 -	if (!g_rsp_ready || g_rsp_len < 32) {
 -		printf("SWEET GLINK: map_probe %s: no rsp\n", what);
 -		sweet_log_sync();
@@ -2864,7 +2794,13 @@
 -	sweet_log_sync();
 -	return g_le32(g_rsp + 28) == 0 ? 0 : -1;
 -}
--
++	{
++		/* 100 ms was a guess.  If the sink only starts pulling after the
++		 * TDM comes up, the DONE reply can be late - sweetrspwait=<ms>
++		 * widens the window for the single-buffer probe. */
++		static int rspwait = -1;
++		unsigned limit;
+ 
 -/* GRAPH_OPEN with the payload in the mapped region, as the vendor does. */
 -static int
 -g_apm_graph_open_shm(uint32_t src_port, const uint8_t *payload, uint32_t len,
@@ -2900,7 +2836,14 @@
 -		g_drain(0);
 -		if (g_rsp_ready) {
 -			break;
--		}
++		if (rspwait < 0) {
++			rspwait = 100;
++			(void)PE_parse_boot_argn("sweetrspwait", &rspwait,
++			    sizeof(rspwait));
++			if (rspwait < 100 || rspwait > 5000) {
++				rspwait = 100;
++			}
+ 		}
 -		g_wait(5);
 -	}
 -	if (!g_rsp_ready) {
@@ -3004,12 +2947,18 @@
 -		g_drain(0);
 -		if (g_rsp_ready) {
 -			break;
--		}
++		limit = (unsigned)rspwait;
++		for (unsigned i = 0; i < limit; i += 5) {
++			g_drain(0);
++			if (g_rsp_ready) {
++				break;
++			}
++			g_wait(5);
+ 		}
 -		g_wait(5);
--	}
+ 	}
  	static int dbg;
  	if (!g_rsp_ready || g_rsp_len < 40) {
- 		if (dbg++ < 4) {
 @@ -2070,87 +3986,215 @@
  			}
  			return -1;
@@ -3575,7 +3524,7 @@
  		g_apm_graph_start(port, APM_VENDOR_SG_ID);
  		return;
  	}
-@@ -2521,18 +4755,305 @@
+@@ -2521,18 +4755,308 @@
  }
  
  
@@ -3656,7 +3605,10 @@
 +	if (op == 0x30u && prop == 0) {
 +		g_batt_s_status = (int)v;
 +	} else if (op == 0x30u && prop == 4) {
-+		g_batt_s_cap = (int)v;
++		/* battmgr reports capacity in 0.01 % units (10000 = 100.00 %),
++		 * not whole percent: without the /100 a 50 % battery reads as
++		 * 5000 and SweetBattery clamps it to 100 %. */
++		g_batt_s_cap = (int)(v / 100u);
 +	} else if (op == 0x30u && prop == 7) {
 +		g_batt_s_mv = (int)(v / 1000u);
 +	} else if (op == 0x30u && prop == 9) {
@@ -3877,11 +3829,11 @@
  	printf("SWEET GLINK: ===== minimal GLINK/GPR client =====\n");
 +	/* Build tag: watchers key on this so an intermediate kernel cannot be
 +	 * mistaken for the one that was just pushed.  Bump it every change. */
-+	printf("SWEET AUDIO: build v92 (no SHM mapping of g_self_pa)\n");
++	printf("SWEET AUDIO: build v93 (battmgr capacity is 0.01 %)\n");
  
  	/* RTC first, then haptics; dumps afterwards in case one NAKs. */
  	g_clock_from_bootarg();
-@@ -2587,6 +5108,7 @@
+@@ -2587,6 +5111,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
