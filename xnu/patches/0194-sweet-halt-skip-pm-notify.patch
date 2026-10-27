@@ -1,0 +1,26 @@
+--- a/iokit/Kernel/IOPlatformExpert.cpp
++++ b/iokit/Kernel/IOPlatformExpert.cpp
+@@ -1000,6 +1000,23 @@
+ 			goto skip_to_haltRestart;
+ 		}
+ 
++#if defined(SWEET) || defined(ARM64_BOARD_CONFIG_SWEET)
++		/*
++		 * sweet has no Apple PM topology: the shutdown notification
++		 * walk below never returns, so IOShutdownNotificationsTimedOut
++		 * panics 30 s later and gIOPlatform->haltRestart() is never
++		 * reached.  BSD has already synced and unmounted every
++		 * filesystem when PEHaltRestart runs (launchd calls reboot(2)
++		 * after its teardown), so a userland power-off can go straight
++		 * to the platform halt.  Sleep (kPEUPSDelayHaltCPU) keeps the
++		 * normal path.
++		 */
++		if ((type == kPEHaltCPU || type == kPERestartCPU) && gIOPlatform) {
++			IOLog("SWEET: skip PM halt/restart notifications\n");
++			return gIOPlatform->haltRestart(type);
++		}
++#endif
++
+ 		pmRootDomain = IOService::getPMRootDomain();
+ 		/* Notify IOKit PM clients of shutdown/restart
+ 		 *  Clients subscribe to this message with a call to
