@@ -30,10 +30,21 @@
 #   qcom,iommu-dma-addr-pool = <0x10000000 0x10000000>
 #   audio buffers come from /dev/dma_heap/qcom,adsp
 #
-# apps-smmu base 0x15000000; register map (SMMU-500):
-#   SMR(n)     0x800  + 8n      S2CR(n)  0xC00 + 8n
-#   CBAR(n)    0x80000 + 0x1000n   SCTLR   +0x000   TCR2 +0x010
-#   TTBR0      +0x020   TTBR1   +0x030   MAIR  +0x040   FSR +0x058
+# apps-smmu base 0x15000000; register map (ARM SMMU-500 / v2, 4 KiB pages):
+#   GR0          base + 0x0000        GR1   base + 0x1000   (ID1.PAGESIZE=0)
+#   SMR(n)       GR0  + 0x800 + 4n
+#   S2CR(n)      GR0  + 0xC00 + 4n
+#   CBAR(n)      GR0  + 0x1000 + 4n          <- NOT 0x80000+0x1000n
+#   CBA2R(n)     GR1  + 0x800 + 4n = base + 0x1800 + 4n
+#   CBFRSYNRA(n) GR1  + 0x400 + 4n
+#   CB page      base + 0x80000 + 0x1000n : SCTLR +0x00, TCR2 +0x10,
+#                TTBR0 +0x20, TTBR1 +0x28, TCR +0x30, MAIR +0x38,
+#                PAR +0x50, ATS1PR +0x800, ATSR +0x8F0
+#
+# ★ base + 0x8000 is NOT GR1 on this part.  Writing there aborts the bus
+#   (we panicked a phone learning that).  base + 0x2000 is the
+#   implementation-defined block; it reads/writes without aborting but is
+#   not GR1 either.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

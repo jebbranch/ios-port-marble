@@ -1,5 +1,8 @@
 # marble XNU —— iOS 16 内核跑在 Redmi Note 12 Turbo 上
 
+> **音频/SMMU 接手必读：** [`docs/smmu-dead-ends.md`](docs/smmu-dead-ends.md) ——
+> 已经证伪的 SMMU 做法、正确的寄存器地图、以及“别再拿 DATA_BUFFER 当探针”的纪律。
+
 把 Apple 开源的 **XNU 8796.141.3**（iOS 16 同期内核）跑到
 **Redmi Note 12 Turbo（marble / SM7475 / Snapdragon 7+ Gen 2）** 上。
 启动方式是 **shim + `fastboot boot`，纯 RAM 运行**：不刷 boot、不写
