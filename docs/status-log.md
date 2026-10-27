@@ -2247,3 +2247,36 @@ Qualcomm 的关机不是 PSCI SYSTEM_OFF，而是
 3. 若 SCM 返回，再回退 PSCI SYSTEM_OFF。
 SPMI 写白名单增加 SID0 peripheral 0x13（PON HLOS）；重启仍用
 PSCI SYSTEM_RESET（已验证可用）。
+
+### 2026-10-27 22:3x —— v97 实测复盘：0190 从未被应用；电量刷新没有 intent
+
+**关机（v97 现象：转圈、按键震动仍在）**：ring 里依次出现
+`CPU halted` → `SWEET: skip PM halt/restart notifications`，然后没有任何
+`SWEET: PON ...`，30 s 后看门狗 panic。根因不是 PON 写失败，而是
+**0190 这个补丁在 CI 里从来没有被应用过**：
+- dxb 用 `git apply --check` 应用补丁，**整补丁原子**：任何一个 hunk
+  失败就整个跳过；
+- 0190 的第一个 hunk（`ud_setup` 里 `printf` 前多一个空行）与 0189
+  之后的文件不匹配 → 整补丁被跳过，`sweet_platform_halt_restart`
+  和 `PE_halt_restart` 赋值都没编译进去；
+- 于是 `haltRestart()` 返回 -1，`halt_all_cpus` 的 `while(1);` 在开中断
+  状态下空转：屏幕停在转圈、触摸/震动线程照常运行，30 s 后 panic。
+修复：按真实基线重新生成 0190（同时保留空行），并给 CI 增加：
+按 basename 检查 `Skipping patch`（dxb 记录的是 `dxb/patches/` 的副本），
+以及构建后用 grep 校验 3 个必须存在的内核字符串。
+
+**电量（现象：拔掉充电器仍显示充电、百分比不更新）**：
+- v97 的 30 s worker **确实在跑**，但每次请求都打印
+  `SWEET BATT: status no intent`：`g_batt_req()` 把远端 intent
+  标记 `in_use=1` 后从不归还。GLINK 里对端用 `RX_DONE(_W_REUSE)`
+  归还我们 TX 用掉的 intent，而代码只处理了自己本地 intent 的
+  `filled`，没清 `g_riids[].in_use`；开机探测用掉 6+ 个后，
+  PMIC 通道的 intent 池耗尽，后续永远拿不到。
+- 修复：`RX_DONE` 里按 id+chan 归还远端 intent；仍失败时
+  `g_batt_reclaim()` 回收该通道的 intent 再试。
+- 电流按 signed 解析（负=充电，之前 `4294872296 µA`）；并且只有
+  USB 在位或电流为负时才报 external/charging（之前 `charging=status==1`
+  与是否插线无关，所以拔线后一直显示充电）。
+
+待验证：v98 镜像的关机是否真的断电；电量是否每 30 s 更新、拔线后
+充电图标是否消失。
