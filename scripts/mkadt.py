@@ -149,20 +149,17 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
         ]
     cpu_nodes = []
     for core, (mpidr, clk) in enumerate(cpu_table):
-        is_p = (not qemu) and core >= 4
-        cid = 1 if is_p else 0
-        ctype = ord('P') if is_p else ord('E')
         cpu_nodes.append(node(f'cpu{core}', [
             ph(),
             ('device_type', cstr('cpu')),
             ('compatible', cstr('qcom,kryo260') + cstr('qcom,kryo470') + cstr('ARM,v8')),
             ('reg', u32(mpidr)),  # actual MPIDR Aff1:Aff0, NOT logical ID
             ('cpu-id', u32(core)),   # descriptive: XNU assigns IDs by DT order
-            ('cluster-id', u32(cid)),
-            ('cluster-type', u32(ctype)),  # 'E' / 'P' for AMP
-            ('die-cluster-id', u32(cid)),
-            ('cluster-core-id', u32(core - 4 if is_p else core)),
-            ('l2-cache-id', u32(cid)),
+            ('cluster-id', u32(0)),  # descriptive; see ml_parse_cpu_topology
+            ('cluster-type', u32(0)),  # CLUSTER_TYPE_SMP (MAX_CPU_CLUSTERS=1)
+            ('die-cluster-id', u32(0)),
+            ('cluster-core-id', u32(core)),
+            ('l2-cache-id', u32(0)),
             ('l3-cache-id', u32(0)),
             ('state', cstr('running' if core == 0 else 'stopped')),
             ('timebase-frequency', u32(timebase)),
