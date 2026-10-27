@@ -122,3 +122,36 @@ userdata 尾部的 SWEETLOG ring **不会因为一次失败的启动而被清空
 `scripts/gpu_probe.sh` 现在会比较镜像构建时的 `sweettime` 和日志里的
 `SWEET RTC: clock set from sweettime=`；不一致就直接报 `STALE RING`。
 以后所有"启动后拉日志"的测试都应该带这个校验。
+
+## 组合扫描（v85+）
+
+`scripts/gpu_sweep.sh` 把下面 11 个组合一次跑完（每个组合一次开机，按顺序只读在前）：
+
+| 变体 | 内容 |
+|---|---|
+| `m0-base` | SMMU ID/SMR/S2CR 基线 |
+| `m1-kgsl` | KGSL 0x0 / 0x840 / 0x1000 / 0x2000 读 |
+| `m2-gr1` | GR1 的 CBA2R + CBFRSYNRA 读 |
+| `m3-cbar0r` | CBAR(0) 读 |
+| `m4-cbar03r` | CBAR(0..3) 读 |
+| `m5-cbar0w0` | CBAR(0) 写 0 + 回读 |
+| `m6-cbar0w1` | CBAR(0) 写 0x10000 + 回读 |
+| `m7-sctlr0r` | CB0 SCTLR 读 |
+| `m8-sctlr0w` | CB0 SCTLR 写 0 + 回读 |
+| `m9-cb0regs` | CB0 TTBR0/TCR/MAIR 读 |
+| `mA-readall` | 所有只读组合并在一起 |
+
+```bash
+./scripts/gpu_sweep.sh              # 全跑，约 45 分钟
+./scripts/gpu_sweep.sh m3-cbar0r    # 只跑一个
+DRY_RUN=1 ./scripts/gpu_sweep.sh    # 只构建
+```
+
+每个组合的构建参数通过 `GP_CBAR_BANK` / `GP_CBAR_WRITE` / `GP_CBAR_COUNT` /
+`GP_SCTLR_BANK` / `GP_SCTLR_WRITE` / `GP_CB_REGS` / `GP_GR1_READ` /
+`GP_KGSL_SCAN` 传给 shim。结果页新增 `last_step`（每次危险访问前写入）和
+`prev_step`（下一次启动时回读上一个组合死在哪一步）——如果 DRAM 在复位后
+没有被 ABL 清掉，就能定位到具体寄存器。
+
+判定：每个组合都会用镜像的 `sweettime` 校验日志；`NO-XNU` 表示这次启动
+没进 XNU（同步中止会被 shim 恢复，所以这通常意味着 SError 或死挂）。
