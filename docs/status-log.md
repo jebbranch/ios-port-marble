@@ -2140,3 +2140,29 @@ opcode/property/result 后再采用（通道刚打开时的主动通知会被跳
 （会碰 PMIC 固件负责的 PON/闹钟）。实际的时间来源是 `sweettime`
 （mkimage.sh 构建时写入 cmdline，精确到构建/启动之间的延迟），v91 起日志
 只打印 raw counter 并注明 EE4-owned，不再尝试注定失败的写入。
+
+### 2026-10-27 19:2x —— v92：pmap_assert_free 根因 = SHM 自测页越界映射
+
+隔离结果：Test B（只加载 ADSP，`sweetglink=0`）**稳定**；Test C
+（`sweetglink=1`，不开 PCM）**panic**，断言与第一次完全相同。ring 最后：
+
+```
+SWEET PHYS: va=0xfffffe549bde0000 pa=0x91de9c000
+SWEET PHYS: mirror=0x4d43493c MISMATCH
+...
+panic: pmap_assert_free ... 0x91dea0000 ... Kernel CPU mapping
+```
+
+panic 页正好是自测页 **+0x4000**，两次（0x92144c000 / 0x91dea0000）都是。
+
+根因：`g_phys_selftest()` 只分配了 **0x4000** 的 `g_self_pa`，
+`g_apm_shm_map_gpr()` 却把它当作 SHM 候选，用
+`g_shm_region_size()` = **0x5000** 去 `g_map_win()`；span 向上取整成
+**0x8000**，于是把 `g_self_pa` 的**下一页**也 `pmap_map` 了。那一页属于
+别的分配，等它被释放时内核 pmap 里还留着映射 → `pmap_assert_free`。
+（1 核那次 USB 网卡掉线很可能也是这页被复用后踩到。）
+
+v92：
+- 不再把 `g_self_pa` 放进 SHM 候选（低区 tone 0xa2e00000 才是厂商在用的）；
+- `g_phys_selftest()` 改为 **`sweetphys=1` 才运行**，正常启动不再对
+  kernel-managed RAM 做 `pmap_map`。
