@@ -142,7 +142,8 @@ jobs:
           K="dxb/fakeroot/System/Library/Kernels/kernel.development.sweet"
           for s in "SWEET: PON shutdown" \
                    "SWEET: skip PM halt/restart notifications" \
-                   "SWEET BATT: reclaimed"; do
+                   "SWEET: halt fallback after 5 s" \
+                   "SWEET BATT: tick ok="; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"
               exit 1

@@ -66,11 +66,22 @@
  	}
 --- a/iokit/Kernel/arm/SweetPlatformExpert.cpp
 +++ b/iokit/Kernel/arm/SweetPlatformExpert.cpp
-@@ -22,6 +22,78 @@
+@@ -9,6 +9,9 @@
+ #include <IOKit/IOPlatformExpert.h>
+ #include <IOKit/IODeviceTreeSupport.h>
+ #include <IOKit/IOLib.h>
++#include <kern/clock.h>
++#include <kern/sched_prim.h>
++#include <kern/thread.h>
+ 
+ class SweetPlatformExpert : public IODTPlatformExpert {
+ 	OSDeclareDefaultStructors(SweetPlatformExpert);
+@@ -22,6 +25,122 @@
  
  OSDefineMetaClassAndStructors(SweetPlatformExpert, IODTPlatformExpert);
  
 +extern "C" int sweet_pon_power_off(void);
++extern "C" void sweet_log_sync(void);
 +
 +/*
 + * Userland "slide to power off" / "restart" end up in PEHaltRestart ->
@@ -115,6 +126,35 @@
 +	    "x1", "x2", "x3", "memory");
 +}
 +
++/*
++ * The SPMI PON sequence can wedge (the PMIC PON peripheral does not answer
++ * every observer read on this firmware), and the halt thread would then sit
++ * there until the 30 s watchdog panics.  Run a one-shot fallback on its own
++ * thread: after 5 s deassert PS_HOLD directly and fall back to PSCI, so the
++ * device always leaves the halt state.
++ */
++static int g_halt_chan;
++
++static void
++sweet_halt_fallback(void *arg, wait_result_t wr)
++{
++	uint64_t deadline;
++
++	(void)arg;
++	(void)wr;
++	clock_interval_to_deadline(5000, NSEC_PER_MSEC, &deadline);
++	(void)assert_wait_deadline(&g_halt_chan, THREAD_UNINT, deadline);
++	thread_block(THREAD_CONTINUE_NULL);
++	IOLog("SWEET: halt fallback after 5 s -> PS_HOLD + PSCI\n");
++	sweet_log_sync();
++	(void)sweet_scm_deassert_ps_hold();
++	sweet_psci_call(0x84000008ull);	/* SYSTEM_OFF */
++	sweet_psci_call(0x84000009ull);	/* SYSTEM_RESET if OFF returns */
++	for (;;) {
++		__asm__ volatile("wfi");
++	}
++}
++
 +static int
 +sweet_platform_halt_restart(unsigned int type)
 +{
@@ -122,9 +162,23 @@
 +	case kPEHaltCPU:
 +	case kPEUPSDelayHaltCPU:
 +		IOLog("SWEET: PON shutdown + PS_HOLD deassert\n");
++		sweet_log_sync();
++		{
++			thread_t th;
++
++			if (kernel_thread_start(sweet_halt_fallback, NULL,
++			    &th) == KERN_SUCCESS) {
++				thread_deallocate(th);
++			} else {
++				IOLog("SWEET: halt fallback thread failed\n");
++			}
++		}
 +		(void)sweet_pon_power_off();
++		IOLog("SWEET: PON returned; deassert PS_HOLD\n");
++		sweet_log_sync();
 +		(void)sweet_scm_deassert_ps_hold();
 +		IOLog("SWEET: PS_HOLD SCM returned; PSCI SYSTEM_OFF\n");
++		sweet_log_sync();
 +		sweet_psci_call(0x84000008ull);	/* fallback */
 +		break;
 +	case kPERestartCPU:
@@ -145,7 +199,7 @@
  bool
  SweetPlatformExpert::start(IOService *provider)
  {
-@@ -29,6 +101,7 @@
+@@ -29,6 +148,7 @@
  	if (!IODTPlatformExpert::start(provider)) {
  		return false;
  	}
