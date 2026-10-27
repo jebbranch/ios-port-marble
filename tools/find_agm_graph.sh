@@ -18,8 +18,8 @@
 set -u
 
 OUTDIR=/data/local/tmp
-MAXMAP=$((4 * 1024 * 1024))
-MAXREAD=$((256 * 1024))
+MAXMAP=$((2 * 1024 * 1024))
+MAXREAD=$((128 * 1024))
 
 log() { echo "$@"; }
 
@@ -28,28 +28,30 @@ if [ "$(id -u)" != 0 ]; then
 	exit 1
 fi
 
-PID="${1:-}"
-if [ -z "$PID" ]; then
+# Every audio-ish process, not just the HAL: the graph may be built by the
+# AGM service (vendor.qti.hardware.AGMIPC@*.service) or by audioserver, and
+# which one it is depends on the vendor's layering.
+PIDS="${1:-}"
+if [ -z "$PIDS" ]; then
 	for p in $(ls /proc | grep -E '^[0-9]+$'); do
 		c=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
 		case "$c" in
-		*android.hardware.audio.service*|*audio.service*) PID=$p; break ;;
+		*find_agm_graph*) continue ;;
+		*audio*|*AGMIPC*|*agm*|*audioserver*|*mediaserver*|*mediaswcodec*)
+			PIDS="$PIDS $p" ;;
 		esac
 	done
 fi
-if [ -z "$PID" ] || [ ! -r "/proc/$PID/mem" ]; then
-	log "no audio HAL pid (pass one as the first argument)"
-	log "candidates:"
-	for p in $(ls /proc | grep -E '^[0-9]+$'); do
-		c=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
-		case "$c" in *audio*|*agm*) log "  $p  $c" ;; esac
-	done
+if [ -z "$PIDS" ]; then
+	log "no audio-ish process found (pass pids as arguments)"
 	exit 1
 fi
-log "scanning pid $PID  ($(tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null))"
 
 hits=0
 scanned=0
+for PID in $PIDS; do
+[ -r "/proc/$PID/mem" ] || continue
+log "scanning pid $PID  ($(tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null))"
 while read -r line; do
 	range=$(echo "$line" | awk '{print $1}')
 	perms=$(echo "$line" | awk '{print $2}')
@@ -85,6 +87,7 @@ while read -r line; do
 		log "HIT pat=$pat off=0x$(printf %x $abs) -> $f"
 	done
 done < "/proc/$PID/maps"
+done
 
 log "== done: $hits hit(s), scanned 0x$(printf %x $scanned) bytes =="
 if [ "$hits" = 0 ]; then
