@@ -1,0 +1,41 @@
+--- a/osfmk/kern/processor.c
++++ b/osfmk/kern/processor.c
+@@ -1728,3 +1728,38 @@
+ }
+ 
+ #endif /* defined(__arm64__) */
++
++/*
++ * Sweet: per-CPU scheduling snapshot for the BSD bring-up sampler.
++ * processor.h is MACH_KERNEL_PRIVATE, so sweet_glink.c cannot read
++ * processor_array[] or struct processor directly.
++ */
++int
++sweet_cpu_busy(int cpu)
++{
++	processor_t p;
++
++	if (cpu < 0 || cpu >= MAX_SCHED_CPUS) {
++		return -1;
++	}
++	p = processor_array[cpu];
++	if (p == NULL) {
++		return -1;
++	}
++	return (p->active_thread != NULL && p->active_thread != p->idle_thread);
++}
++
++uint64_t
++sweet_cpu_tid(int cpu)
++{
++	processor_t p;
++
++	if (cpu < 0 || cpu >= MAX_SCHED_CPUS) {
++		return 0;
++	}
++	p = processor_array[cpu];
++	if (p == NULL || p->active_thread == NULL) {
++		return 0;
++	}
++	return thread_tid(p->active_thread);
++}
