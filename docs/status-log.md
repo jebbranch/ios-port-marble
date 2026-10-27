@@ -2103,3 +2103,14 @@ SWEET SMP: cpu7 busy=1/20  last_tid=221
 XNU 不知道 E/P 的区分，P 核占用低只是因为这些采样时系统很轻载。
 要验证 big.LITTLE 策略，需要把 `MAX_CPU_CLUSTERS` 改成 2、cluster-type 设为
 `'E'`/`'P'`，让 XNU 建两个 pset；那是下一步。
+
+### 2026-10-27 17:4x —— AMP / E-P 尝试：未进 XNU，已回退
+
+`MAX_CPU_CLUSTERS=2` + `-D__AMP__=1` + ADT 里 A510 标 `'E'`、A710/X2 标 `'P'`
+的 v89 **没有产生新日志**（ring 的 sweettime 仍是上一轮），说明在 XNU 日志
+初始化前就死了。AMP 调度器需要 CLPC / Edge policy（sheng 用了专门的
+`zzyf-sheng-amp.patch`），不是开两个宏就能用。已 `git revert` 回 v88
+（8 核 SMP）继续使用。
+
+另外：4 核和 8 核的 `launchd` 都在 **39.3s** 启动（39.315 vs 39.320），
+8 核在日志里并不慢；测试镜像里的 20 秒 sampler 是测试用的，正常启动没有。
