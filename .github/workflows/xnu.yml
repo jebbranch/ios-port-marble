@@ -143,6 +143,7 @@ jobs:
           for s in "SWEET: PON shutdown" \
                    "SWEET: skip PM halt/restart notifications" \
                    "SWEET: halt fallback after 5 s" \
+                   "SWEET BATT: immediate re-check" \
                    "SWEET BATT: tick ok="; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"
