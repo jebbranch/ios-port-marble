@@ -2032,3 +2032,44 @@ data_buffer sent; gfsr=0 fsynr1=0
    GLINK 读，还是更早——确定"挂死发生在 DSP 侧还是 AP 侧"。
 2. 若 AP 侧正常，则问题在 DSP 消费数据之后（写回 / TDM / 功放），
    那时 TDM 链路（§2.8 已全部 status=0）就是下一个排查点。
+
+## 2026-10-27 17:1x —— 多核 panic 修好了：GICR stride 0x20000 → 0x40000
+
+自 2026-10-25 起 `cpus>1` 必 panic：
+
+```
+panic(cpu 1): Kernel data abort pc 0xfffffe0007a8c598
+ESR 0x96000010 far 0xfffffe000d514008
+```
+
+pc = `pe_init_fiq + 0x14c`，读 GICR_TYPER。
+
+**根因**：marble 的 redistributor 间距是 **0x40000**（shim 里也是这个值），
+XNU 的 `SWEET.h` 还是 GICv3 默认的 **0x20000**。`cpus=1` 只用 offset 0，
+所以一直没暴露；开第二个核时 `find_gicr_pe_base()` 用错 stride，读到第一帧
+中间的未实现页 → 外部中止（不是缺页）。
+
+**修法**（`0187-sweet-gicr-stride.patch`）：`pe_fiq.c` 把 stride 改成运行时变量，
+boot arg `gicrstride=<n>` 覆盖；`mkimage.sh` 默认传 `gicrstride=0x40000`。
+QEMU 不传，保持 0x20000。
+
+**验证**（v88，`KEEPALIVE=1 CPUS=4 sweetsmp=1 sweetglink=0`）：
+
+```
+SWEET SMP: sampler ncpu=4 n=20 ms=1000
+SWEET SMP: cpu0 busy=19/20 last_tid=3684
+SWEET SMP: cpu1 busy=11/20 last_tid=2564
+SWEET SMP: cpu2 busy=15/20 last_tid=457
+SWEET SMP: cpu3 busy=15/20 last_tid=2779
+SWEET SMP: done, resetting
+```
+
+四个核都起来了，调度器也在分配工作；20 秒后自己复位，无 panic。
+
+**配套**（`0188-sweet-cpu-busy-helper.patch`）：`osfmk/kern/processor.c` 导出
+`sweet_cpu_busy()` / `sweet_cpu_tid()`。`kern/processor.h` 把 `processor_array[]`
+和 `struct processor` 藏在 `MACH_KERNEL_PRIVATE` 后面，BSD 驱动直接读不到
+（v87 就是这样编译失败的）。
+
+注意：ADT 目前只列了 4 个 A510；A710/X2 还没加。要上 8 核需要先改
+`scripts/mkadt.py` 的 CPU 列表和 cluster-type。
