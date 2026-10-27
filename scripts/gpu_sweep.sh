@@ -24,7 +24,10 @@ OUTDIR="$ROOT/images/gpu-sweep"
 LOGDIR="$ROOT/logs"
 mkdir -p "$OUTDIR" "$LOGDIR"
 SWEEP_LOG="$LOGDIR/gpu-sweep-$(date +%Y%m%d-%H%M%S).log"
-BASE_ARGS="sweetgpu=1"
+# sweetglink=0 stops after g_gpu_probe() (it runs before the gate), so the
+# audio graph is never started: without sweetnolpass=1 the DSP's first access
+# would wedge the bus and the GPU variant would look like a probe failure.
+BASE_ARGS="sweetgpu=1 sweetglink=0"
 
 # label | build env | note
 # Reads first, writes last: a fatal write must not hide the read results.
@@ -106,7 +109,10 @@ run_one() {
   SERIAL="$SERIAL" ./scripts/pull_logs.sh "gpu-$label" >/dev/null 2>&1 || {
     say "RESULT $label LOG-PULL-FAILED"; return 1;
   }
-  got=$(sed -n 's/.*SWEET RTC: clock set from sweettime=\([0-9][0-9]*\).*/\1/p' \
+  # sweetglink=0 skips the RTC line, so read the value back from the
+  # boot-args that launchd echoes.  This still proves the log is from this
+  # image: a failed boot leaves the previous ring in place.
+  got=$(sed -n 's/.*boot-args = .*sweettime=\([0-9][0-9]*\).*/\1/p' \
     "$LOGDIR/ring-gpu-$label.txt" | tail -1)
   if [ "$want" != "$got" ]; then
     say "RESULT $label NO-XNU (image=$want log=$got)"
