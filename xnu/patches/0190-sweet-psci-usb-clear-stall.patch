@@ -66,16 +66,45 @@
  	}
 --- a/iokit/Kernel/arm/SweetPlatformExpert.cpp
 +++ b/iokit/Kernel/arm/SweetPlatformExpert.cpp
-@@ -22,6 +22,46 @@
+@@ -22,6 +22,78 @@
  
  OSDefineMetaClassAndStructors(SweetPlatformExpert, IODTPlatformExpert);
  
++extern "C" int sweet_pon_power_off(void);
++
 +/*
-+ * PSCI SYSTEM_OFF / SYSTEM_RESET.  The shim already resets the SoC with
-+ * the same SMC for sweetreboot=1; userland's "slide to power off" and
-+ * "restart" end up in PEHaltRestart -> gIOPlatform->haltRestart(), and
-+ * without this hook they return -1 and the machine just stays there.
++ * Userland "slide to power off" / "restart" end up in PEHaltRestart ->
++ * gIOPlatform->haltRestart().  Power-off is not a PSCI SYSTEM_OFF on this
++ * firmware: the vendor kernel programs the PMIC PON for SHUTDOWN and then
++ * deasserts PS_HOLD.  The deassert is an SCM call (SVC_PWR 0x09,
++ * DEASSERT_PS_HOLD 0x02, SIP owner, fast call) with the PON configured
++ * first by sweet_pon_power_off().  Reset still uses PSCI SYSTEM_RESET,
++ * which already works (sweetreboot=1 uses it).
 + */
++static uint64_t
++sweet_scm_deassert_ps_hold(void)
++{
++	register uint64_t x0 __asm("x0") = 0xC2090902ull;
++	register uint64_t x1 __asm("x1") = 1;	/* one value argument */
++	register uint64_t x2 __asm("x2") = 0;
++	register uint64_t x3 __asm("x3") = 0;
++	register uint64_t x4 __asm("x4") = 0;
++	register uint64_t x5 __asm("x5") = 0;
++	register uint64_t x6 __asm("x6") = 0;
++	register uint64_t x7 __asm("x7") = 0;
++
++	__asm__ volatile("dsb sy" ::: "memory");
++	__asm__ volatile("smc #0"
++	    : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3), "+r"(x4), "+r"(x5),
++	      "+r"(x6), "+r"(x7)
++	    :
++	    : "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
++	      "x16", "x17", "memory");
++	IOLog("SWEET: deassert_ps_hold scm -> %#llx\n",
++	    (unsigned long long)x0);
++	return x0;
++}
++
 +static void
 +sweet_psci_call(uint64_t fn)
 +{
@@ -92,8 +121,11 @@
 +	switch (type) {
 +	case kPEHaltCPU:
 +	case kPEUPSDelayHaltCPU:
-+		IOLog("SWEET: PSCI SYSTEM_OFF\n");
-+		sweet_psci_call(0x84000008ull);	/* SYSTEM_OFF */
++		IOLog("SWEET: PON shutdown + PS_HOLD deassert\n");
++		(void)sweet_pon_power_off();
++		(void)sweet_scm_deassert_ps_hold();
++		IOLog("SWEET: PS_HOLD SCM returned; PSCI SYSTEM_OFF\n");
++		sweet_psci_call(0x84000008ull);	/* fallback */
 +		break;
 +	case kPERestartCPU:
 +		IOLog("SWEET: PSCI SYSTEM_RESET\n");
@@ -113,7 +145,7 @@
  bool
  SweetPlatformExpert::start(IOService *provider)
  {
-@@ -29,6 +69,7 @@
+@@ -29,6 +101,7 @@
  	if (!IODTPlatformExpert::start(provider)) {
  		return false;
  	}

@@ -2229,3 +2229,21 @@ iOS 的 haptic 栈不在这个内核里（IOHIDFamily 的 haptic 驱动是 Apple
 - `sweetvibetouch=0` 可关；`sweetvibems` 留给后面调脉宽。
 后续如果要做真正的系统 haptics（开关/通知不同波形），需要找到
 iOS 的 haptic 服务协议（backboardd/hapticsd → 内核），再对接到 HAP520。
+
+### 2026-10-27 21:1x —— v96：去掉触摸震动；关机改走 PMIC PON + SCM 释放 PS_HOLD
+
+用户实测：触摸震动“震感有但用不上” → 移除 `sweet_haptics_tap()`
+调用和 worker；开机那一下 300 ms 也改成 `sweethap=1` 才播，正常启动安静。
+（物理按键的 `sweet_haptics_kick()` 保留。）
+
+关机：v95 的 PSCI SYSTEM_OFF 不生效，30 s 后
+`Halt/Restart watchdog barked`。对照 vendor `msm-poweroff.c`：
+Qualcomm 的关机不是 PSCI SYSTEM_OFF，而是
+1. 配置 PMIC PON 的 PS_HOLD_RST_CTL 为 `PON_POWER_OFF_SHUTDOWN (0x4)`：
+   PMK8350 的 `pon_hlos@1300`，subtype 0x08/0x09 (GEN3) 用 0x1352/0x1353，
+   否则 0x135A/0x135B；先清 CTL2 bit7，500 µs 后写 CTL 低 4 位=4，再置 bit7。
+2. `qcom_scm_deassert_ps_hold`：SCM `0xC2090902`（SVC_PWR=0x09/
+   DEASSERT_PS_HOLD=0x02，SIP，fast call），arginfo=1，arg0=0。
+3. 若 SCM 返回，再回退 PSCI SYSTEM_OFF。
+SPMI 写白名单增加 SID0 peripheral 0x13（PON HLOS）；重启仍用
+PSCI SYSTEM_RESET（已验证可用）。

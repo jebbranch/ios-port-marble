@@ -1,0 +1,12 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -427,7 +427,8 @@
+ 	    addr > 0xffffu ||
+ 	    !((sid == 3 && (peripheral == 0xf0 || peripheral == 0xf1 ||
+ 	    peripheral == 0xf2)) ||
+-	    (sid == 0 && (peripheral == 0x61 || peripheral == 0x9d)))) {
++	    (sid == 0 && (peripheral == 0x61 || peripheral == 0x9d ||
++	    peripheral == 0x13)))) {
+ 		return -1;
+ 	}
+ 	IOLockLock(sp_lock);
