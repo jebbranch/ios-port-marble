@@ -478,7 +478,20 @@
  	sweet_log_sync();
  }
  
-@@ -1121,7 +1347,78 @@
+@@ -1025,8 +1251,10 @@
+ 	printf("hboost-follow=%#x\n",
+ 	    sweet_spmi_read(3, 0xf241, &v) == 0 ? v : 0xffu);
+ 
+-	/* 3600 mV in 50 mV steps, sine waveform. */
+-	g_hap_wr(0xf048, 72, "vmax");
++	/* The DT caps this LRA at qcom,vmax-mv = 1450; the write is in
++	 * 50 mV steps (1450/50 = 29).  Driving 3600 mV tripped the HAP520
++	 * fault output (0xf00c = 0x2) before the LRA could move. */
++	g_hap_wr(0xf048, 29, "vmax");
+ 	g_hap_wr(0xf049, 0x01, "wave");
+ 	/* Open-loop LRA period: 5882 us / 5 us per step = 0x0498. */
+ 	{
+@@ -1121,7 +1349,78 @@
  SYSCTL_PROC(_kern, OID_AUTO, sweetvibe,
      CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, 0, 0,
      sweet_vibe_sysctl, "I", "trigger the PM8350B haptics engine");
@@ -557,7 +570,7 @@
  static void
  g_dump(const char *tag, const uint8_t *p, uint32_t len)
  {
-@@ -1522,8 +1819,313 @@
+@@ -1522,8 +1821,313 @@
  	0x33, 0x43, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x06, 0x40, 0x00, 0x00,
  	0x01, 0x00, 0x00, 0x00, 0x07, 0x40, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
  	0x00, 0x00, 0x00, 0x00,
@@ -871,7 +884,7 @@
  #define APM_CMD_GRAPH_OPEN                  0x01001000u
  #define APM_CMD_GRAPH_PREPARE               0x01001001u
  #define APM_CMD_GRAPH_START                 0x01001002u
-@@ -1537,13 +2139,47 @@
+@@ -1537,13 +2141,47 @@
  #define G_TDM_MODULE_ID                     0x0700100eu
  #define G_INPUT_MODULE_OFF                  216u
  #define APM_VP_SG_ID                        0xb0000002u
@@ -920,7 +933,7 @@
  /*
   * The DSP can only reach memory within its own reserved region
   * (adsp_region@9fd00000, 49 MiB).  XNU's physical allocator manages only the
-@@ -1553,8 +2189,55 @@
+@@ -1553,8 +2191,55 @@
   */
  #define G_SHM_FIXED_PA                      0xa2d00000u
  
@@ -977,7 +990,7 @@
  g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
      uint32_t plen, uint32_t opcode, const char *what)
  {
-@@ -1567,7 +2250,19 @@
+@@ -1567,7 +2252,19 @@
  	memset(pkt, 0, sizeof(pkt));
  	g_put32(pkt + 0, (6u << 4) | (pkt_size << 8));
  	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
@@ -998,7 +1011,7 @@
  	g_put32(pkt + 12, dst_port);    /* 1 = APM, else module iid */
  	g_put32(pkt + 16, 0x100u + opcode);
  	g_put32(pkt + 20, opcode);
-@@ -1580,30 +2275,57 @@
+@@ -1580,30 +2277,57 @@
  	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes)\n", what,
  	    src_port, dst_port, pkt_size);
  	sweet_log_sync();
@@ -1079,7 +1092,7 @@
  }
  
  /* The vendor HAL never inlines a graph payload: it maps one region once and
-@@ -1614,6 +2336,19 @@
+@@ -1614,6 +2338,19 @@
   * and the vendor's kprobe trace agree byte for byte). */
  static vm_offset_t g_shm_va;
  static uint64_t    g_shm_pa;
@@ -1099,7 +1112,7 @@
  static uint32_t    g_shm_handle;
  static int         g_shm_mapped;
  
-@@ -1622,6 +2357,160 @@
+@@ -1622,6 +2359,160 @@
   * The hand-built packet below put the body at offset 24, so the DSP read the
   * pool id as the payload size and answered AR_EBADPARAM.  Build the body in
   * a standalone array and let g_apm_cmd place it correctly. */
@@ -1260,7 +1273,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -1631,33 +2520,787 @@
+@@ -1631,33 +2522,787 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -1275,6 +1288,12 @@
  	}
  	done = true;
 -	v = ml_io_map(0x15000000u, 0x2000u);
+-	if (!v) {
+-		printf("SWEET SMMU: map failed\n");
+-		return;
+-	}
+-	idr0 = *(volatile uint32_t *)(v + 0x40);
+-	idr1 = *(volatile uint32_t *)(v + 0x44);
 +	/* io_map() allocates from the fixed 8 MiB io_submap and run76
 +	 * panicked trying to take 1 MiB of what was left.  Use kernel_map
 +	 * windows instead (same helper the SHM/IPCC paths use). */
@@ -1282,12 +1301,10 @@
 +	if (v != 0) {
 +		v = g_win_map(v, 0x15000000u, 0x2000u);
 +	}
- 	if (!v) {
- 		printf("SWEET SMMU: map failed\n");
- 		return;
- 	}
--	idr0 = *(volatile uint32_t *)(v + 0x40);
--	idr1 = *(volatile uint32_t *)(v + 0x44);
++	if (!v) {
++		printf("SWEET SMMU: map failed\n");
++		return;
++	}
 +	/* SMMU-500: sCR0 is +0x00 (bit0 CLIENTPD, bit10 USFCFG), ID0/ID1 are
 +	 * +0x20/+0x24, SMRs at +0x800, S2CRs at +0xc00.  VALID is bit 31. */
  	cr0 = *(volatile uint32_t *)(v + 0x00);
@@ -2058,7 +2075,7 @@
  }
  
  /* Prove whether the page pmap_find_phys reports is a real DRAM address:
-@@ -1672,12 +3315,30 @@
+@@ -1672,12 +3317,30 @@
  	vm_offset_t va = 0, mirror;
  	uint64_t pa;
  	uint32_t pn;
@@ -2090,7 +2107,7 @@
  	    VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) {
  		printf("SWEET PHYS: alloc failed\n");
  		return;
-@@ -1687,7 +3348,7 @@
+@@ -1687,7 +3350,7 @@
  	printf("SWEET PHYS: va=%#llx pa=%#llx\n", (uint64_t)va, pa);
  	*(volatile uint32_t *)va = 0x5a5a1234u;
  	__asm__ volatile("dsb sy" ::: "memory");
@@ -2099,7 +2116,7 @@
  	if (!mirror) {
  		printf("SWEET PHYS: mirror map failed\n");
  	} else {
-@@ -1696,52 +3357,111 @@
+@@ -1696,52 +3359,111 @@
  		printf("SWEET PHYS: mirror=%#x %s\n", v,
  		    v == 0x5a5a1234u ? "MATCH" : "MISMATCH");
  	}
@@ -2163,7 +2180,12 @@
 -		if (!va) {
 -			printf("SWEET GLINK: shm: map %#llx failed\n", addrs[i]);
 -			continue;
--		}
++		(void)PE_parse_boot_argn("sweetpa", &ovr, sizeof(ovr));
++		if (ovr != 0) {
++			printf("SWEET GLINK: shm pa override %#llx\n",
++			    ovr);
++			pa[n] = ovr;
+ 		}
 -		/* All eight pool ids rejected every DDR address; keep one probe
 -		 * so the map path stays exercised, but do not stall the boot. */
 -		for (unsigned p = 3; p < 4; p++) {
@@ -2175,12 +2197,6 @@
 -			g_put32(body + 16, G_SHM_SIZE);
 -			printf("SWEET GLINK: shm_map_gpr pool=%u pa=%#llx\n",
 -			    p, addrs[i]);
-+		(void)PE_parse_boot_argn("sweetpa", &ovr, sizeof(ovr));
-+		if (ovr != 0) {
-+			printf("SWEET GLINK: shm pa override %#llx\n",
-+			    ovr);
-+			pa[n] = ovr;
-+		}
 +	}
 +	/* ml_io_map() itself works for this PA (run64 mapped it and the APM
 +	 * accepted it); only flush_dcache64()->phystokv_range() panics on
@@ -2237,7 +2253,7 @@
  			return 0;
  		}
  	}
-@@ -1761,11 +3481,11 @@
+@@ -1761,11 +3483,11 @@
  		return 0;
  	}
  	if (!g_shm_va) {
@@ -2251,7 +2267,7 @@
  			sweet_log_sync();
  		}
  	}
-@@ -1780,7 +3500,7 @@
+@@ -1780,7 +3502,7 @@
  		for (unsigned i = 0; i < sizeof(lim) / sizeof(lim[0]); i++) {
  			vm_offset_t va = 0;
  
@@ -2260,7 +2276,7 @@
  			    PAGE_MASK, lim[i], 0,
  			    KMA_DATA | KMA_ZERO | KMA_PERMANENT,
  			    VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) {
-@@ -1790,7 +3510,7 @@
+@@ -1790,7 +3512,7 @@
  			}
  			pn = pmap_find_phys(kernel_pmap, (addr64_t)va);
  			if (!pn) {
@@ -2269,7 +2285,7 @@
  				continue;
  			}
  			g_shm_va = va;
-@@ -1821,9 +3541,9 @@
+@@ -1821,9 +3543,9 @@
  	g_put32(pkt + 28, 4u);          /* property_flag, as the vendor sends */
  	g_put32(pkt + 32, (uint32_t)g_shm_pa);
  	g_put32(pkt + 36, (uint32_t)(g_shm_pa >> 32));
@@ -2281,7 +2297,7 @@
  	sweet_log_sync();
  	g_rsp_ready = 0;
  	g_rsp_len = 0;
-@@ -1904,16 +3624,19 @@
+@@ -1904,16 +3626,19 @@
  /* GRAPH_OPEN with the payload in the mapped region, as the vendor does. */
  static int
  g_apm_graph_open_shm(uint32_t src_port, const uint8_t *payload, uint32_t len,
@@ -2305,7 +2321,7 @@
  
  	memset(pkt, 0, sizeof(pkt));
  	g_put32(pkt + 0, (6u << 4) | (pkt_size << 8));
-@@ -1922,7 +3645,7 @@
+@@ -1922,7 +3647,7 @@
  	g_put32(pkt + 12, 1);
  	g_put32(pkt + 16, 0x400u);
  	g_put32(pkt + 20, APM_CMD_GRAPH_OPEN);
@@ -2314,7 +2330,7 @@
  	g_put32(pkt + 24 + 4, 0);
  	g_put32(pkt + 24 + 8, g_shm_handle);
  	g_put32(pkt + 24 + 12, len);
-@@ -1936,112 +3659,455 @@
+@@ -1936,112 +3661,455 @@
  		g_drain(0);
  		if (g_rsp_ready) {
  			break;
@@ -2872,7 +2888,7 @@
  	}
  	static int dbg;
  	if (!g_rsp_ready || g_rsp_len < 40) {
-@@ -2070,87 +4136,215 @@
+@@ -2070,87 +4138,215 @@
  			}
  			return -1;
  		}
@@ -3143,7 +3159,7 @@
  }
  
  /*
-@@ -2332,24 +4526,39 @@
+@@ -2332,24 +4528,39 @@
  	uint32_t v;
  	int rc;
  
@@ -3194,7 +3210,7 @@
  	}
  
  	/* TDM sink input: 96 kHz / 32 bit / 3 channels. */
-@@ -2361,12 +4570,34 @@
+@@ -2361,12 +4572,34 @@
  	mf[20] = 32; mf[21] = 0; mf[22] = 31; mf[23] = 0;
  	mf[24] = 1;  mf[25] = 0; mf[26] = 3;  mf[27] = 0;
  	mf[28] = 1;  mf[29] = 2; mf[30] = 3;
@@ -3233,7 +3249,7 @@
  	g_put32(mf + 0, 96000);
  	g_put32(mf + 4, 32u | (3u << 16));
  	g_put32(mf + 8, 1);
-@@ -2407,7 +4638,43 @@
+@@ -2407,7 +4640,43 @@
  	return g_apm_cmd(src_port, 1, pl, sizeof(pl), opcode, what);
  }
  
@@ -3277,7 +3293,7 @@
  g_apm_graph_start(uint32_t src_port, uint32_t sg_id)
  {
  	if (g_apm_graph_ctrl(src_port, sg_id, APM_CMD_GRAPH_PREPARE,
-@@ -2425,12 +4692,126 @@
+@@ -2425,12 +4694,126 @@
  g_apm_graph_bringup(void)
  {
  	/* The vendor's AGM clients send from 0x2010/0x2011. */
@@ -3408,7 +3424,7 @@
  	if (g_apm_cmd(port, 1, g_graph_vp, sizeof(g_graph_vp),
  	    APM_CMD_GRAPH_OPEN, "graph_open/vp-inline") == 0) {
  		g_audio_graph_cfg_vp(port);
-@@ -2448,7 +4829,8 @@
+@@ -2448,7 +4831,8 @@
  	 * command; a handle owned by another port may be rejected. */
  	if (g_apm_shm_map(port) == 0) {
  		if (g_apm_graph_open_shm(port, g_graph_vp,
@@ -3418,7 +3434,7 @@
  			g_audio_graph_cfg_vp(port);
  			if (g_apm_graph_start(port, APM_VP_SG_ID) == 0) {
  				g_audio_tone(port, G_VP_SAL_IID);
-@@ -2500,7 +4882,8 @@
+@@ -2500,7 +4884,8 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_open_payload,
@@ -3428,7 +3444,7 @@
  		g_audio_graph_cfg(port);
  		if (g_apm_graph_start(port, APM_GRAPH_SG_ID) == 0) {
  			/* The tone needs a mapped region for the PCM buffers. */
-@@ -2513,30 +4896,423 @@
+@@ -2513,30 +4898,423 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_vendor_payload,
@@ -3855,7 +3871,7 @@
  	g_rtc_set_from_pmic();
  	g_spmi_dump("rtc", 0, 0x6100, 16);
  	g_spmi_dump("hap", 3, 0xf000, 16);
-@@ -2587,6 +5363,7 @@
+@@ -2587,6 +5365,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);
