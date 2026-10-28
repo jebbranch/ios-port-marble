@@ -1,0 +1,167 @@
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -23,8 +23,18 @@
+ #include <IOKit/IOService.h>
+ #include <IOKit/IOUserClient.h>
+ #include <IOKit/IOMemoryDescriptor.h>
++#include <IOKit/IOBufferMemoryDescriptor.h>
++#include <libkern/c++/OSCollectionIterator.h>
++#include <libkern/libkern.h>
+ #include <kern/task.h>
++#include <sys/proc.h>
+ 
++/* The haptics buffer the client maps.  Retained for the lifetime of the
++ * kernel so the close-time dump cannot touch freed memory. */
++static IOBufferMemoryDescriptor *gSweetHapBuf;
++static uint8_t gSweetHapLast[64];
++static bool gSweetHapHaveLast;
++
+ /*
+  * Common user client.  Unknown selectors are acknowledged (so the caller
+  * keeps going and we see the whole sequence) but nothing is played.
+@@ -40,7 +50,12 @@
+ 	    void *reference) APPLE_KEXT_OVERRIDE;
+ 	virtual IOReturn clientClose(void) APPLE_KEXT_OVERRIDE;
+ 	virtual IOReturn clientDied(void) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn registerNotificationPort(mach_port_t port, UInt32 type,
++	    UInt32 refCon) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn clientMemoryForType(UInt32 type, IOOptionBits *options,
++	    IOMemoryDescriptor **memory) APPLE_KEXT_OVERRIDE;
+ private:
++	void dumpBuffer(const char *why);
+ 	int fPid;
+ };
+ 
+@@ -115,9 +130,83 @@
+ }
+ 
+ IOReturn
++SweetHapticsUCBase::registerNotificationPort(mach_port_t port, UInt32 type,
++    UInt32 refCon)
++{
++	IOLog("SWEET HAPTICS: %s notify port type=%u ref=%#x\n", getName(),
++	    (unsigned)type, (unsigned)refCon);
++	return kIOReturnSuccess;
++}
++
++void
++SweetHapticsUCBase::dumpBuffer(const char *why)
++{
++	uint8_t now[64];
++	uint32_t n = sizeof(now);
++
++	if (!gSweetHapBuf || gSweetHapBuf->readBytes(0, now, n) != n) {
++		return;
++	}
++	if (gSweetHapHaveLast && memcmp(now, gSweetHapLast, n) == 0) {
++		return;
++	}
++	memcpy(gSweetHapLast, now, n);
++	gSweetHapHaveLast = true;
++	sweet_haptics_dump(why, now, n);
++}
++
++static void
++sweet_haptics_props(IOService *service, OSObject *properties)
++{
++	OSDictionary *dict = OSDynamicCast(OSDictionary, properties);
++	OSCollectionIterator *it;
++
++	if (dict == NULL) {
++		IOLog("SWEET HAPTICS: %s setProperties (non-dict)\n",
++		    service->getName());
++		return;
++	}
++	it = OSCollectionIterator::withCollection(dict);
++	if (it == NULL) {
++		return;
++	}
++	IOLog("SWEET HAPTICS: %s setProperties count=%u\n",
++	    service->getName(), (unsigned)dict->getCount());
++	OSObject *key;
++	while ((key = it->getNextObject()) != NULL) {
++		const OSSymbol *sym = OSDynamicCast(OSSymbol, key);
++		IOLog("SWEET HAPTICS:   prop %s\n",
++		    sym ? sym->getCStringNoCopy() : "?");
++	}
++	it->release();
++}
++
++IOReturn
++SweetHapticsUCBase::clientMemoryForType(UInt32 type, IOOptionBits *options,
++    IOMemoryDescriptor **memory)
++{
++	IOBufferMemoryDescriptor *buf;
++
++	IOLog("SWEET HAPTICS: %s map type=%u options=%#x\n", getName(),
++	    (unsigned)type, options ? (unsigned)*options : 0);
++	buf = IOBufferMemoryDescriptor::withCapacity(0x10000,
++	    kIODirectionInOut, true);
++	if (buf == NULL) {
++		return kIOReturnNoMemory;
++	}
++	if (gSweetHapBuf == NULL) {
++		buf->retain();          /* our copy; the client owns its map ref */
++		gSweetHapBuf = buf;
++	}
++	*memory = buf;
++	return kIOReturnSuccess;
++}
++
++IOReturn
+ SweetHapticsUCBase::clientClose(void)
+ {
+ 	IOLog("SWEET HAPTICS: %s closed (pid %d)\n", getName(), fPid);
++	dumpBuffer("  buffer at close");
+ 	return IOUserClient::clientClose();
+ }
+ 
+@@ -125,6 +214,7 @@
+ SweetHapticsUCBase::clientDied(void)
+ {
+ 	IOLog("SWEET HAPTICS: %s died (pid %d)\n", getName(), fPid);
++	dumpBuffer("  buffer at death");
+ 	return IOUserClient::clientDied();
+ }
+ 
+@@ -138,6 +228,7 @@
+ 	OSDeclareDefaultStructors(AppleSPUHapticsAudioDriver);
+ public:
+ 	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
+ };
+ OSDefineMetaClassAndStructors(AppleSPUHapticsAudioDriver, IOService);
+ 
+@@ -155,6 +246,13 @@
+ 	return true;
+ }
+ 
++IOReturn
++AppleSPUHapticsAudioDriver::setProperties(OSObject *properties)
++{
++	sweet_haptics_props(this, properties);
++	return IOService::setProperties(properties);
++}
++
+ /* AppleSPUHapticsManagerDriver / AppleSPUHapticsManagerUC (AOPHaptics). */
+ class AppleSPUHapticsManagerUC : public SweetHapticsUCBase {
+ 	OSDeclareDefaultStructors(AppleSPUHapticsManagerUC);
+@@ -165,6 +263,7 @@
+ 	OSDeclareDefaultStructors(AppleSPUHapticsManagerDriver);
+ public:
+ 	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
+ };
+ OSDefineMetaClassAndStructors(AppleSPUHapticsManagerDriver, IOService);
+ 
+@@ -180,3 +279,10 @@
+ 	IOLog("SWEET HAPTICS: AppleSPUHapticsManagerDriver registered\n");
+ 	return true;
+ }
++
++IOReturn
++AppleSPUHapticsManagerDriver::setProperties(OSObject *properties)
++{
++	sweet_haptics_props(this, properties);
++	return IOService::setProperties(properties);
++}
