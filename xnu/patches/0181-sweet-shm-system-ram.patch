@@ -1260,7 +1260,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -1631,33 +2520,787 @@
+@@ -1631,32 +2520,786 @@
  {
  	static bool done;
  	vm_offset_t v;
@@ -1888,7 +1888,7 @@
 +		}
 +	}
 +	printf("SWEET SMMU: stage-2 programming skipped (layout unknown)\n");
- 	sweet_log_sync();
++	sweet_log_sync();
 +	return;
 +	/* The ADSP audio SID (msm-audio-ion: iommus = <&apps_smmu 0x1801>)
 +	 * has no SMR in a fastboot-booted XNU.  Give it a stage-2 identity
@@ -2054,10 +2054,9 @@
 +		printf("SWEET SMMU: USFCFG cleared %#x -> %#x\n", cr0,
 +		    *(volatile uint32_t *)(v + 0x00));
 +	}
-+	sweet_log_sync();
+ 	sweet_log_sync();
  }
  
- /* Prove whether the page pmap_find_phys reports is a real DRAM address:
 @@ -1672,12 +3315,30 @@
  	vm_offset_t va = 0, mirror;
  	uint64_t pa;
@@ -3428,7 +3427,7 @@
  		g_audio_graph_cfg(port);
  		if (g_apm_graph_start(port, APM_GRAPH_SG_ID) == 0) {
  			/* The tone needs a mapped region for the PCM buffers. */
-@@ -2513,30 +4896,423 @@
+@@ -2513,30 +4896,420 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_vendor_payload,
@@ -3506,7 +3505,7 @@
 +		g_batt_ready = 0;
 +		g_batt_fill = 0;
 +		g_send_tx_data_lcid(G_BATT_LCID, r->id, pkt, sizeof(pkt));
-+		for (unsigned i = 0; i < 1000 && !g_batt_ready; i += 5) {
++		for (unsigned i = 0; i < 60 && !g_batt_ready; i += 5) {
 +			g_drain(0);
 +			if (!g_batt_ready) {
 +				g_wait(5);
@@ -3580,13 +3579,10 @@
 +	g_drain(0);
 +	ok += g_batt_req(0x30u, 0, "status", 1);
 +	ok += g_batt_req(0x30u, 4, "capacity", 1);
-+	ok += g_batt_req(0x30u, 7, "vbat", 1);
-+	ok += g_batt_req(0x30u, 9, "ibat", 1);
-+	ok += g_batt_req(0x32u, 0, "usb", 1);
 +	/* Poll every 3 s for a quick charger reaction; print every tenth
 +	 * tick (30 s) so the ring does not fill with identical lines. */
 +	tick_n++;
-+	if (tick_n % 10 == 1) {
++	if (tick_n % 6 == 1) {
 +		printf("SWEET BATT: tick %d ok=%d/5 cap=%d%% %dmV %dmA "
 +		    "status=%d usb=%d\n", tick_n, ok, g_batt_s_cap,
 +		    g_batt_s_mv, g_batt_s_ma, g_batt_s_status, g_batt_s_usb);
@@ -3599,7 +3595,7 @@
 +{
 +	(void)arg;
 +	(void)wr;
-+	uint32_t wait_ms = 3000;	/* 3 s: match the phone's own cadence */
++	uint32_t wait_ms = 5000;	/* 5 s; the UI timer refreshes at 3 s */
 +
 +	for (;;) {
 +		uint64_t deadline;
@@ -3611,7 +3607,7 @@
 +		if (g_batt_rcid != 0) {
 +			g_batt_tick();
 +		}
-+		wait_ms = 3000;
++		wait_ms = 5000;
 +	}
 +}
 +
@@ -3855,7 +3851,7 @@
  	g_rtc_set_from_pmic();
  	g_spmi_dump("rtc", 0, 0x6100, 16);
  	g_spmi_dump("hap", 3, 0xf000, 16);
-@@ -2587,6 +5363,7 @@
+@@ -2587,6 +5360,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);

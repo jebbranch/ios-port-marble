@@ -17,10 +17,10 @@
  	if (sweet_batt_get(&bPercent, &bMv, &bMa, &bStatus, &bUsb)) {
 -		bool ext = bUsb != 0;
 -		bool charging = bStatus == 1;
-+		/* bUsb (battmgr USB_PRESENT) reads 0 even while attached on
-+		 * this firmware; a negative current is a second, reliable
-+		 * charging signal.  Never claim charging without either. */
-+		bool ext = bUsb != 0 || bMa < 0;
++		/* The battmgr USB flag latches at boot and stays 1 after the
++		 * cable is pulled, while the current follows reality
++		 * (negative = charging).  Use the current alone. */
++		bool ext = bMa < 0;
 +		bool charging = ext && bStatus == 1;
  		bool full = bStatus == 4;
  
