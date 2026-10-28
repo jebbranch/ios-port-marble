@@ -76,7 +76,7 @@
  
  class SweetPlatformExpert : public IODTPlatformExpert {
  	OSDeclareDefaultStructors(SweetPlatformExpert);
-@@ -22,6 +25,122 @@
+@@ -22,6 +25,133 @@
  
  OSDefineMetaClassAndStructors(SweetPlatformExpert, IODTPlatformExpert);
  
@@ -142,14 +142,25 @@
 +
 +	(void)arg;
 +	(void)wr;
-+	clock_interval_to_deadline(5000, NSEC_PER_MSEC, &deadline);
++	uint64_t r;
++
++	clock_interval_to_deadline(3000, NSEC_PER_MSEC, &deadline);
 +	(void)assert_wait_deadline(&g_halt_chan, THREAD_UNINT, deadline);
 +	thread_block(THREAD_CONTINUE_NULL);
-+	IOLog("SWEET: halt fallback after 5 s -> PS_HOLD + PSCI\n");
++	IOLog("SWEET: halt fallback 3 s -> SCM deassert only\n");
 +	sweet_log_sync();
-+	(void)sweet_scm_deassert_ps_hold();
-+	sweet_psci_call(0x84000008ull);	/* SYSTEM_OFF */
-+	sweet_psci_call(0x84000009ull);	/* SYSTEM_RESET if OFF returns */
++	r = sweet_scm_deassert_ps_hold();
++	printf("SWEET: halt fallback SCM returned %#llx\n",
++	    (unsigned long long)r);
++	sweet_log_sync();
++	/* Give the PMIC time to cut power; if it did not, restart rather
++	 * than sit until the 30 s watchdog panics. */
++	clock_interval_to_deadline(2000, NSEC_PER_MSEC, &deadline);
++	(void)assert_wait_deadline(&g_halt_chan, THREAD_UNINT, deadline);
++	thread_block(THREAD_CONTINUE_NULL);
++	IOLog("SWEET: halt fallback still up; PSCI SYSTEM_RESET\n");
++	sweet_log_sync();
++	sweet_psci_call(0x84000009ull);	/* SYSTEM_RESET */
 +	for (;;) {
 +		__asm__ volatile("wfi");
 +	}
@@ -199,7 +210,7 @@
  bool
  SweetPlatformExpert::start(IOService *provider)
  {
-@@ -29,6 +148,7 @@
+@@ -29,6 +159,7 @@
  	if (!IODTPlatformExpert::start(provider)) {
  		return false;
  	}

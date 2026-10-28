@@ -142,7 +142,7 @@ jobs:
           K="dxb/fakeroot/System/Library/Kernels/kernel.development.sweet"
           for s in "SWEET: PON shutdown" \
                    "SWEET: skip PM halt/restart notifications" \
-                   "SWEET: halt fallback after 5 s" \
+                   "SWEET: halt fallback 3 s" \
                    "SWEET BATT: immediate re-check" \
                    "SWEET BATT: tick ok="; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
