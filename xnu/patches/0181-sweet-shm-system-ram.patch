@@ -3428,7 +3428,7 @@
  		g_audio_graph_cfg(port);
  		if (g_apm_graph_start(port, APM_GRAPH_SG_ID) == 0) {
  			/* The tone needs a mapped region for the PCM buffers. */
-@@ -2513,30 +4896,419 @@
+@@ -2513,30 +4896,423 @@
  		return;
  	}
  	if (g_apm_graph_open_shm(port, g_graph_vendor_payload,
@@ -3574,6 +3574,7 @@
 +static void
 +g_batt_tick(void)
 +{
++	static int tick_n;
 +	int ok = 0;
 +
 +	g_drain(0);
@@ -3582,12 +3583,15 @@
 +	ok += g_batt_req(0x30u, 7, "vbat", 1);
 +	ok += g_batt_req(0x30u, 9, "ibat", 1);
 +	ok += g_batt_req(0x32u, 0, "usb", 1);
-+	/* One line per tick: tells us whether the ADSP answered at all and
-+	 * what the cache holds, even when nothing changed. */
-+	printf("SWEET BATT: tick ok=%d/5 cap=%d%% %dmV %dmA status=%d usb=%d\n",
-+	    ok, g_batt_s_cap, g_batt_s_mv, g_batt_s_ma, g_batt_s_status,
-+	    g_batt_s_usb);
-+	sweet_log_sync();
++	/* Poll every 3 s for a quick charger reaction; print every tenth
++	 * tick (30 s) so the ring does not fill with identical lines. */
++	tick_n++;
++	if (tick_n % 10 == 1) {
++		printf("SWEET BATT: tick %d ok=%d/5 cap=%d%% %dmV %dmA "
++		    "status=%d usb=%d\n", tick_n, ok, g_batt_s_cap,
++		    g_batt_s_mv, g_batt_s_ma, g_batt_s_status, g_batt_s_usb);
++		sweet_log_sync();
++	}
 +}
 +
 +static void
@@ -3595,7 +3599,7 @@
 +{
 +	(void)arg;
 +	(void)wr;
-+	uint32_t wait_ms = 5000;	/* first sample early, then every 30 s */
++	uint32_t wait_ms = 3000;	/* 3 s: match the phone's own cadence */
 +
 +	for (;;) {
 +		uint64_t deadline;
@@ -3607,7 +3611,7 @@
 +		if (g_batt_rcid != 0) {
 +			g_batt_tick();
 +		}
-+		wait_ms = 30000;
++		wait_ms = 3000;
 +	}
 +}
 +
@@ -3851,7 +3855,7 @@
  	g_rtc_set_from_pmic();
  	g_spmi_dump("rtc", 0, 0x6100, 16);
  	g_spmi_dump("hap", 3, 0xf000, 16);
-@@ -2587,6 +5359,7 @@
+@@ -2587,6 +5363,7 @@
  		}
  		printf("SWEET GLINK: %d intents advertised\n", g_nliids);
  		g_drain(100);

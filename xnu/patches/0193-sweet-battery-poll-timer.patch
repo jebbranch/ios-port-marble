@@ -1,8 +1,10 @@
 --- a/iokit/Kernel/arm/SweetBattery.cpp
 +++ b/iokit/Kernel/arm/SweetBattery.cpp
-@@ -2,6 +2,8 @@
+@@ -1,7 +1,9 @@
+ /*
   * Built-in iOS battery bring-up service. Default: 100%, no AC reported.
-  * sweetbattery=1: read-only PM6150 polling every 30 seconds; voltage-derived
+- * sweetbattery=1: read-only PM6150 polling every 30 seconds; voltage-derived
++ * sweetbattery=1: read-only PM6150 polling every 3 seconds; voltage-derived
   * SOC is an UNCALIBRATED estimate, not a replacement for the Linux QG algo.
 + * sweetbatt=1 also starts the timer: without it the pmic_glink samples are
 + * read once at boot and iOS keeps that fallback value forever.
@@ -23,7 +25,16 @@
  		bool full = bStatus == 4;
  
  		if (bPercent > 100) {
-@@ -287,12 +292,15 @@
+@@ -277,7 +282,7 @@
+ 	SweetBattery *self = OSDynamicCast(SweetBattery, owner);
+ 	if (self && self->fRunning) {
+ 		self->poll();
+-		sender->setTimeoutMS(30000);
++		sender->setTimeoutMS(3000);
+ 	}
+ }
+ 
+@@ -287,18 +292,21 @@
  	if (!IOPMPowerSource::start(provider)) {
  		return false;
  	}
@@ -41,3 +52,10 @@
  		fLoop = IOWorkLoop::workLoop();
  		fTimer = IOTimerEventSource::timerEventSource(this, &SweetBattery::timerFired);
  		if (fLoop && fTimer && fLoop->addEventSource(fTimer) == kIOReturnSuccess) {
+ 			fTimerAdded = true;
+ 			fRunning = true;
+-			fTimer->setTimeoutMS(30000);
++			fTimer->setTimeoutMS(3000);
+ 		} else {
+ 			fReal = false;
+ 			poll();

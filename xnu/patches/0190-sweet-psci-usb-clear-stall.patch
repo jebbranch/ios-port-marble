@@ -76,11 +76,10 @@
  
  class SweetPlatformExpert : public IODTPlatformExpert {
  	OSDeclareDefaultStructors(SweetPlatformExpert);
-@@ -22,6 +25,133 @@
+@@ -22,6 +25,93 @@
  
  OSDefineMetaClassAndStructors(SweetPlatformExpert, IODTPlatformExpert);
  
-+extern "C" int sweet_pon_power_off(void);
 +extern "C" void sweet_log_sync(void);
 +
 +/*
@@ -126,71 +125,32 @@
 +	    "x1", "x2", "x3", "memory");
 +}
 +
-+/*
-+ * The SPMI PON sequence can wedge (the PMIC PON peripheral does not answer
-+ * every observer read on this firmware), and the halt thread would then sit
-+ * there until the 30 s watchdog panics.  Run a one-shot fallback on its own
-+ * thread: after 5 s deassert PS_HOLD directly and fall back to PSCI, so the
-+ * device always leaves the halt state.
-+ */
-+static int g_halt_chan;
-+
-+static void
-+sweet_halt_fallback(void *arg, wait_result_t wr)
-+{
-+	uint64_t deadline;
-+
-+	(void)arg;
-+	(void)wr;
-+	uint64_t r;
-+
-+	clock_interval_to_deadline(3000, NSEC_PER_MSEC, &deadline);
-+	(void)assert_wait_deadline(&g_halt_chan, THREAD_UNINT, deadline);
-+	thread_block(THREAD_CONTINUE_NULL);
-+	IOLog("SWEET: halt fallback 3 s -> SCM deassert only\n");
-+	sweet_log_sync();
-+	r = sweet_scm_deassert_ps_hold();
-+	printf("SWEET: halt fallback SCM returned %#llx\n",
-+	    (unsigned long long)r);
-+	sweet_log_sync();
-+	/* Give the PMIC time to cut power; if it did not, restart rather
-+	 * than sit until the 30 s watchdog panics. */
-+	clock_interval_to_deadline(2000, NSEC_PER_MSEC, &deadline);
-+	(void)assert_wait_deadline(&g_halt_chan, THREAD_UNINT, deadline);
-+	thread_block(THREAD_CONTINUE_NULL);
-+	IOLog("SWEET: halt fallback still up; PSCI SYSTEM_RESET\n");
-+	sweet_log_sync();
-+	sweet_psci_call(0x84000009ull);	/* SYSTEM_RESET */
-+	for (;;) {
-+		__asm__ volatile("wfi");
-+	}
-+}
-+
 +static int
 +sweet_platform_halt_restart(unsigned int type)
 +{
 +	switch (type) {
 +	case kPEHaltCPU:
 +	case kPEUPSDelayHaltCPU:
-+		IOLog("SWEET: PON shutdown + PS_HOLD deassert\n");
++		/*
++		 * Do NOT touch the SPMI PON path here.  Its chnls write for
++		 * the PON APID external-aborts on this firmware (panic of
++		 * 2026-10-28: pc in sp_chnl_read, far 0xfffffe401da04000,
++		 * x21=0x1353), so the halt thread would panic before any PMIC
++		 * register is programmed.  Try the SCM deassert directly; if
++		 * the PMIC keeps running (PS_HOLD_RST_CTL was never set to
++		 * SHUTDOWN), fall back to PSCI so we never sit in the halt.
++		 */
++		IOLog("SWEET: halt: SCM deassert (PON skipped)\n");
 +		sweet_log_sync();
-+		{
-+			thread_t th;
-+
-+			if (kernel_thread_start(sweet_halt_fallback, NULL,
-+			    &th) == KERN_SUCCESS) {
-+				thread_deallocate(th);
-+			} else {
-+				IOLog("SWEET: halt fallback thread failed\n");
-+			}
-+		}
-+		(void)sweet_pon_power_off();
-+		IOLog("SWEET: PON returned; deassert PS_HOLD\n");
++		IOLog("SWEET: SCM deassert returned %#llx\n",
++		    (unsigned long long)sweet_scm_deassert_ps_hold());
 +		sweet_log_sync();
-+		(void)sweet_scm_deassert_ps_hold();
-+		IOLog("SWEET: PS_HOLD SCM returned; PSCI SYSTEM_OFF\n");
++		IOLog("SWEET: PSCI SYSTEM_OFF\n");
 +		sweet_log_sync();
-+		sweet_psci_call(0x84000008ull);	/* fallback */
++		sweet_psci_call(0x84000008ull);
++		IOLog("SWEET: SYSTEM_OFF returned; PSCI SYSTEM_RESET\n");
++		sweet_log_sync();
++		sweet_psci_call(0x84000009ull);
 +		break;
 +	case kPERestartCPU:
 +		IOLog("SWEET: PSCI SYSTEM_RESET\n");
@@ -210,7 +170,7 @@
  bool
  SweetPlatformExpert::start(IOService *provider)
  {
-@@ -29,6 +159,7 @@
+@@ -29,6 +119,7 @@
  	if (!IODTPlatformExpert::start(provider)) {
  		return false;
  	}

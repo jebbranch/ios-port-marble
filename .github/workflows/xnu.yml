@@ -140,11 +140,10 @@ jobs:
           # the built kernel for one marker per recent patch that must be
           # linked in.
           K="dxb/fakeroot/System/Library/Kernels/kernel.development.sweet"
-          for s in "SWEET: PON shutdown" \
+          for s in "SWEET: halt: SCM deassert" \
                    "SWEET: skip PM halt/restart notifications" \
-                   "SWEET: halt fallback 3 s" \
                    "SWEET BATT: immediate re-check" \
-                   "SWEET BATT: tick ok="; do
+                   "SWEET BATT: tick %d ok="; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"
               exit 1
