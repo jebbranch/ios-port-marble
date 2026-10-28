@@ -1,0 +1,214 @@
+--- /dev/null
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -0,0 +1,182 @@
++/*
++ * SWEET: stubs for the iOS haptics IOKit services.
++ *
++ * The iOS 16 userland reaches the Taptic Engine through kernel drivers that
++ * only exist in Apple's kernel.  The userland half is present and running:
++ *
++ *   ButtonResolver.framework (inside backboardd) looks up
++ *   "AppleSPUHapticsAudioDriver" and opens its "AppleSPUHapticsAudioUC";
++ *   AOPHaptics.framework looks up "AppleSPUHapticsManagerDriver";
++ *   the event system opens AppleHapticsSupportCallan for HID haptics.
++ *
++ * Nothing in this kernel answers those names, so every UI/ringtone haptics
++ * request is silently dropped while the PMIC HAP520 path in sweet_glink.c
++ * (sweet_haptics_kick) keeps working.
++ *
++ * This file publishes the two AOP service names as IOServices whose user
++ * clients log IOServiceOpen, every externalMethod selector and the scalar/
++ * struct arguments.  They do not play anything yet: the goal of this step is
++ * to learn the protocol from a ring log and then translate the captured
++ * commands into HAP520 pulses.
++ */
++#include <IOKit/IOLib.h>
++#include <IOKit/IOService.h>
++#include <IOKit/IOUserClient.h>
++#include <IOKit/IOMemoryDescriptor.h>
++#include <kern/task.h>
++
++/*
++ * Common user client.  Unknown selectors are acknowledged (so the caller
++ * keeps going and we see the whole sequence) but nothing is played.
++ */
++class SweetHapticsUCBase : public IOUserClient {
++	OSDeclareDefaultStructors(SweetHapticsUCBase);
++public:
++	virtual bool initWithTask(task_t owningTask, void *securityID, UInt32 type,
++	    OSDictionary *properties) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn externalMethod(uint32_t selector,
++	    IOExternalMethodArguments *arguments,
++	    IOExternalMethodDispatch *dispatch, OSObject *target,
++	    void *reference) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn clientClose(void) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn clientDied(void) APPLE_KEXT_OVERRIDE;
++private:
++	int fPid;
++};
++
++OSDefineMetaClassAndStructors(SweetHapticsUCBase, IOUserClient);
++
++bool
++SweetHapticsUCBase::initWithTask(task_t owningTask, void *securityID,
++    UInt32 type, OSDictionary *properties)
++{
++	fPid = owningTask ? task_pid(owningTask) : -1;
++	if (!super::initWithTask(owningTask, securityID, type, properties)) {
++		return false;
++	}
++	IOLog("SWEET HAPTICS: %s open by pid %d type %#x\n", getName(), fPid,
++	    (unsigned)type);
++	return true;
++}
++
++static void
++sweet_haptics_dump(const char *tag, const void *data, uint32_t len)
++{
++	const uint8_t *p = (const uint8_t *)data;
++	char line[3 * 32 + 1];
++	uint32_t n = len > 32 ? 32 : len;
++	uint32_t o = 0;
++
++	for (uint32_t i = 0; i < n; i++) {
++		static const char hex[] = "0123456789abcdef";
++		line[o++] = hex[p[i] >> 4];
++		line[o++] = hex[p[i] & 15];
++		line[o++] = (i + 1 == n) ? '\0' : ' ';
++	}
++	line[o] = '\0';
++	IOLog("SWEET HAPTICS: %s len=%u %s%s\n", tag, len, line,
++	    len > n ? " ..." : "");
++}
++
++IOReturn
++SweetHapticsUCBase::externalMethod(uint32_t selector,
++    IOExternalMethodArguments *arguments, IOExternalMethodDispatch *dispatch,
++    OSObject *target, void *reference)
++{
++	IOLog("SWEET HAPTICS: %s sel=%u sin=%u sout=%u struct_in=%u struct_out=%u%s\n",
++	    getName(), (unsigned)selector,
++	    (unsigned)arguments->scalarInputCount,
++	    (unsigned)arguments->scalarOutputCount,
++	    (unsigned)arguments->structureInputSize,
++	    (unsigned)arguments->structureOutputSize,
++	    arguments->structureInputDescriptor ? " desc_in" : "");
++
++	for (uint32_t i = 0; i < arguments->scalarInputCount && i < 8; i++) {
++		IOLog("SWEET HAPTICS:   in[%u]=%#llx\n", i,
++		    (unsigned long long)arguments->scalarInput[i]);
++	}
++	if (arguments->structureInput && arguments->structureInputSize) {
++		sweet_haptics_dump("  struct_in",
++		    arguments->structureInput, arguments->structureInputSize);
++	}
++	if (arguments->structureInputDescriptor) {
++		IOLog("SWEET HAPTICS:   desc_in len=%llu\n",
++		    (unsigned long long)arguments->structureInputDescriptor->getLength());
++	}
++	if (arguments->structureOutputDescriptor) {
++		IOLog("SWEET HAPTICS:   desc_out len=%llu\n",
++		    (unsigned long long)arguments->structureOutputDescriptor->getLength());
++	}
++	for (uint32_t i = 0; i < arguments->scalarOutputCount && i < 8; i++) {
++		arguments->scalarOutput[i] = 0;
++	}
++	/* Acknowledge everything for now: we want the full call sequence. */
++	return kIOReturnSuccess;
++}
++
++IOReturn
++SweetHapticsUCBase::clientClose(void)
++{
++	IOLog("SWEET HAPTICS: %s closed (pid %d)\n", getName(), fPid);
++	return super::clientClose();
++}
++
++IOReturn
++SweetHapticsUCBase::clientDied(void)
++{
++	IOLog("SWEET HAPTICS: %s died (pid %d)\n", getName(), fPid);
++	return super::clientDied();
++}
++
++/* AppleSPUHapticsAudioDriver / AppleSPUHapticsAudioUC (backboardd). */
++class AppleSPUHapticsAudioUC : public SweetHapticsUCBase {
++	OSDeclareDefaultStructors(AppleSPUHapticsAudioUC);
++};
++OSDefineMetaClassAndStructors(AppleSPUHapticsAudioUC, SweetHapticsUCBase);
++
++class AppleSPUHapticsAudioDriver : public IOService {
++	OSDeclareDefaultStructors(AppleSPUHapticsAudioDriver);
++public:
++	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(AppleSPUHapticsAudioDriver, IOService);
++
++bool
++AppleSPUHapticsAudioDriver::start(IOService *provider)
++{
++	if (!super::start(provider)) {
++		return false;
++	}
++	setProperty("IOUserClientClass", "AppleSPUHapticsAudioUC");
++	setProperty("IONameMatch", "aop-haptics-audio");
++	setProperty("compatible", "aop-haptics-audio");
++	registerService();
++	IOLog("SWEET HAPTICS: AppleSPUHapticsAudioDriver registered\n");
++	return true;
++}
++
++/* AppleSPUHapticsManagerDriver / AppleSPUHapticsManagerUC (AOPHaptics). */
++class AppleSPUHapticsManagerUC : public SweetHapticsUCBase {
++	OSDeclareDefaultStructors(AppleSPUHapticsManagerUC);
++};
++OSDefineMetaClassAndStructors(AppleSPUHapticsManagerUC, SweetHapticsUCBase);
++
++class AppleSPUHapticsManagerDriver : public IOService {
++	OSDeclareDefaultStructors(AppleSPUHapticsManagerDriver);
++public:
++	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(AppleSPUHapticsManagerDriver, IOService);
++
++bool
++AppleSPUHapticsManagerDriver::start(IOService *provider)
++{
++	if (!super::start(provider)) {
++		return false;
++	}
++	setProperty("IOUserClientClass", "AppleSPUHapticsManagerUC");
++	setProperty("IONameMatch", "AppleSPUHapticsManagerDriver");
++	registerService();
++	IOLog("SWEET HAPTICS: AppleSPUHapticsManagerDriver registered\n");
++	return true;
++}
+--- a/iokit/conf/files.arm64
++++ b/iokit/conf/files.arm64
+@@ -17,6 +17,7 @@
+ iokit/Kernel/arm/SweetFramebuffer.cpp                            optional iokitcpp
+ iokit/Kernel/arm/SweetBattery.cpp                                optional iokitcpp
+ iokit/Kernel/arm/hid/SweetHID.cpp                                optional iokitcpp
++iokit/Kernel/arm/hid/SweetHaptics.cpp                            optional iokitcpp
+ iokit/Kernel/arm/hid/IOHIDEvent.cpp                              optional iokitcpp
+ iokit/Kernel/arm/hid/IOHIDEventServiceQueue.cpp                  optional iokitcpp
+ iokit/Kernel/arm/hid/IOHIDEventServiceUserClient.cpp             optional iokitcpp
+--- a/iokit/KernelConfigTables.cpp
++++ b/iokit/KernelConfigTables.cpp
+@@ -87,6 +87,16 @@
+     "     'IOProviderClass' = IOResources;"
+     "     'IOMatchCategory' = SweetBattery;"
+     "   },"
++    "   {"
++    "     'IOClass'         = AppleSPUHapticsAudioDriver;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOMatchCategory' = AppleSPUHapticsAudioDriver;"
++    "   },"
++    "   {"
++    "     'IOClass'         = AppleSPUHapticsManagerDriver;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOMatchCategory' = AppleSPUHapticsManagerDriver;"
++    "   },"
+ #endif
+     "   {"
+     "     'IOClass'         = IOPanicPlatform;"

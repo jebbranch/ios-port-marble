@@ -144,7 +144,8 @@ jobs:
                    "SWEET: skip PM halt/restart notifications" \
                    "SWEET BATT: immediate re-check" \
                    "SWEET BATT: tick %d ok=" \
-                   "SWEET CACHE: portrait prewarm"; do
+                   "SWEET CACHE: portrait prewarm" \
+                   "SWEET HAPTICS: AppleSPUHaptics"; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"
               exit 1
