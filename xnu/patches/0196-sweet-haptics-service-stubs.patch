@@ -54,7 +54,7 @@
 +    UInt32 type, OSDictionary *properties)
 +{
 +	fPid = owningTask ? task_pid(owningTask) : -1;
-+	if (!super::initWithTask(owningTask, securityID, type, properties)) {
++	if (!IOUserClient::initWithTask(owningTask, securityID, type, properties)) {
 +		return false;
 +	}
 +	IOLog("SWEET HAPTICS: %s open by pid %d type %#x\n", getName(), fPid,
@@ -121,14 +121,14 @@
 +SweetHapticsUCBase::clientClose(void)
 +{
 +	IOLog("SWEET HAPTICS: %s closed (pid %d)\n", getName(), fPid);
-+	return super::clientClose();
++	return IOUserClient::clientClose();
 +}
 +
 +IOReturn
 +SweetHapticsUCBase::clientDied(void)
 +{
 +	IOLog("SWEET HAPTICS: %s died (pid %d)\n", getName(), fPid);
-+	return super::clientDied();
++	return IOUserClient::clientDied();
 +}
 +
 +/* AppleSPUHapticsAudioDriver / AppleSPUHapticsAudioUC (backboardd). */
@@ -147,7 +147,7 @@
 +bool
 +AppleSPUHapticsAudioDriver::start(IOService *provider)
 +{
-+	if (!super::start(provider)) {
++	if (!IOService::start(provider)) {
 +		return false;
 +	}
 +	setProperty("IOUserClientClass", "AppleSPUHapticsAudioUC");
@@ -174,7 +174,7 @@
 +bool
 +AppleSPUHapticsManagerDriver::start(IOService *provider)
 +{
-+	if (!super::start(provider)) {
++	if (!IOService::start(provider)) {
 +		return false;
 +	}
 +	setProperty("IOUserClientClass", "AppleSPUHapticsManagerUC");
