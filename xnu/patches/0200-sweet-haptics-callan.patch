@@ -1,0 +1,106 @@
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -25,6 +25,9 @@
+ #include <IOKit/IOMemoryDescriptor.h>
+ #include <IOKit/IOBufferMemoryDescriptor.h>
+ #include <libkern/c++/OSCollectionIterator.h>
++#include <libkern/c++/OSArray.h>
++#include <libkern/c++/OSString.h>
++#include <libkern/c++/OSBoolean.h>
+ #include <libkern/libkern.h>
+ #include <kern/task.h>
+ #include <sys/proc.h>
+@@ -286,3 +289,79 @@
+ 	sweet_haptics_props(this, properties);
+ 	return IOService::setProperties(properties);
+ }
++
++/*
++ * AppleHapticsSupportCallan / AppleHapticsSupportUserClient.
++ *
++ * On a real device the HID event system opens the Callan user client for
++ * UIKit/HID haptics (keyboard feedback, context menus, system controls).
++ * The Redmi has no Taptic Engine, so Apple's Callan driver is absent and
++ * those events currently die before reaching any user client.  Publish a
++ * service with the same matching shape and a logging user client so we can
++ * see the protocol; no real-device calibration or serial data is embedded.
++ */
++class AppleHapticsSupportUserClient : public SweetHapticsUCBase {
++	OSDeclareDefaultStructors(AppleHapticsSupportUserClient);
++};
++OSDefineMetaClassAndStructors(AppleHapticsSupportUserClient, SweetHapticsUCBase);
++
++class AppleHapticsSupportCallan : public IOService {
++	OSDeclareDefaultStructors(AppleHapticsSupportCallan);
++public:
++	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(AppleHapticsSupportCallan, IOService);
++
++bool
++AppleHapticsSupportCallan::start(IOService *provider)
++{
++	OSArray *match;
++
++	if (!IOService::start(provider)) {
++		return false;
++	}
++	setProperty("IOClass", "AppleHapticsSupportCallan");
++	setProperty("IOProviderClass", "AppleARMIODevice");
++	setProperty("IOUserClientClass", "AppleHapticsSupportUserClient");
++	setProperty("IOMatchCategory", "IODefaultMatchCategory");
++	setProperty("CFBundleIdentifier",
++	    "com.apple.driver.AppleHapticsSupportCallan");
++	setProperty("CFBundleIdentifierKernel",
++	    "com.apple.driver.AppleHapticsSupportCallan");
++	setProperty("compatible", "haptics-support-interface");
++	setProperty("device_type", "haptics-support-interface");
++	setProperty("ControllerVersion", "5.42");
++	setProperty("FirmwareVersion", "3.2.0");
++	setProperty("ModuleF0", "132.186");
++	setProperty("ModuleSerial", "sweet-stub");
++	setProperty("TCalVersion", 9, 32);
++	setProperty("PSClVersion", 2, 32);
++	setProperty("DeviceOpenedByEventSystem", kOSBooleanTrue);
++	match = OSArray::withCapacity(2);
++	if (match != NULL) {
++		OSString *s1 = OSString::withCString("haptics-support-interface");
++		OSString *s2 = OSString::withCString("haptics-support,callan");
++
++		if (s1 != NULL) {
++			match->setObject(s1);
++			s1->release();
++		}
++		if (s2 != NULL) {
++			match->setObject(s2);
++			s2->release();
++		}
++		setProperty("IONameMatch", match);
++		match->release();
++	}
++	registerService();
++	IOLog("SWEET HAPTICS: AppleHapticsSupportCallan registered\n");
++	return true;
++}
++
++IOReturn
++AppleHapticsSupportCallan::setProperties(OSObject *properties)
++{
++	sweet_haptics_props(this, properties);
++	return IOService::setProperties(properties);
++}
+--- a/iokit/KernelConfigTables.cpp
++++ b/iokit/KernelConfigTables.cpp
+@@ -97,6 +97,11 @@
+     "     'IOProviderClass' = IOResources;"
+     "     'IOMatchCategory' = AppleSPUHapticsManagerDriver;"
+     "   },"
++    "   {"
++    "     'IOClass'         = AppleHapticsSupportCallan;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOMatchCategory' = AppleHapticsSupportCallan;"
++    "   },"
+ #endif
+     "   {"
+     "     'IOClass'         = IOPanicPlatform;"

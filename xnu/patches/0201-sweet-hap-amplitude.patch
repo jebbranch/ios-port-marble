@@ -1,0 +1,13 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1034,7 +1034,9 @@
+ 		printf("SWEET HAP: tlra %#x rc=%d\n", 0x498,
+ 		    sweet_spmi_write(3, 0xf05c, t, sizeof(t)));
+ 	}
+-	g_hap_wr(0xf126, 0xff, "direct amplitude");
++	/* Keep the direct-play amplitude within the DT effect range (max
++	 * ~0x7f).  0xff tripped the HAP fault bit 0x2 during play. */
++	g_hap_wr(0xf126, 0x7f, "direct amplitude");
+ 	if (sweet_spmi_read(3, 0xf063, &v) == 0) {
+ 		g_hap_wr(0xf063, v & ~1u, "autores off");
+ 	}
