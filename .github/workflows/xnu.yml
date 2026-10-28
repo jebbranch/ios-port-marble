@@ -143,7 +143,8 @@ jobs:
           for s in "SWEET: halt: SCM deassert" \
                    "SWEET: skip PM halt/restart notifications" \
                    "SWEET BATT: immediate re-check" \
-                   "SWEET BATT: tick %d ok="; do
+                   "SWEET BATT: tick %d ok=" \
+                   "SWEET CACHE: portrait prewarm"; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"
               exit 1

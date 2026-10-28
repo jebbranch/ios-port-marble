@@ -1,0 +1,127 @@
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -27,6 +27,9 @@
+ #include <sys/errno.h>
+ #include <sys/proc.h>
+ #include <sys/uio.h>
++#include <sys/fcntl.h>
++#include <sys/kauth.h>
++#include <sys/vnode.h>
+ #include <miscfs/devfs/devfs.h>
+ #include <kern/locks.h>
+ #include <kern/clock.h>
+@@ -897,4 +900,96 @@
+ 	*dev = su.bdev;
+ 	return 0;
+ }
++
++/*
++ * One-time userland workaround, applied after the root is mounted and before
++ * launchd (and therefore dyld) runs.
++ *
++ * mediaserverd dies on every boot inside CoreImage's OpenGL context setup:
++ * BWCoreImageFilterRenderer's portrait-filter prewarm creates a CIContext,
++ * CIContext takes its EAGL path (CIGLIsUsable is hardcoded to return 1) and
++ * -[EAGLContext getMacroContextPrivate] returns NULL because this machine has
++ * no GPU/GL driver.  CI::GLContext::init() never checks that failure and
++ * calls through the zeroed macro-context function table, jumping to 0.
++ * launchd restarts mediaserverd forever, so the audio/haptic services it
++ * publishes (including com.apple.audio.hapticd) never stay available.
++ *
++ * The portrait prewarm is irrelevant here (there is no camera hardware), so
++ * turn its first instruction into "ret" in the 20H392 shared cache.  The
++ * method returns void: returning without doing anything is a valid prewarm.
++ *
++ * This writes four bytes of the HFS image on userdata; the cache file is a
++ * hard link from the SystemOS cryptex tree, so both paths see the change.
++ * sweetcache=0 skips the edit; sweetcache=2 restores the original
++ * instruction (needed only if a future dyld ever refuses the patched cache).
++ */
++#define SWEET_CACHE_PATH \
++	"/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64.09"
++#define SWEET_CACHE_PREWARM_OFF	0x6a0dc44ULL
++
++static const uint8_t sweet_cache_orig[4] = { 0xe9, 0x23, 0xb9, 0x6d };
++static const uint8_t sweet_cache_ret[4] = { 0xc0, 0x03, 0x5f, 0xd6 };
++
++void
++sweet_patch_ios_cache(void)
++{
++	uint32_t mode = 1;
++	vfs_context_t ctx;
++	vnode_t vp = NULLVP;
++	uint8_t cur[4];
++	int resid = 0;
++	int error;
++
++	(void)PE_parse_boot_argn("sweetcache", &mode, sizeof(mode));
++	if (mode == 0) {
++		return;
++	}
++	ctx = vfs_context_create(NULL);
++	if (ctx == NULL) {
++		printf("SWEET CACHE: no vfs context\n");
++		return;
++	}
++	error = vnode_open(SWEET_CACHE_PATH, FREAD | FWRITE, 0, 0, &vp, ctx);
++	if (error) {
++		printf("SWEET CACHE: open failed %d\n", error);
++		vfs_context_rele(ctx);
++		return;
++	}
++	error = vn_rdwr(UIO_READ, vp, (caddr_t)cur, sizeof(cur),
++	    (off_t)SWEET_CACHE_PREWARM_OFF, UIO_SYSSPACE, IO_NOCACHE,
++	    kauth_cred_get(), &resid, current_proc());
++	if (error || resid != 0) {
++		printf("SWEET CACHE: read failed %d resid %d\n", error, resid);
++		goto out;
++	}
++	if (mode == 2) {
++		if (memcmp(cur, sweet_cache_ret, sizeof(cur)) != 0) {
++			printf("SWEET CACHE: restore skipped, already original\n");
++			goto out;
++		}
++		error = vn_rdwr(UIO_WRITE, vp, (caddr_t)sweet_cache_orig,
++		    sizeof(cur), (off_t)SWEET_CACHE_PREWARM_OFF, UIO_SYSSPACE,
++		    IO_SYNC, kauth_cred_get(), &resid, current_proc());
++		printf("SWEET CACHE: restore %s (%d)\n",
++		    error ? "FAILED" : "ok", error);
++		goto out;
++	}
++	if (memcmp(cur, sweet_cache_ret, sizeof(cur)) == 0) {
++		printf("SWEET CACHE: portrait prewarm already disabled\n");
++		goto out;
++	}
++	if (memcmp(cur, sweet_cache_orig, sizeof(cur)) != 0) {
++		printf("SWEET CACHE: unexpected bytes %02x %02x %02x %02x\n",
++		    cur[0], cur[1], cur[2], cur[3]);
++		goto out;
++	}
++	error = vn_rdwr(UIO_WRITE, vp, (caddr_t)sweet_cache_ret, sizeof(cur),
++	    (off_t)SWEET_CACHE_PREWARM_OFF, UIO_SYSSPACE, IO_SYNC,
++	    kauth_cred_get(), &resid, current_proc());
++	printf("SWEET CACHE: portrait prewarm disabled %s (%d resid %d)\n",
++	    error ? "FAILED" : "ok", error, resid);
++out:
++	vnode_close(vp, FWRITE, ctx);
++	vfs_context_rele(ctx);
++}
+ #endif /* ARM64_BOARD_CONFIG_SWEET */
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -1098,6 +1098,15 @@
+ 
+ 	bsd_init_kprintf("bsd_do_post - done");
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++	/* Disable the camera portrait-filter prewarm before dyld maps the
++	 * shared cache: its CoreImage GL setup dereferences a NULL macro
++	 * context on this GPU-less machine and kills mediaserverd. */
++	{
++		extern void sweet_patch_ios_cache(void);
++		sweet_patch_ios_cache();
++	}
++#endif
+ 	load_init_program(p);
+ 	lock_trace = 1;
+ }
