@@ -1,0 +1,208 @@
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -923,73 +923,154 @@
+  * sweetcache=0 skips the edit; sweetcache=2 restores the original
+  * instruction (needed only if a future dyld ever refuses the patched cache).
+  */
+-#define SWEET_CACHE_PATH \
+-	"/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64.09"
++#define SWEET_CACHE_DIR \
++	"/System/Library/Caches/com.apple.dyld/"
++#define SWEET_CACHE_PREWARM	"dyld_shared_cache_arm64.09"
+ #define SWEET_CACHE_PREWARM_OFF	0x6a0dc44ULL
+ 
+ static const uint8_t sweet_cache_orig[4] = { 0xe9, 0x23, 0xb9, 0x6d };
+ static const uint8_t sweet_cache_ret[4] = { 0xc0, 0x03, 0x5f, 0xd6 };
+ 
++/*
++ * iOS hides the whole haptics feature set when MobileGestalt says the
++ * product has no vibrator / haptics / closed-loop haptics.  Those answers
++ * come from three hidden (random-looking) MobileGestalt keys in 20H392:
++ *
++ *   ProductSupportsVibrator             MG("/9luHerXthRoPoNt/PVkTg")
++ *   ProductSupportsHaptics              MG("cBy4BcYs5YWtFHbBpt4C6A")
++ *   ProductSupportsClosedLoopHaptics    MG("gqDnklGQnpv5ilgh5uHckw")
++ *
++ * marble's fake platform has no data for those keys, so every check returns
++ * false: Settings drops the Vibration rows and CoreHaptics/AVHapticPlayer
++ * refuse to play.  The three wrappers are three instructions each
++ * (adrp/add/b to MGGetBoolAnswer); replace them with "mov w0,#1; ret; nop"
++ * so the capability is reported regardless of MobileGestalt.
++ *
++ * 0x1af56cb8c/0x1af56cb98/0x1af56cbb0 live in dyld_shared_cache_arm64.13
++ * (__TEXT base 0x1a947c000), so the file offsets below are VA - base.
++ * Closed loop is the one UIDevice/_feedbackSupportLevel and
++ * +[AVHapticPlayer supportsHaptics] ask about; the other two make the
++ * Settings-side checks agree.
++ */
++#define SWEET_CACHE_HAPTICS	"dyld_shared_cache_arm64.13"
++#define SWEET_CACHE_VIBRATOR_OFF	0x60f0b8cULL
++#define SWEET_CACHE_HAPTIC_OFF		0x60f0b98ULL
++#define SWEET_CACHE_CLOSEDLOOP_OFF	0x60f0bb0ULL
++
++static const uint8_t sweet_hap_orig[12] = {
++	0x40, 0x9c, 0x14, 0xf0,		/* adrp x0, ... */
++	0x00, 0x40, 0x26, 0x91,		/* add  x0, x0, #0x990 */
++	0xef, 0xbf, 0x18, 0x14,		/* b    MGGetBoolAnswer */
++};
++static const uint8_t sweet_hap_orig2[12] = {
++	0x40, 0x9c, 0x14, 0xf0,
++	0x00, 0xc0, 0x26, 0x91,		/* add  x0, x0, #0x9b0 */
++	0xec, 0xbf, 0x18, 0x14,
++};
++static const uint8_t sweet_hap_orig3[12] = {
++	0x40, 0x9c, 0x14, 0xf0,
++	0x00, 0xc0, 0x27, 0x91,		/* add  x0, x0, #0x9f0 */
++	0xe6, 0xbf, 0x18, 0x14,
++};
++/* mov w0, #1; ret; nop */
++static const uint8_t sweet_hap_true[12] = {
++	0x20, 0x00, 0x80, 0x52,
++	0xc0, 0x03, 0x5f, 0xd6,
++	0x1f, 0x20, 0x03, 0xd5,
++};
++
++struct sweet_cache_edit {
++	const char *file;
++	const char *what;
++	uint64_t off;
++	uint32_t len;
++	const uint8_t *orig;
++	const uint8_t *patched;
++};
++
++static const struct sweet_cache_edit sweet_cache_edits[] = {
++	{ SWEET_CACHE_PREWARM, "portrait prewarm", SWEET_CACHE_PREWARM_OFF, 4,
++	  sweet_cache_orig, sweet_cache_ret },
++	{ SWEET_CACHE_HAPTICS, "haptics capability (vibrator)",
++	  SWEET_CACHE_VIBRATOR_OFF, 12, sweet_hap_orig, sweet_hap_true },
++	{ SWEET_CACHE_HAPTICS, "haptics capability (haptics)",
++	  SWEET_CACHE_HAPTIC_OFF, 12, sweet_hap_orig2, sweet_hap_true },
++	{ SWEET_CACHE_HAPTICS, "haptics capability (closed loop)",
++	  SWEET_CACHE_CLOSEDLOOP_OFF, 12, sweet_hap_orig3, sweet_hap_true },
++};
++
+ void
+ sweet_patch_ios_cache(void)
+ {
+ 	uint32_t mode = 1;
+-	vfs_context_t ctx;
+-	vnode_t vp = NULLVP;
+-	uint8_t cur[4];
+-	int resid = 0;
+-	int error;
+ 
+ 	(void)PE_parse_boot_argn("sweetcache", &mode, sizeof(mode));
+ 	if (mode == 0) {
+ 		return;
+ 	}
+-	ctx = vfs_context_create(NULL);
+-	if (ctx == NULL) {
+-		printf("SWEET CACHE: no vfs context\n");
+-		return;
+-	}
+-	error = vnode_open(SWEET_CACHE_PATH, FREAD | FWRITE, 0, 0, &vp, ctx);
+-	if (error) {
+-		printf("SWEET CACHE: open failed %d\n", error);
+-		vfs_context_rele(ctx);
+-		return;
+-	}
+-	error = vn_rdwr(UIO_READ, vp, (caddr_t)cur, sizeof(cur),
+-	    (off_t)SWEET_CACHE_PREWARM_OFF, UIO_SYSSPACE, IO_NOCACHE,
+-	    kauth_cred_get(), &resid, current_proc());
+-	if (error || resid != 0) {
+-		printf("SWEET CACHE: read failed %d resid %d\n", error, resid);
+-		goto out;
+-	}
+-	if (mode == 2) {
+-		if (memcmp(cur, sweet_cache_ret, sizeof(cur)) != 0) {
+-			printf("SWEET CACHE: restore skipped, already original\n");
++
++	for (size_t i = 0; i < sizeof(sweet_cache_edits) /
++	    sizeof(sweet_cache_edits[0]); i++) {
++		const struct sweet_cache_edit *e = &sweet_cache_edits[i];
++		char path[128];
++		vfs_context_t ctx;
++		vnode_t vp = NULLVP;
++		uint8_t cur[16];
++		int resid = 0;
++		int error;
++
++		snprintf(path, sizeof(path), "%s%s", SWEET_CACHE_DIR, e->file);
++		ctx = vfs_context_create(NULL);
++		if (ctx == NULL) {
++			printf("SWEET CACHE: no vfs context\n");
++			return;
++		}
++		error = vnode_open(path, FREAD | FWRITE, 0, 0, &vp, ctx);
++		if (error) {
++			printf("SWEET CACHE: %s open failed %d\n", e->what,
++			    error);
++			vfs_context_rele(ctx);
++			continue;
++		}
++		error = vn_rdwr(UIO_READ, vp, (caddr_t)cur, e->len,
++		    (off_t)e->off, UIO_SYSSPACE, IO_NOCACHE,
++		    kauth_cred_get(), &resid, current_proc());
++		if (error || resid != 0) {
++			printf("SWEET CACHE: %s read failed %d resid %d\n",
++			    e->what, error, resid);
+ 			goto out;
+ 		}
+-		error = vn_rdwr(UIO_WRITE, vp, (caddr_t)sweet_cache_orig,
+-		    sizeof(cur), (off_t)SWEET_CACHE_PREWARM_OFF, UIO_SYSSPACE,
+-		    IO_SYNC, kauth_cred_get(), &resid, current_proc());
+-		printf("SWEET CACHE: restore %s (%d)\n",
+-		    error ? "FAILED" : "ok", error);
+-		goto out;
+-	}
+-	if (memcmp(cur, sweet_cache_ret, sizeof(cur)) == 0) {
+-		printf("SWEET CACHE: portrait prewarm already disabled\n");
+-		goto out;
+-	}
+-	if (memcmp(cur, sweet_cache_orig, sizeof(cur)) != 0) {
+-		printf("SWEET CACHE: unexpected bytes %02x %02x %02x %02x\n",
+-		    cur[0], cur[1], cur[2], cur[3]);
+-		goto out;
+-	}
+-	error = vn_rdwr(UIO_WRITE, vp, (caddr_t)sweet_cache_ret, sizeof(cur),
+-	    (off_t)SWEET_CACHE_PREWARM_OFF, UIO_SYSSPACE, IO_SYNC,
+-	    kauth_cred_get(), &resid, current_proc());
+-	printf("SWEET CACHE: portrait prewarm disabled %s (%d resid %d)\n",
+-	    error ? "FAILED" : "ok", error, resid);
++		if (mode == 2) {
++			if (memcmp(cur, e->patched, e->len) != 0) {
++				printf("SWEET CACHE: %s restore skipped\n",
++				    e->what);
++				goto out;
++			}
++			error = vn_rdwr(UIO_WRITE, vp, (caddr_t)e->orig,
++			    e->len, (off_t)e->off, UIO_SYSSPACE, IO_SYNC,
++			    kauth_cred_get(), &resid, current_proc());
++			printf("SWEET CACHE: %s restore %s (%d)\n", e->what,
++			    error ? "FAILED" : "ok", error);
++			goto out;
++		}
++		if (memcmp(cur, e->patched, e->len) == 0) {
++			printf("SWEET CACHE: %s already patched\n", e->what);
++			goto out;
++		}
++		if (memcmp(cur, e->orig, e->len) != 0) {
++			printf("SWEET CACHE: %s unexpected bytes %02x %02x "
++			    "%02x %02x\n", e->what, cur[0], cur[1], cur[2],
++			    cur[3]);
++			goto out;
++		}
++		error = vn_rdwr(UIO_WRITE, vp, (caddr_t)e->patched, e->len,
++		    (off_t)e->off, UIO_SYSSPACE, IO_SYNC, kauth_cred_get(),
++		    &resid, current_proc());
++		printf("SWEET CACHE: %s patched %s (%d resid %d)\n", e->what,
++		    error ? "FAILED" : "ok", error, resid);
+ out:
+-	vnode_close(vp, FWRITE, ctx);
+-	vfs_context_rele(ctx);
++		vnode_close(vp, FWRITE, ctx);
++		vfs_context_rele(ctx);
++	}
+ }
+ #endif /* ARM64_BOARD_CONFIG_SWEET */
