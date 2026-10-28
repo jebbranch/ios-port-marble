@@ -146,6 +146,8 @@ jobs:
                    "SWEET BATT: tick %d ok=" \
                    "SWEET CACHE: portrait prewarm" \
                    "haptics capability (closed loop)" \
+                   "MG closed-loop key" \
+                   "SWEET MG: cache removed" \
                    "SWEET HAPTICS: AppleSPUHaptics"; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"

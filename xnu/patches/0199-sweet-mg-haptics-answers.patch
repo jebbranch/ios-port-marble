@@ -1,0 +1,152 @@
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -29,7 +29,9 @@
+ #include <sys/uio.h>
+ #include <sys/fcntl.h>
+ #include <sys/kauth.h>
++#include <sys/namei.h>
+ #include <sys/vnode.h>
++#include <sys/vnode_internal.h>
+ #include <miscfs/devfs/devfs.h>
+ #include <kern/locks.h>
+ #include <kern/clock.h>
+@@ -979,6 +981,37 @@
+ 	0x1f, 0x20, 0x03, 0xd5,
+ };
+ 
++/*
++ * ToneLibrary, UIKit and CoreHaptics also ask MobileGestalt for those keys
++ * directly instead of going through the CoreHaptics wrappers above.  The MG
++ * key table maps
++ *
++ *   "cBy4BcYs5YWtFHbBpt4C6A" (haptics)      -> getter 0x19c576454
++ *   "gqDnklGQnpv5ilgh5uHckw" (closed loop)  -> getter 0x19c564a9c
++ *
++ * and both getters read the IORegistry device tree (/product and
++ * /product/haptics).  iOS 16.7 expects obfuscated property names that the
++ * D22AP device tree does not carry, so both answer false on marble.  Their
++ * return value is a bool, so replace the entry with "mov w0,#1; ret; nop".
++ * (The vibrator key ORs the haptics key, so it follows automatically.)
++ *
++ * Both live in libMobileGestalt, which is in the same .09 subcache as the
++ * prewarm patch (__TEXT base 0x19b758000).
++ */
++#define SWEET_CACHE_MG_HAPTIC_OFF	0xe1e454ULL
++#define SWEET_CACHE_MG_CLOSEDLOOP_OFF	0xe0ca9cULL
++
++static const uint8_t sweet_mg_haptic_orig[12] = {
++	0xc0, 0x01, 0x00, 0xb0,		/* adrp x0, ... */
++	0x00, 0xd4, 0x26, 0x91,		/* add  x0, x0, ... */
++	0x21, 0x6f, 0x1d, 0xf0,		/* adrp x1, ... */
++};
++static const uint8_t sweet_mg_closedloop_orig[12] = {
++	0x80, 0x02, 0x00, 0xb0,
++	0x00, 0x84, 0x38, 0x91,
++	0xa1, 0x6f, 0x1d, 0x90,
++};
++
+ struct sweet_cache_edit {
+ 	const char *file;
+ 	const char *what;
+@@ -997,6 +1030,12 @@
+ 	  SWEET_CACHE_HAPTIC_OFF, 12, sweet_hap_orig2, sweet_hap_true },
+ 	{ SWEET_CACHE_HAPTICS, "haptics capability (closed loop)",
+ 	  SWEET_CACHE_CLOSEDLOOP_OFF, 12, sweet_hap_orig3, sweet_hap_true },
++	{ SWEET_CACHE_PREWARM, "MG haptics key",
++	  SWEET_CACHE_MG_HAPTIC_OFF, 12, sweet_mg_haptic_orig,
++	  sweet_hap_true },
++	{ SWEET_CACHE_PREWARM, "MG closed-loop key",
++	  SWEET_CACHE_MG_CLOSEDLOOP_OFF, 12, sweet_mg_closedloop_orig,
++	  sweet_hap_true },
+ };
+ 
+ void
+@@ -1073,4 +1112,76 @@
+ 		vfs_context_rele(ctx);
+ 	}
+ }
++
++/*
++ * MobileGestalt persists the answers it computed in a plist.  A "false" for
++ * the haptics keys from an earlier boot would survive the getter patches
++ * above, because MG consults the cache before recomputing.  Remove the
++ * caches before launchd starts; MG recreates them on demand from the
++ * (patched) getters and the device tree.
++ *
++ * sweetmgcache=0 keeps the caches (for a boot where the old values are
++ * wanted).  Missing files are normal and logged as "absent".
++ */
++static const char * const sweet_mg_cache_paths[] = {
++	"/private/var/containers/Shared/SystemGroup/"
++	"systemgroup.com.apple.mobilegestaltcache/Library/Caches/"
++	"com.apple.MobileGestalt.plist",
++	"/var/mobile/Library/Caches/com.apple.MobileGestalt.plist",
++};
++
++static int
++sweet_unlink_file(const char *path, vfs_context_t ctx)
++{
++	struct nameidata nd;
++	vnode_t dvp;
++	vnode_t vp = NULLVP;
++	int error;
++
++	NDINIT(&nd, DELETE, OP_UNLINK, LOCKPARENT, UIO_SYSSPACE,
++	    CAST_USER_ADDR_T(path), ctx);
++	error = namei(&nd);
++	if (error) {
++		return error;
++	}
++	dvp = nd.ni_dvp;
++	error = vn_remove(dvp, &nd.ni_vp, &nd.ni_cnd, 0, NULL, ctx);
++	vp = nd.ni_vp;
++	nameidone(&nd);
++	vnode_put(dvp);
++	if (vp != NULLVP) {
++		vnode_put(vp);
++	}
++	return error;
++}
++
++void
++sweet_reset_mg_cache(void)
++{
++	uint32_t mode = 1;
++	vfs_context_t ctx;
++
++	(void)PE_parse_boot_argn("sweetmgcache", &mode, sizeof(mode));
++	if (mode == 0) {
++		return;
++	}
++	ctx = vfs_context_create(NULL);
++	if (ctx == NULL) {
++		printf("SWEET MG: no vfs context\n");
++		return;
++	}
++	for (size_t i = 0; i < sizeof(sweet_mg_cache_paths) /
++	    sizeof(sweet_mg_cache_paths[0]); i++) {
++		int error = sweet_unlink_file(sweet_mg_cache_paths[i], ctx);
++
++		if (error == 0) {
++			printf("SWEET MG: cache removed\n");
++		} else if (error == ENOENT) {
++			printf("SWEET MG: cache absent\n");
++		} else {
++			printf("SWEET MG: unlink failed %d\n", error);
++		}
++	}
++	vfs_context_rele(ctx);
++}
+ #endif /* ARM64_BOARD_CONFIG_SWEET */
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -1104,7 +1104,9 @@
+ 	 * context on this GPU-less machine and kills mediaserverd. */
+ 	{
+ 		extern void sweet_patch_ios_cache(void);
++		extern void sweet_reset_mg_cache(void);
+ 		sweet_patch_ios_cache();
++		sweet_reset_mg_cache();
+ 	}
+ #endif
+ 	load_init_program(p);
