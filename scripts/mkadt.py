@@ -66,6 +66,27 @@ def d22ap_product(path=D22AP_ADT):
             return [(k, v) for k, f, v in c.props if not f and k not in ('name', 'AAPL,phandle')]
     raise SystemExit(f'{path}: no /product node')
 
+
+def d22ap_product_child(name, path=D22AP_ADT):
+    """/product/<name> properties from the real D22AP tree.
+
+    MobileGestalt answers the (obfuscated) haptics capability keys from
+    IODeviceTree:/product/haptics: 'closed-loop' and
+    'supports-3rd-party-haptics' are the values it reads.  d22ap_product()
+    only copies /product's own properties, so without this node every
+    haptics capability reads false and iOS hides the Vibration UI and
+    refuses to play haptics at all."""
+    if not os.path.exists(path):
+        return None
+    root, _ = adt.parse(open(path, 'rb').read())
+    for c in root.children:
+        if dict((k, v) for k, f, v in c.props).get('name') == b'product\0':
+            for pc in c.children:
+                if pc.name == name:
+                    return [(k, v) for k, f, v in pc.props
+                            if not f and k not in ('name', 'AAPL,phandle')]
+    return None
+
 u32 = lambda *v: struct.pack('<%dI' % len(v), *v)
 u64 = lambda *v: struct.pack('<%dQ' % len(v), *v)
 cstr = lambda s: s.encode() + b'\0'
@@ -249,7 +270,14 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
     # ('w30r', 'b3a8') that this kernel does not provide: Safari pages stay blank.
     if product_props:
         product_props = [(k, cstr('sRGB') if k == 'artwork-display-gamut' else v) for k, v in product_props]
-    product = [node('product', [ph()] + product_props)] if product_props else []
+    # /product/haptics: MobileGestalt's only haptics capability source.  Only
+    # the haptics child is copied; camera/facetime would describe hardware we
+    # do not have (and mediaserverd would try to use it).
+    product_children = []
+    haptic_props = d22ap_product_child('haptics')
+    if haptic_props is not None:
+        product_children.append(node('haptics', [ph()] + haptic_props))
+    product = [node('product', [ph()] + product_props, product_children)] if product_props else []
 
     # Identity of the iPhone X whose userland runs here: compatible[0] is
     # hw.model/hw.target (D22AP), model is hw.machine/hw.product

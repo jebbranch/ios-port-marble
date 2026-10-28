@@ -46,6 +46,13 @@ fi
 if [ -n "${CPUS:-}" ]; then
   CMDLINE=$(printf '%s' "$CMDLINE" | sed "s/cpus=[0-9]*/cpus=$CPUS/")
 fi
+# QUIET=1 turns kernel debug output and the persistent SWEETLOG ring off
+# (debug=0 + sweetlog=0).  The ring costs disk I/O; skip it on keepalive
+# images where no log collection is planned.
+if [ "${QUIET:-0}" = 1 ]; then
+  CMDLINE=$(printf '%s' "$CMDLINE" | sed 's/debug=0xc/debug=0/')
+  CMDLINE="$CMDLINE sweetlog=0"
+fi
 # Host wall clock at image build time; XNU sets its calendar from this.
 CMDLINE="$CMDLINE sweettime=$(date +%s)"
 
