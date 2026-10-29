@@ -1,0 +1,32 @@
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -32,8 +32,6 @@
+ #include <kern/task.h>
+ #include <sys/proc.h>
+ 
+-extern "C" void sweet_haptics_kick(void);
+-
+ /* The haptics buffer the client maps.  Retained for the lifetime of the
+  * kernel so the close-time dump cannot touch freed memory. */
+ static IOBufferMemoryDescriptor *gSweetHapBuf;
+@@ -130,10 +128,16 @@
+ 	for (uint32_t i = 0; i < arguments->scalarOutputCount && i < 8; i++) {
+ 		arguments->scalarOutput[i] = 0;
+ 	}
+-	/* Every published service is a haptics endpoint.  Translate any
+-	 * incoming command into a bounded pulse while retaining the captured
+-	 * selector data.  sweet_haptics_kick() drops re-entry. */
+-	sweet_haptics_kick();
++	/*
++	 * AOPAudioButtonHapticsServiceUserClient selector 1 is the
++	 * GetNumberOfSupportedAssets query.  Returning zero makes
++	 * ButtonResolver disable the service before any real playback command
++	 * is sent.
++	 */
++	if (arguments->scalarOutputCount != 0 && selector == 1 &&
++	    strcmp(getName(), "AppleAOPButtonHapticsServiceUserClient") == 0) {
++		arguments->scalarOutput[0] = 1;
++	}
+ 	return kIOReturnSuccess;
+ }
+ 
