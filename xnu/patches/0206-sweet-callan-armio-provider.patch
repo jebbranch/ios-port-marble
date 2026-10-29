@@ -1,0 +1,24 @@
+--- a/iokit/KernelConfigTables.cpp
++++ b/iokit/KernelConfigTables.cpp
+@@ -108,7 +108,8 @@
+     "   },"
+     "   {"
+     "     'IOClass'         = AppleHapticsSupportCallan;"
+-    "     'IOProviderClass' = IOResources;"
++    "     'IOProviderClass' = AppleARMIODevice;"
++    "     'IONameMatch'     = 'haptics-support-interface';"
+     "     'IOMatchCategory' = AppleHapticsSupportCallan;"
+     "   },"
+ #endif
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -425,7 +425,8 @@
+ 		match->release();
+ 	}
+ 	registerService();
+-	IOLog("SWEET HAPTICS: AppleHapticsSupportCallan registered\n");
++	IOLog("SWEET HAPTICS: AppleHapticsSupportCallan registered provider=%s\n",
++	    provider->getName());
+ 	return true;
+ }
+ 
