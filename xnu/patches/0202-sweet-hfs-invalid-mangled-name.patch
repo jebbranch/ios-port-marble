@@ -1,0 +1,24 @@
+--- a/bsd/sweet_hfs/core/hfs_catalog.c
++++ b/bsd/sweet_hfs/core/hfs_catalog.c
+@@ -710,6 +710,21 @@
+ 	if (wantrsrc)
+ 		return (ENOENT);
+ 
++	/*
++	 * iOS can leave stale hard-link state after a non-clean shutdown.
++	 * A detached cat_desc can reach this path with an invalid name length;
++	 * GetEmbeddedFileID() then walks outside mapped memory and panics.
++	 * Treat the malformed lookup as ENOENT and let orphan cleanup continue.
++	 */
++	if (descp == NULL || descp->cd_namelen < 0 ||
++	    descp->cd_namelen > NAME_MAX ||
++	    (descp->cd_namelen != 0 && descp->cd_nameptr == NULL)) {
++		printf("SWEET HFS: invalid mangled name len=%d ptr=%p\n",
++		    descp ? descp->cd_namelen : -1,
++		    descp ? (void *)descp->cd_nameptr : NULL);
++		return (ENOENT);
++	}
++
+ 	fileID = GetEmbeddedFileID(descp->cd_nameptr, descp->cd_namelen, &prefixlen);
+ 	if (fileID < (cnid_t)kHFSFirstUserCatalogNodeID)
+ 		return (ENOENT);
