@@ -1,0 +1,105 @@
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -32,6 +32,8 @@
+ #include <kern/task.h>
+ #include <sys/proc.h>
+ 
++extern "C" void sweet_haptics_kick(void);
++
+ /* The haptics buffer the client maps.  Retained for the lifetime of the
+  * kernel so the close-time dump cannot touch freed memory. */
+ static IOBufferMemoryDescriptor *gSweetHapBuf;
+@@ -128,7 +130,10 @@
+ 	for (uint32_t i = 0; i < arguments->scalarOutputCount && i < 8; i++) {
+ 		arguments->scalarOutput[i] = 0;
+ 	}
+-	/* Acknowledge everything for now: we want the full call sequence. */
++	/* Every published service is a haptics endpoint.  Translate any
++	 * incoming command into a bounded pulse while retaining the captured
++	 * selector data.  sweet_haptics_kick() drops re-entry. */
++	sweet_haptics_kick();
+ 	return kIOReturnSuccess;
+ }
+ 
+@@ -288,6 +293,67 @@
+ {
+ 	sweet_haptics_props(this, properties);
+ 	return IOService::setProperties(properties);
++}
++
++/*
++ * AppleAOPAudioButtonHapticDevice /
++ * AppleAOPButtonHapticsServiceUserClient.
++ *
++ * The real AppleAOPAudio kext publishes this provider from the
++ * audio-aop-bhap device-node personality.  backboardd opens its user client
++ * for button and system haptics, so expose the same class and selector-log
++ * interface directly from IOResources.
++ */
++class AppleAOPButtonHapticsServiceUserClient : public SweetHapticsUCBase {
++	OSDeclareDefaultStructors(AppleAOPButtonHapticsServiceUserClient);
++};
++OSDefineMetaClassAndStructors(AppleAOPButtonHapticsServiceUserClient,
++    SweetHapticsUCBase);
++
++class AppleAOPAudioButtonHapticDevice : public IOService {
++	OSDeclareDefaultStructors(AppleAOPAudioButtonHapticDevice);
++public:
++	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(AppleAOPAudioButtonHapticDevice, IOService);
++
++bool
++AppleAOPAudioButtonHapticDevice::start(IOService *provider)
++{
++	OSArray *match;
++
++	if (!IOService::start(provider)) {
++		return false;
++	}
++	setProperty("IOClass", "AppleAOPAudioButtonHapticDevice");
++	setProperty("IOUserClientClass",
++	    "AppleAOPButtonHapticsServiceUserClient");
++	setProperty("IOMatchCategory", "IODefaultMatchCategory");
++	setProperty("CFBundleIdentifier", "com.apple.driver.AppleAOPAudio");
++	setProperty("CFBundleIdentifierKernel",
++	    "com.apple.driver.AppleAOPAudio");
++	setProperty("compatible", "audio-aop-bhap");
++	setProperty("device_type", "audio-aop-bhap");
++	setProperty("id0", "bhap");
++	setProperty("Button Haptics Asset Interface", 1, 32);
++	match = OSArray::withCapacity(2);
++	if (match != NULL) {
++		OSString *s1 = OSString::withCString("audio-aop-bhap");
++		OSString *s2 = OSString::withCString("audio-bhap");
++		if (s1 != NULL) {
++			match->setObject(s1);
++			s1->release();
++		}
++		if (s2 != NULL) {
++			match->setObject(s2);
++			s2->release();
++		}
++		setProperty("IONameMatch", match);
++		match->release();
++	}
++	registerService();
++	IOLog("SWEET HAPTICS: AppleAOPAudioButtonHapticDevice registered\n");
++	return true;
+ }
+ 
+ /*
+--- a/iokit/KernelConfigTables.cpp
++++ b/iokit/KernelConfigTables.cpp
+@@ -98,6 +98,11 @@
+     "     'IOMatchCategory' = AppleSPUHapticsManagerDriver;"
+     "   },"
+     "   {"
++    "     'IOClass'         = AppleAOPAudioButtonHapticDevice;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOMatchCategory' = AppleAOPAudioButtonHapticDevice;"
++    "   },"
++    "   {"
+     "     'IOClass'         = AppleHapticsSupportCallan;"
+     "     'IOProviderClass' = IOResources;"
+     "     'IOMatchCategory' = AppleHapticsSupportCallan;"
