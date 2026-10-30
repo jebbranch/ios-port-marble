@@ -1,0 +1,282 @@
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -32,6 +32,42 @@
+ #include <kern/task.h>
+ #include <sys/proc.h>
+ 
++#include <stdarg.h>
++
++/*
++ * Post-boot diagnostics.
++ *
++ * The kernel console goes quiet once the early daemons have started, so
++ * nothing printed after that reaches the SWEETLOG ring through _cnputs.
++ * sweet_log_append() feeds the same 1 s flusher directly, which keeps
++ * user-client and session events visible in the ring no matter when they
++ * happen.
++ */
++extern void sweet_log_append(const char *c, int size);
++
++static void
++sweet_hap_ring_log(const char *fmt, ...)
++{
++	char line[256];
++	va_list ap;
++	int n;
++
++	va_start(ap, fmt);
++	n = vsnprintf(line, sizeof(line), fmt, ap);
++	va_end(ap);
++	if (n > 0) {
++		if (n > (int)sizeof(line) - 1) {
++			n = (int)sizeof(line) - 1;
++		}
++		sweet_log_append(line, n);
++	}
++}
++
++#define SWEET_HAP_LOG(fmt, ...) do { \
++	IOLog(fmt, ##__VA_ARGS__); \
++	sweet_hap_ring_log(fmt, ##__VA_ARGS__); \
++} while (0)
++
+ /* The haptics buffer the client maps.  Retained for the lifetime of the
+  * kernel so the close-time dump cannot touch freed memory. */
+ static IOBufferMemoryDescriptor *gSweetHapBuf;
+@@ -72,7 +108,7 @@
+ 	if (!IOUserClient::initWithTask(owningTask, securityID, type, properties)) {
+ 		return false;
+ 	}
+-	IOLog("SWEET HAPTICS: %s open by pid %d type %#x\n", getName(), fPid,
++	SWEET_HAP_LOG("SWEET HAPTICS: %s open by pid %d type %#x\n", getName(), fPid,
+ 	    (unsigned)type);
+ 	return true;
+ }
+@@ -92,7 +128,7 @@
+ 		line[o++] = (i + 1 == n) ? '\0' : ' ';
+ 	}
+ 	line[o] = '\0';
+-	IOLog("SWEET HAPTICS: %s len=%u %s%s\n", tag, len, line,
++	SWEET_HAP_LOG("SWEET HAPTICS: %s len=%u %s%s\n", tag, len, line,
+ 	    len > n ? " ..." : "");
+ }
+ 
+@@ -101,7 +137,7 @@
+     IOExternalMethodArguments *arguments, IOExternalMethodDispatch *dispatch,
+     OSObject *target, void *reference)
+ {
+-	IOLog("SWEET HAPTICS: %s sel=%u sin=%u sout=%u struct_in=%u struct_out=%u%s\n",
++	SWEET_HAP_LOG("SWEET HAPTICS: %s sel=%u sin=%u sout=%u struct_in=%u struct_out=%u%s\n",
+ 	    getName(), (unsigned)selector,
+ 	    (unsigned)arguments->scalarInputCount,
+ 	    (unsigned)arguments->scalarOutputCount,
+@@ -110,7 +146,7 @@
+ 	    arguments->structureInputDescriptor ? " desc_in" : "");
+ 
+ 	for (uint32_t i = 0; i < arguments->scalarInputCount && i < 8; i++) {
+-		IOLog("SWEET HAPTICS:   in[%u]=%#llx\n", i,
++		SWEET_HAP_LOG("SWEET HAPTICS:   in[%u]=%#llx\n", i,
+ 		    (unsigned long long)arguments->scalarInput[i]);
+ 	}
+ 	if (arguments->structureInput && arguments->structureInputSize) {
+@@ -118,11 +154,11 @@
+ 		    arguments->structureInput, arguments->structureInputSize);
+ 	}
+ 	if (arguments->structureInputDescriptor) {
+-		IOLog("SWEET HAPTICS:   desc_in len=%llu\n",
++		SWEET_HAP_LOG("SWEET HAPTICS:   desc_in len=%llu\n",
+ 		    (unsigned long long)arguments->structureInputDescriptor->getLength());
+ 	}
+ 	if (arguments->structureOutputDescriptor) {
+-		IOLog("SWEET HAPTICS:   desc_out len=%llu\n",
++		SWEET_HAP_LOG("SWEET HAPTICS:   desc_out len=%llu\n",
+ 		    (unsigned long long)arguments->structureOutputDescriptor->getLength());
+ 	}
+ 	for (uint32_t i = 0; i < arguments->scalarOutputCount && i < 8; i++) {
+@@ -145,7 +181,7 @@
+ SweetHapticsUCBase::registerNotificationPort(mach_port_t port, UInt32 type,
+     UInt32 refCon)
+ {
+-	IOLog("SWEET HAPTICS: %s notify port type=%u ref=%#x\n", getName(),
++	SWEET_HAP_LOG("SWEET HAPTICS: %s notify port type=%u ref=%#x\n", getName(),
+ 	    (unsigned)type, (unsigned)refCon);
+ 	return kIOReturnSuccess;
+ }
+@@ -174,7 +210,7 @@
+ 	OSCollectionIterator *it;
+ 
+ 	if (dict == NULL) {
+-		IOLog("SWEET HAPTICS: %s setProperties (non-dict)\n",
++		SWEET_HAP_LOG("SWEET HAPTICS: %s setProperties (non-dict)\n",
+ 		    service->getName());
+ 		return;
+ 	}
+@@ -182,12 +218,12 @@
+ 	if (it == NULL) {
+ 		return;
+ 	}
+-	IOLog("SWEET HAPTICS: %s setProperties count=%u\n",
++	SWEET_HAP_LOG("SWEET HAPTICS: %s setProperties count=%u\n",
+ 	    service->getName(), (unsigned)dict->getCount());
+ 	OSObject *key;
+ 	while ((key = it->getNextObject()) != NULL) {
+ 		const OSSymbol *sym = OSDynamicCast(OSSymbol, key);
+-		IOLog("SWEET HAPTICS:   prop %s\n",
++		SWEET_HAP_LOG("SWEET HAPTICS:   prop %s\n",
+ 		    sym ? sym->getCStringNoCopy() : "?");
+ 	}
+ 	it->release();
+@@ -199,7 +235,7 @@
+ {
+ 	IOBufferMemoryDescriptor *buf;
+ 
+-	IOLog("SWEET HAPTICS: %s map type=%u options=%#x\n", getName(),
++	SWEET_HAP_LOG("SWEET HAPTICS: %s map type=%u options=%#x\n", getName(),
+ 	    (unsigned)type, options ? (unsigned)*options : 0);
+ 	buf = IOBufferMemoryDescriptor::withCapacity(0x10000,
+ 	    kIODirectionInOut, true);
+@@ -217,7 +253,7 @@
+ IOReturn
+ SweetHapticsUCBase::clientClose(void)
+ {
+-	IOLog("SWEET HAPTICS: %s closed (pid %d)\n", getName(), fPid);
++	SWEET_HAP_LOG("SWEET HAPTICS: %s closed (pid %d)\n", getName(), fPid);
+ 	dumpBuffer("  buffer at close");
+ 	return IOUserClient::clientClose();
+ }
+@@ -225,7 +261,7 @@
+ IOReturn
+ SweetHapticsUCBase::clientDied(void)
+ {
+-	IOLog("SWEET HAPTICS: %s died (pid %d)\n", getName(), fPid);
++	SWEET_HAP_LOG("SWEET HAPTICS: %s died (pid %d)\n", getName(), fPid);
+ 	dumpBuffer("  buffer at death");
+ 	return IOUserClient::clientDied();
+ }
+@@ -254,7 +290,7 @@
+ 	setProperty("IONameMatch", "aop-haptics-audio");
+ 	setProperty("compatible", "aop-haptics-audio");
+ 	registerService();
+-	IOLog("SWEET HAPTICS: AppleSPUHapticsAudioDriver registered\n");
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleSPUHapticsAudioDriver registered\n");
+ 	return true;
+ }
+ 
+@@ -288,7 +324,7 @@
+ 	setProperty("IOUserClientClass", "AppleSPUHapticsManagerUC");
+ 	setProperty("IONameMatch", "AppleSPUHapticsManagerDriver");
+ 	registerService();
+-	IOLog("SWEET HAPTICS: AppleSPUHapticsManagerDriver registered\n");
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleSPUHapticsManagerDriver registered\n");
+ 	return true;
+ }
+ 
+@@ -356,7 +392,7 @@
+ 		match->release();
+ 	}
+ 	registerService();
+-	IOLog("SWEET HAPTICS: AppleAOPAudioButtonHapticDevice registered\n");
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleAOPAudioButtonHapticDevice registered\n");
+ 	return true;
+ }
+ 
+@@ -416,7 +452,7 @@
+ 		}
+ 	}
+ 	chain[used] = '\0';
+-	IOLog("SWEET HAPTICS: %s chain %s\n", what, chain);
++	SWEET_HAP_LOG("SWEET HAPTICS: %s chain %s\n", what, chain);
+ }
+ 
+ class AppleHapticsSupport : public IOService {
+@@ -437,17 +473,17 @@
+ bool
+ AppleHapticsSupport::start(IOService *provider)
+ {
+-	IOLog("SWEET HAPTICS: AppleHapticsSupport::start provider=%s(%s) self=%s\n",
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleHapticsSupport::start provider=%s(%s) self=%s\n",
+ 	    provider != NULL ? provider->getName() : "(null)",
+ 	    sweet_ahs_class(provider), sweet_ahs_class(this));
+ 	sweet_ahs_log_chain(this, "AppleHapticsSupport");
+ 	if (!IOService::start(provider)) {
+-		IOLog("SWEET HAPTICS: AppleHapticsSupport::start "
++		SWEET_HAP_LOG("SWEET HAPTICS: AppleHapticsSupport::start "
+ 		    "IOService::start failed\n");
+ 		return false;
+ 	}
+ 	registerService();
+-	IOLog("SWEET HAPTICS: AppleHapticsSupport::start registerService done "
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleHapticsSupport::start registerService done "
+ 	    "class=%s\n", getMetaClass()->getClassName());
+ 	return true;
+ }
+@@ -455,7 +491,7 @@
+ void
+ AppleHapticsSupport::stop(IOService *provider)
+ {
+-	IOLog("SWEET HAPTICS: AppleHapticsSupport::stop provider=%s\n",
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleHapticsSupport::stop provider=%s\n",
+ 	    provider != NULL ? provider->getName() : "(null)");
+ 	IOService::stop(provider);
+ }
+@@ -466,13 +502,13 @@
+ {
+ 	IOReturn ret;
+ 
+-	IOLog("SWEET HAPTICS: AppleHapticsSupport::newUserClient type=%u pid=%d "
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleHapticsSupport::newUserClient type=%u pid=%d "
+ 	    "props=%s\n", (unsigned)type,
+ 	    owningTask != NULL ? task_pid(owningTask) : -1,
+ 	    properties != NULL ? "yes" : "no");
+ 	ret = IOService::newUserClient(owningTask, securityID, type, properties,
+ 	    handler);
+-	IOLog("SWEET HAPTICS: AppleHapticsSupport::newUserClient -> %#x client=%p\n",
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleHapticsSupport::newUserClient -> %#x client=%p\n",
+ 	    ret, handler != NULL ? *handler : NULL);
+ 	return ret;
+ }
+@@ -482,7 +518,7 @@
+     bool waitForFunction, void *param1, void *param2, void *param3,
+     void *param4)
+ {
+-	IOLog("SWEET HAPTICS: AppleHapticsSupport::callPlatformFunction %s "
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleHapticsSupport::callPlatformFunction %s "
+ 	    "wait=%d p1=%p p2=%p p3=%p p4=%p\n",
+ 	    functionName != NULL ? functionName->getCStringNoCopy() : "(null)",
+ 	    waitForFunction ? 1 : 0, param1, param2, param3, param4);
+@@ -493,7 +529,7 @@
+ void
+ AppleHapticsSupport::notifyHapticsSessionChange(bool active, OSObject *event)
+ {
+-	IOLog("SWEET HAPTICS: notifyHapticsSessionChange active=%d event=%p(%s)\n",
++	SWEET_HAP_LOG("SWEET HAPTICS: notifyHapticsSessionChange active=%d event=%p(%s)\n",
+ 	    active ? 1 : 0, event, sweet_ahs_class(event));
+ }
+ 
+@@ -511,7 +547,7 @@
+ {
+ 	OSArray *match;
+ 
+-	IOLog("SWEET HAPTICS: AppleHapticsSupportCallan::start provider=%s(%s)\n",
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleHapticsSupportCallan::start provider=%s(%s)\n",
+ 	    provider != NULL ? provider->getName() : "(null)",
+ 	    sweet_ahs_class(provider));
+ 	/*
+@@ -557,7 +593,7 @@
+ void
+ AppleHapticsSupportCallan::stop(IOService *provider)
+ {
+-	IOLog("SWEET HAPTICS: AppleHapticsSupportCallan::stop provider=%s\n",
++	SWEET_HAP_LOG("SWEET HAPTICS: AppleHapticsSupportCallan::stop provider=%s\n",
+ 	    provider != NULL ? provider->getName() : "(null)");
+ 	AppleHapticsSupport::stop(provider);
+ }
+@@ -597,7 +633,7 @@
+ 		/* 与 IOService.cpp 相同：copy 语义，忽略返回值的释放。 */
+ 		entitled = (ent == kOSBooleanTrue);
+ 	}
+-	IOLog("SWEET HAPTICS: AHSUC initWithTask pid=%d type=%u "
++	SWEET_HAP_LOG("SWEET HAPTICS: AHSUC initWithTask pid=%d type=%u "
+ 	    "entitlement=%s\n",
+ 	    owningTask != NULL ? task_pid(owningTask) : -1, (unsigned)type,
+ 	    entitled ? "present" : "absent");
