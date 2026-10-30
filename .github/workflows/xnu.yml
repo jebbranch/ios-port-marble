@@ -170,9 +170,12 @@ jobs:
             echo "=== errors ==="
             # Patch-application noise lands early in the log and used to fill
             # the whole 80-line window, hiding the actual compile error.
-            grep -nE 'error:|fatal error' /tmp/build.log \
-              | grep -viE 'unifdef|--- ERROR ---|patch does not apply|already exists in working directory|Skipping patch' \
-              | head -120 || true
+            grep -nE 'error:|fatal error|Undefined symbols|duplicate symbol|ld: ' /tmp/build.log \
+              | grep -viE 'unifdef|--- ERROR ---|patch does not apply|already exists in working directory|Skipping patch|warning:' \
+              | head -160 || true
+            echo
+            echo "=== linker context ==="
+            grep -n -A4 'Undefined symbols\|duplicate symbol' /tmp/build.log | head -60 || true
             echo
             echo "=== tail ==="
             tail -60 /tmp/build.log || true
