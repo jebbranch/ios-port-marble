@@ -9,13 +9,15 @@
  #include <libkern/libkern.h>
  #include <kern/task.h>
  #include <sys/proc.h>
-@@ -244,7 +246,95 @@
+@@ -242,6 +244,97 @@
+ 	memcpy(gSweetHapLast, now, n);
+ 	gSweetHapHaveLast = true;
  	sweet_haptics_dump(why, now, n);
- }
- 
++}
++
 +
 +/* Dump a property value (numbers/strings/data/bool, one or two dict levels). */
- static void
++static void
 +sweet_hap_log_value(const char *key, OSObject *val, int depth)
 +{
 +	if (val == NULL) {
@@ -72,8 +74,11 @@
 +			while (it != NULL && (k = it->getNextObject()) != NULL) {
 +				const OSSymbol *ks = OSDynamicCast(OSSymbol, k);
 +
-+				sweet_hap_log_value(ks ? ks->getCStringNoCopy() : "?",
-+				    sub->getObject(k), depth + 1);
++				if (ks == NULL) {
++					continue;
++				}
++				sweet_hap_log_value(ks->getCStringNoCopy(),
++				    sub->getObject(ks), depth + 1);
 +			}
 +			if (it != NULL) {
 +				it->release();
@@ -99,13 +104,10 @@
 +	}
 +	SWEET_HAP_LOG("SWEET HAPTICS:   %s = <%s>\n", key,
 +	    val->getMetaClass()->getClassName());
-+}
-+
-+static void
- sweet_haptics_props(IOService *service, OSObject *properties)
- {
- 	OSDictionary *dict = OSDynamicCast(OSDictionary, properties);
-@@ -264,8 +354,9 @@
+ }
+ 
+ static void
+@@ -264,8 +357,9 @@
  	OSObject *key;
  	while ((key = it->getNextObject()) != NULL) {
  		const OSSymbol *sym = OSDynamicCast(OSSymbol, key);
@@ -113,7 +115,7 @@
 -		    sym ? sym->getCStringNoCopy() : "?");
 +
 +		sweet_hap_log_value(sym ? sym->getCStringNoCopy() : "?",
-+		    dict->getObject(key), 0);
++		    sym ? dict->getObject(sym) : NULL, 0);
  	}
  	it->release();
  }
