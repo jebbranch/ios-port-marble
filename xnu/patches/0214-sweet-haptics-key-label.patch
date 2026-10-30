@@ -1,0 +1,81 @@
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -246,7 +246,42 @@
+ 	sweet_haptics_dump(why, now, n);
+ }
+ 
++
++
++/* Any dictionary key: symbol/string as text, everything else by class+bytes. */
++static const char *
++sweet_hap_key_label(OSObject *key)
++{
++	static char label[96];
++
++	if (key == NULL) {
++		return "?";
++	}
++	const OSSymbol *sym = OSDynamicCast(OSSymbol, key);
++	if (sym != NULL) {
++		return sym->getCStringNoCopy();
++	}
++	const OSString *str = OSDynamicCast(OSString, key);
++	if (str != NULL) {
++		return str->getCStringNoCopy();
++	}
++	const OSData *data = OSDynamicCast(OSData, key);
++	if (data != NULL) {
++		const uint8_t *p = (const uint8_t *)data->getBytesNoCopy();
++		uint32_t n = data->getLength();
++		uint32_t m = n > 8 ? 8 : n;
++		char *o = label;
+ 
++		o += snprintf(o, 32, "data:%u:", n);
++		for (uint32_t i = 0; i < m && o < label + sizeof(label) - 4; i++) {
++			o += snprintf(o, 3, "%02x", p[i]);
++		}
++		return label;
++	}
++	snprintf(label, sizeof(label), "<%s>", key->getMetaClass()->getClassName());
++	return label;
++}
++
+ /* Dump a property value (numbers/strings/data/bool, one or two dict levels). */
+ static void
+ sweet_hap_log_value(const char *key, OSObject *val, int depth)
+@@ -303,16 +338,8 @@
+ 			OSObject *k;
+ 
+ 			while (it != NULL && (k = it->getNextObject()) != NULL) {
+-				const OSSymbol *ks = OSDynamicCast(OSSymbol, k);
+-				const OSString *kstr = ks ? NULL :
+-				    OSDynamicCast(OSString, k);
+-
+-				if (ks == NULL && kstr == NULL) {
+-					continue;
+-				}
+-				sweet_hap_log_value(
+-				    ks ? ks->getCStringNoCopy() : kstr->getCStringNoCopy(),
+-				    ks ? sub->getObject(ks) : sub->getObject(kstr),
++				sweet_hap_log_value(sweet_hap_key_label(k),
++				    sub->getObject((const OSMetaClassBase *)k),
+ 				    depth + 1);
+ 			}
+ 			if (it != NULL) {
+@@ -360,14 +387,8 @@
+ 	    service->getName(), (unsigned)dict->getCount());
+ 	OSObject *key;
+ 	while ((key = it->getNextObject()) != NULL) {
+-		const OSSymbol *sym = OSDynamicCast(OSSymbol, key);
+-		const OSString *str = sym ? NULL : OSDynamicCast(OSString, key);
+-
+-		sweet_hap_log_value(
+-		    sym ? sym->getCStringNoCopy() :
+-		    (str ? str->getCStringNoCopy() : "?"),
+-		    sym ? dict->getObject(sym) :
+-		    (str ? dict->getObject(str) : NULL), 0);
++		sweet_hap_log_value(sweet_hap_key_label(key),
++		    dict->getObject((const OSMetaClassBase *)key), 0);
+ 	}
+ 	it->release();
+ }
