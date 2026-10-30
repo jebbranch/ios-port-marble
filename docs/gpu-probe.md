@@ -488,3 +488,44 @@ bit0（`regmap_update_bits`）。我们写的是对的，**是硬件不让我们
 
 第 1 项是几天，第 2 项是几周（NativeAdreno 那 7k 行的主体），第 3 项是另一个量级。
 到此为止，**"寄存器级可控"的部分已经全部做完并留下可复现的探针**。
+
+### v16/v17：GMU 的真实寄存器映射拿到了，但 GPUCC 的 AHB 仍然开不起来
+
+从厂商源码里找到两个关键事实：
+
+1. `drivers/gpu/msm/gen7_reg.h` 才是 GMU 寄存器表：ITCM `0x1b400`、
+   DTCM `0x1c400`、`CM3_SYSRESET` `0x1f800`、`FW_INIT_RESULT` `0x1f81c`、
+   `HFI_CTRL_STATUS` `0x1f980`、`HFI_CTRL_INIT` `0x1f986`。
+   之前读 `gmu+0/+4/+8` 是空字段，不能说明 GMU 死了。
+2. GMU 启动序列（`adreno_gen7_gmu.c`）：写 `CM3_SYSRESET=0` → 轮询
+   `FW_INIT_RESULT` bit8 → `HFI_CTRL_INIT=1` → 轮询 `HFI_CTRL_STATUS` bit0。
+   固件必须先写进 ITCM/DTCM 窗口，否则 bit8 永远不会置起。
+
+真机读数（`GP_GMU=2`，CX 已上电）：
+
+```
+0x3d87800 (CM3_SYSRESET)   = 0xdeafbead
+0x3d8781c (FW_INIT_RESULT) = 0xdeafbead
+0x3d87980 (HFI_CTRL_STATUS)= 0xdeafbead
+0x3d87800+0x1b400 (ITCM)   -> 同步中止 (0xffffffff)
+```
+
+`0xdeafbead` 是总线对"被门控/未供时钟"块的伪造响应，不是真值；ITCM 窗口直接
+中止。**GMU 仍然没有时钟**。
+
+GPUCC 侧这一轮又排除了两个可能：
+
+* hub RCG 现在写入了正确的 M/N/D（`CMD=0x2`、`CFG=0x600`、`M=1`），
+  `hub_aon`(0x93e8) 也能开了；
+* GCC 侧 `gcc_gpu_gpll0_div_clk_src`(0x62000 bit16) 和
+  `gcc_gpu_gpll0_clk_src`(bit15) 都写进去了并回读确认（`0xe1a57f`）。
+
+**`gpu_cc_ahb`(0x911c) 依然写不进 bit0，`hub_ahb_div`(0x9430) 依然读 0。**
+分支扫描（`GP_BR`）显示：`0x911c/0x9120/0x912c/0x9130/0x9134` 这 5 个写不进
+（恰好是驱动里 HALT_VOTED 那一族 + ahb），而 `0x913c/0x9144/0x9148/0x914c/
+0x9150/0x93e8` 都能写。这个"能在同一页里写一半"的现象说明不是我们写错地址，
+而是这一族时钟在硬件上由别的东西（GMU/AOP 的 vote）控制。
+
+顺带一个负面结论：Android 的 `regmap/3d90000.clock-controller/registers` 只能
+读到 `0x3ff8`（PLL 区），再往后读会让厂商内核重启——**Android 不能当 GPUCC
+分支区的寄存器 oracle**。

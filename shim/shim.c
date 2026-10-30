@@ -225,6 +225,12 @@ static void irq_handler(void)
 #ifndef GP_CLK_SEL
 #define GP_CLK_SEL		6	/* hub RCG source: 0 tcxo, 6 gpll0/2 */
 #endif
+#ifndef GP_BR
+#define GP_BR			0	/* v16: GPUCC branch writability scan */
+#endif
+#ifndef GP_GCC
+#define GP_GCC			0	/* v17: GCC gate that feeds the GPUCC hub RCG */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
 static const char gp_level_tag[] __attribute__((used)) =
@@ -235,7 +241,8 @@ static const char gp_level_tag[] __attribute__((used)) =
     "-v" GP_STR(GP_SURVEY) "e" GP_STR(GP_EARLY) "g" GP_STR(GP_GX)
     "w" GP_STR(GP_CBW) "t" GP_STR(GP_CBT)
     "d" GP_STR(GP_CMDB) "r" GP_STR(GP_RAIL)
-    "k" GP_STR(GP_CLK) "m" GP_STR(GP_GMU) "s" GP_STR(GP_CLK_SEL);
+    "k" GP_STR(GP_CLK) "m" GP_STR(GP_GMU) "s" GP_STR(GP_CLK_SEL)
+    "b" GP_STR(GP_BR) "g" GP_STR(GP_GCC);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -750,6 +757,46 @@ gp_clk_setup(volatile struct gpu_probe_result *r)
 	uint32_t cmd;
 	unsigned i;
 
+#if GP_GCC
+	/*
+	 * gcc_gpu_gpll0_div_clk_src is a GCC branch at 0x62000 bit 16 (and
+	 * gcc_gpu_gpll0_clk_src is bit 15).  GPUCC's hub RCG is fed from here;
+	 * with the GCC gate closed the RCG reads ROOT_EN=1 but outputs nothing,
+	 * and every branch below it (hub_ahb_div, gpu_cc_ahb) stays dead.
+	 */
+	{
+		uintptr_t a = 0x162000UL;
+		uint32_t v = gp_rd32(a);
+
+		if (!gp_fault) {
+			gp_wr32(a, v | (1u << 15) | (1u << 16));
+			__asm__ volatile("dsb sy" ::: "memory");
+			delay_ms(2);
+			r->p_cb0_sctlr = gp_rd32(a);	/* GCC 0x162000 readback */
+		}
+	}
+#endif
+	/*
+	 * Bring the hub's always-on gate up first: the RCG/divider registers
+	 * live behind it, and programming them while it is off leaves the
+	 * whole hub branch dead (observed: hub_ahb_div and gpu_cc_ahb stuck
+	 * at 0 no matter what the RCG said).
+	 */
+	{
+		static const uint32_t pre[2] = { 0x93e8u, 0x9144u };
+
+		for (i = 0; i < 2u; i++) {
+			uintptr_t a = GPU_GPUCC_BASE + pre[i];
+			uint32_t v = gp_rd32(a);
+
+			if (!gp_fault && !(v & 1u)) {
+				gp_wr32(a, v | 1u);
+			}
+		}
+		__asm__ volatile("dsb sy" ::: "memory");
+		delay_ms(2);
+	}
+
 	for (i = 0; i < 2u; i++) {
 		uintptr_t c = GPU_GPUCC_BASE + rcg[i].cmd;
 		uintptr_t f = GPU_GPUCC_BASE + rcg[i].cfg;
@@ -760,6 +807,14 @@ gp_clk_setup(volatile struct gpu_probe_result *r)
 		v &= ~0x700u;
 		v |= rcg[i].sel << 8;
 		gp_wr32(f, v);
+		/*
+		 * The RCG output is parent/(2*M) in integer mode; leaving
+		 * M=0 gives a dead clock even with ROOT_EN=1.  M=1 is the
+		 * slowest running setting and is enough for a bring-up.
+		 */
+		gp_wr32(c + 0x8u, 1u);		/* M */
+		gp_wr32(c + 0xcu, 0u);		/* N */
+		gp_wr32(c + 0x10u, 0u);		/* D */
 		cmd = gp_rd32(c);
 		if (gp_fault)
 			continue;
@@ -776,18 +831,15 @@ gp_clk_setup(volatile struct gpu_probe_result *r)
 	}
 	__asm__ volatile("dsb sy" ::: "memory");
 
-	/* Readbacks into slots the survey leaves alone. */
-	r->wsid = gp_rd32(GPU_GPUCC_BASE + 0x93ecu);
-	r->cbar_w = gp_rd32(GPU_GPUCC_BASE + 0x93f0u);
-	r->cbar_count = gp_rd32(GPU_GPUCC_BASE + 0x9318u);
-	r->cbar_bank = (int)gp_rd32(GPU_GPUCC_BASE + 0x931cu);
-	r->w2cr_f = gp_rd32(GPU_GPUCC_BASE + 0x911cu);
-	r->w2cr_r = gp_rd32(GPU_GPUCC_BASE + 0x9148u);
-	r->w2cr_t = gp_rd32(GPU_GPUCC_BASE + 0x913cu);
-	r->wcbar_old = gp_rd32(GPU_GPUCC_BASE + 0x9430u);	/* hub_ahb_div */
-	r->sctlr_w = gp_rd32(GPU_GPUCC_BASE + 0x93e8u);		/* hub_aon */
-	r->cbar_bank = (int)gp_rd32(GPU_GPUCC_BASE + 0x9144u);	/* cxo_clk */
-	con_hex2("GPUS", "hub=", r->wsid, "ahb=", r->w2cr_f);
+	/* Named v9 slots: the survey leaves these alone when it is off. */
+	r->p_cb0_ttbr0 = gp_rd32(GPU_GPUCC_BASE + 0x93ecu);	/* hub CMD */
+	r->p_cb0_ttbr1 = gp_rd32(GPU_GPUCC_BASE + 0x93f0u);	/* hub CFG */
+	r->p_cb0_tcr2 = gp_rd32(GPU_GPUCC_BASE + 0x9318u);	/* gmu CMD */
+	r->p_cb0_mair1 = gp_rd32(GPU_GPUCC_BASE + 0x911cu);	/* ahb */
+	r->p_cb0_tcr = gp_rd32(GPU_GPUCC_BASE + 0x9430u);	/* hub_ahb_div */
+	r->p_cb0_mair0 = gp_rd32(GPU_GPUCC_BASE + 0x93e8u);	/* hub_aon */
+	r->p_cb0_cbar = gp_rd32(GPU_GPUCC_BASE + 0x9144u);	/* cxo */
+	con_hex2("GPUS", "hub=", r->p_cb0_ttbr0, "ahb=", r->p_cb0_mair1);
 }
 #endif
 
@@ -813,6 +865,22 @@ gp_gmu_probe(volatile struct gpu_probe_result *r)
 		delay_ms(2);
 	}
 	r->w2cr_r = gp_rd32(GPU_GPUCC_BASE + 0x9314u);
+#if GP_GMU == 2
+	/* Real gen7 offsets (gen7_reg.h), relative to the gmu reg base. */
+	r->last_step = 310;
+	r->p_cb0_sctlr = gp_rd32(0x3d68000u + 0x1f800u);	/* CM3_SYSRESET */
+	r->last_step = 311;
+	r->p_cb0_ttbr0 = gp_rd32(0x3d68000u + 0x1f81cu);	/* FW_INIT_RESULT */
+	r->last_step = 312;
+	r->p_cb0_ttbr1 = gp_rd32(0x3d68000u + 0x1f980u);	/* HFI_CTRL_STATUS */
+	r->last_step = 313;
+	r->p_cb0_tcr = gp_rd32(0x3d68000u + 0x1f984u);		/* HFI ctrl word */
+	r->last_step = 314;
+	r->p_cb0_tcr2 = gp_rd32(0x3d68000u + 0x1b400u);		/* ITCM[0] */
+	r->last_step = 315;
+	r->p_cb0_mair0 = gp_rd32(0x3d68000u + 0x1c400u);	/* DTCM[0] */
+	con_hex2("GPUS", "sysrst=", r->p_cb0_sctlr, "fwin=", r->p_cb0_ttbr0);
+#endif
 	r->last_step = 302;
 	r->wsid = gp_rd32(0x3d40000u);			/* GMU AO block */
 	r->last_step = 303;
@@ -827,6 +895,50 @@ gp_gmu_probe(volatile struct gpu_probe_result *r)
 	r->cbfrsynra = gp_rd32(0xb290000u);		/* GMU PDC */
 	r->last_step = 308;
 	con_hex2("GPUS", "ao=", r->wsid, "gmu=", r->w2cr_t);
+}
+#endif
+
+#if GP_BR
+/*
+ * Which GPUCC branch registers actually latch a write?  For each offset:
+ * read v, write v|1, read back, restore v.  Bit n of the result means
+ * offset[n] latched.  Slots: fault= latch mask  restore= 0x911c readback
+ * after the attempt  trans= how many offsets were scanned.
+ */
+static void
+gp_branch_scan(volatile struct gpu_probe_result *r)
+{
+	static const uint32_t offs[] = {
+		0x911cu, 0x9120u, 0x9124u, 0x9128u, 0x912cu, 0x9130u,
+		0x9134u, 0x9138u, 0x913cu, 0x9140u, 0x9144u, 0x9148u,
+		0x914cu, 0x9150u, 0x9154u, 0x93e8u
+	};
+	uint32_t mask = 0, v, w;
+	unsigned i;
+
+	for (i = 0; i < sizeof(offs) / sizeof(offs[0]); i++) {
+		uintptr_t a = GPU_GPUCC_BASE + offs[i];
+
+		r->last_step = 400 + i;
+		v = gp_rd32(a);
+		if (gp_fault)
+			continue;
+		if (v & 1u) {		/* already on: count it */
+			mask |= 1u << i;
+			continue;
+		}
+		gp_wr32(a, v | 1u);
+		__asm__ volatile("dsb sy" ::: "memory");
+		w = gp_rd32(a);
+		if (!gp_fault && (w & 1u))
+			mask |= 1u << i;
+		gp_wr32(a, v);		/* restore */
+	}
+	__asm__ volatile("dsb sy" ::: "memory");
+	r->w2cr_f = mask;
+	r->w2cr_r = gp_rd32(GPU_GPUCC_BASE + 0x911cu);
+	r->w2cr_t = (uint32_t)(sizeof(offs) / sizeof(offs[0]));
+	con_hex2("GPUS", "branches=", mask, "ahb=", r->w2cr_r);
 }
 #endif
 
@@ -898,6 +1010,9 @@ gpu_probe_boot(void)
 #endif
 #if GP_GMU
 	gp_gmu_probe(r);
+#endif
+#if GP_BR
+	gp_branch_scan(r);
 #endif
 #if GP_GX
 	gp_power_gx(r);
@@ -1124,7 +1239,7 @@ wdone:
 		uintptr_t db = 0x80860000UL;	/* aop_cmd_db_region */
 		uint32_t magic = gp_rd32(db + 4u);
 		uint32_t found[4] = { 0, 0, 0, 0 };
-		unsigned h, j, walked = 0;
+		unsigned h, j, walked = 0, n = 0;
 
 		r->w2cr_f = magic;
 		r->last_step = 240;
@@ -1147,6 +1262,19 @@ wdone:
 					if (gp_fault)
 						goto cmdb_done;
 					walked++;
+#if GP_CMDB == 2
+					/* dump any resource whose name starts with "gpu" */
+					if ((k0 & 0xffffffu) == 0x757067u && n < 2) {
+						if (n == 0) {
+							r->wsid = k0;
+							r->w2cr_old = gp_rd32(e + 16u);
+						} else {
+							r->wsmr = k0;
+							r->w2cr = gp_rd32(e + 16u);
+						}
+						n++;
+					}
+#endif
 					if (k0 == 0x6c2e7863u && k1 == 0x00006c76u)
 						found[0] = gp_rd32(e + 16u); /* cx.lvl */
 					else if (k0 == 0x2e786667u && k1 == 0x006c766cu)
