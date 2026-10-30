@@ -231,6 +231,9 @@ static void irq_handler(void)
 #ifndef GP_GCC
 #define GP_GCC			0	/* v17: GCC gate that feeds the GPUCC hub RCG */
 #endif
+#ifndef GP_VOTE
+#define GP_VOTE			0	/* v18: scan the HLOS1 vote page at 0x7000 */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
 static const char gp_level_tag[] __attribute__((used)) =
@@ -242,7 +245,7 @@ static const char gp_level_tag[] __attribute__((used)) =
     "w" GP_STR(GP_CBW) "t" GP_STR(GP_CBT)
     "d" GP_STR(GP_CMDB) "r" GP_STR(GP_RAIL)
     "k" GP_STR(GP_CLK) "m" GP_STR(GP_GMU) "s" GP_STR(GP_CLK_SEL)
-    "b" GP_STR(GP_BR) "g" GP_STR(GP_GCC);
+    "b" GP_STR(GP_BR) "g" GP_STR(GP_GCC) "o" GP_STR(GP_VOTE);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -942,6 +945,51 @@ gp_branch_scan(volatile struct gpu_probe_result *r)
 }
 #endif
 
+#if GP_VOTE
+/*
+ * The branches that refuse bit0 are the HALT_VOTED family.  Their enable is
+ * a vote, and GPUCC keeps HLOS1 votes in the 0x7000 page.  Set bit0 on all
+ * 64 words of that page (harmless: they are votes for GPU-internal clocks),
+ * record which ones took, then re-read gpu_cc_ahb.
+ */
+static void
+gp_vote_scan(volatile struct gpu_probe_result *r)
+{
+	uint32_t mask = 0;
+	unsigned i;
+
+	for (i = 0; i < 64u; i++) {
+		uintptr_t a = GPU_GPUCC_BASE + 0x7000u + 4u * i;
+		uint32_t v = gp_rd32(a);
+
+		r->last_step = 500 + i;
+		if (gp_fault)
+			continue;
+		if (v & 1u) {
+			mask |= 1u << (i & 31u);
+			continue;
+		}
+		gp_wr32(a, v | 1u);
+		__asm__ volatile("dsb sy" ::: "memory");
+		if (!gp_fault && (gp_rd32(a) & 1u))
+			mask |= 1u << (i & 31u);
+	}
+	__asm__ volatile("dsb sy" ::: "memory");
+	/* also try the ahb branch once more after the votes */
+	{
+		uintptr_t a = GPU_GPUCC_BASE + 0x911cu;
+		uint32_t v = gp_rd32(a);
+
+		if (!gp_fault)
+			gp_wr32(a, v | 1u);
+	}
+	r->p_cb0_sctlr = mask;
+	r->p_cb0_ttbr0 = gp_rd32(GPU_GPUCC_BASE + 0x911cu);
+	r->p_cb0_ttbr1 = gp_rd32(GPU_GPUCC_BASE + 0x9430u);
+	con_hex2("GPUS", "votes=", mask, "ahb=", r->p_cb0_ttbr0);
+}
+#endif
+
 /* v11: stage-1 tables, identity mapped (the shim is VA==PA). */
 static uint64_t gp_cbw_l1[512] __attribute__((aligned(4096)));
 static uint64_t gp_cbw_l2[512] __attribute__((aligned(4096)));
@@ -1013,6 +1061,9 @@ gpu_probe_boot(void)
 #endif
 #if GP_BR
 	gp_branch_scan(r);
+#endif
+#if GP_VOTE
+	gp_vote_scan(r);
 #endif
 #if GP_GX
 	gp_power_gx(r);

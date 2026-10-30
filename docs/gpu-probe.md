@@ -529,3 +529,26 @@ GPUCC 侧这一轮又排除了两个可能：
 顺带一个负面结论：Android 的 `regmap/3d90000.clock-controller/registers` 只能
 读到 `0x3ff8`（PLL 区），再往后读会让厂商内核重启——**Android 不能当 GPUCC
 分支区的寄存器 oracle**。
+
+### v18：HLOS1 投票页也不是 AHB 的钥匙
+
+`GP_VOTE=1` 把 GPUCC 的 `0x7000` 页（HLOS1 vote 区）64 个字全部试写 bit0：
+只有 `0x7000..0x7010` 这 5 个投进去了（mask=0x1f），**`gpu_cc_ahb` 仍然是 0**，
+`hub_ahb_div` 仍然是 0。
+
+到这一步，GPUCC 侧能想到的常规钥匙都试过了：
+
+| 嫌疑 | 结果 |
+|---|---|
+| hub RCG 源/GCC 门控 | 已开（`0x62000[16:15]` + TCXO/GPLL0 两种源） |
+| hub RCG 的 M/N/D | 已写（M=1，CMD=2，CFG=0x600） |
+| hub_aon(0x93e8) | 能开 |
+| HLOS1 投票页 | 已扫，5 个投上，ahb 无效 |
+| CX GDSC / CX BCR | 已开 / 已释放 |
+| 分支寄存器本身 | `0x911c` 写 bit0 不 latch（同页其它分支都能写） |
+
+⇒ `gpu_cc_ahb` 的门控不在我们试过的任何 AP 可见寄存器里。它是 GMU 那一族的
+时钟，最可能的解释是：**这一族时钟由 GMU/AOP 的硬件状态机 gate，AP 只有在
+GMU 已经起来的上下文里才能打开**——也就是经典的"先有鸡还是先有蛋"。
+对应的正规解法是走 **AOP 辅助的 GMU 启动**（DT 里 GMU 节点有
+`mboxes = <&aop 0>`），或者把 `adreno_gen7_gmu` 的整条 probe 路径移植进来。
