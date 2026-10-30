@@ -213,6 +213,9 @@ static void irq_handler(void)
 #ifndef GP_CMDB
 #define GP_CMDB			0	/* v12: AOP cmd-db: find gfx.lvl and friends */
 #endif
+#ifndef GP_RAIL
+#define GP_RAIL			0	/* v13: RPMh ARC vote for gfx.lvl/mx.lvl */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
 static const char gp_level_tag[] __attribute__((used)) =
@@ -222,7 +225,7 @@ static const char gp_level_tag[] __attribute__((used)) =
     "-r" GP_STR(GP_CB_REGS) GP_STR(GP_GR1_READ) GP_STR(GP_KGSL_SCAN)
     "-v" GP_STR(GP_SURVEY) "e" GP_STR(GP_EARLY) "g" GP_STR(GP_GX)
     "w" GP_STR(GP_CBW) "t" GP_STR(GP_CBT)
-    "d" GP_STR(GP_CMDB);
+    "d" GP_STR(GP_CMDB) "r" GP_STR(GP_RAIL);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -609,6 +612,114 @@ gp_power_gx(volatile struct gpu_probe_result *r)
 	con_hex2("GPUS", "gx=", v, "id=", r->p_kgsl_ident);
 }
 
+#if GP_RAIL
+/*
+ * Minimal RPMh ARC-level vote: one command in one idle ACTIVE TCS, the same
+ * handshake sweet_rpmh.c uses for the PMIC LDOs on this phone, minus the
+ * PMIC-specific mode/enable commands (an ARC resource only takes a level).
+ * Returns 0 on a verified completion, a negative tag otherwise.
+ */
+#define RH_RSC			0x17a20000UL	/* apps_rsc drv-2 */
+#define RH_TCS			0x17a20d00UL
+#define RH_TCS_STRIDE		0x2a0u
+#define RH_CMD_STRIDE		0x14u
+#define RH_IRQ_EN		0x00u
+#define RH_IRQ_STATUS		0x04u
+#define RH_IRQ_CLEAR		0x08u
+#define RH_WAIT			0x10u
+#define RH_CONTROL		0x14u
+#define RH_STATUS		0x18u
+#define RH_ENABLE		0x1cu
+#define RH_MSGID		0x30u
+#define RH_ADDR			0x34u
+#define RH_DATA			0x38u
+#define RH_CMD_STATUS		0x3cu
+#define RH_AMC_EN		(1u << 16)
+#define RH_TRIGGER		(1u << 24)
+#define RH_WRITE_ACK		(8u | (1u << 8) | (1u << 16))
+
+static int
+gp_rh_sync(uintptr_t a, uint32_t value)
+{
+	unsigned i;
+
+	gp_wr32(a, value);
+	for (i = 0; i < 100u; i++) {
+		if (gp_rd32(a) == value)
+			return 1;
+		delay_ms(1);
+	}
+	return 0;
+}
+
+static int
+gp_rh_vote(uint32_t addr, uint32_t level)
+{
+	uint32_t config = gp_rd32(RH_RSC + 0x0cu);
+	unsigned ncpt = (config >> 27) & 0x1fu;
+	uint32_t b, bit, irq_en;
+	int t = -1, rc = -5;
+	unsigned i, c;
+
+	if (gp_fault || !ncpt || ncpt > 16u)
+		return -1;
+
+	for (i = 0; i < 2u; i++) {
+		uint32_t s = RH_TCS + i * RH_TCS_STRIDE;
+
+		if (gp_rd32(s + RH_STATUS) != 0 &&
+		    gp_rd32(s + RH_STATUS) != 0xffffffffu &&
+		    gp_rd32(s + RH_CONTROL) == 0 &&
+		    gp_rd32(s + RH_ENABLE) == 0 &&
+		    gp_rd32(s + RH_WAIT) == 0 &&
+		    !(gp_rd32(RH_TCS + RH_IRQ_STATUS) & (1u << i))) {
+			t = (int)i;
+			break;
+		}
+	}
+	if (t < 0)
+		return -2;
+
+	b = RH_TCS + (uint32_t)t * RH_TCS_STRIDE;
+	bit = 1u << (uint32_t)t;
+	irq_en = gp_rd32(RH_TCS + RH_IRQ_EN);
+	if (irq_en == 0xffffffffu)
+		return -3;
+	if (!gp_rh_sync(RH_TCS + RH_IRQ_EN, irq_en & ~bit))
+		return -4;
+	if (!gp_rh_sync(b + RH_WAIT, 7u) || !gp_rh_sync(b + RH_ENABLE, 1u) ||
+	    !gp_rh_sync(b + RH_CONTROL, 0u) || !gp_rh_sync(b + RH_CONTROL, RH_AMC_EN))
+		return -4;
+
+	gp_wr32(b + RH_MSGID, RH_WRITE_ACK);
+	gp_wr32(b + RH_ADDR, addr);
+	gp_wr32(b + RH_DATA, level);
+	__asm__ volatile("dsb sy" ::: "memory");
+	gp_wr32(b + RH_CONTROL, RH_AMC_EN | RH_TRIGGER);
+
+	for (i = 0; i < 2000u; i++) {
+		uint32_t st = gp_rd32(b + RH_CMD_STATUS);
+
+		if (gp_fault)
+			break;
+		if ((st & ((1u << 8) | (1u << 16))) == ((1u << 8) | (1u << 16))) {
+			rc = 0;
+			break;
+		}
+		delay_ms(1);
+	}
+	(void)c;
+
+	gp_rh_sync(b + RH_CONTROL, RH_AMC_EN);
+	gp_rh_sync(b + RH_CONTROL, 0u);
+	gp_rh_sync(b + RH_ENABLE, 0u);
+	gp_rh_sync(b + RH_WAIT, 0u);
+	gp_wr32(RH_TCS + RH_IRQ_CLEAR, bit);
+	gp_wr32(RH_TCS + RH_IRQ_EN, irq_en);
+	return rc;
+}
+#endif
+
 /* v11: stage-1 tables, identity mapped (the shim is VA==PA). */
 static uint64_t gp_cbw_l1[512] __attribute__((aligned(4096)));
 static uint64_t gp_cbw_l2[512] __attribute__((aligned(4096)));
@@ -932,10 +1043,14 @@ wdone:
 			}
 		}
 cmdb_done:
+		/* Slots the survey never writes, so nothing can clobber them:
+		 * slot= cx.lvl   l5-old= gfx.lvl   cb-w= mx.lvl
+		 * cbregs-n= mxc.lvl   fault= magic   restore= walked */
 		r->wsid = found[0];
-		r->w2cr_old = found[1];
-		r->wsmr = found[2];
-		r->w2cr = found[3];
+		r->wcbar_old = found[1];
+		r->cbar_w = found[2];
+		r->cbar_count = found[3];
+		r->w2cr_f = magic;
 		r->w2cr_r = walked;
 		con_hex2("GPUS", "cx=", found[0], "gfx=", found[1]);
 		con_hex2("GPUS", "mx=", found[2], "mxc=", found[3]);
@@ -1139,7 +1254,26 @@ cmdb_done:
 		gp_power_cx(r);		/* with GP_EARLY it already ran */
 #endif
 #if GP_GX
+#if GP_RAIL
+		/* Recorded in slots the survey never writes:
+		 * fault= cx.lvl vote  restore= mxc.lvl vote  trans= gfx.lvl vote */
+		r->w2cr_f = (uint32_t)gp_rh_vote(0x30000u, 384u); /* control */
+		delay_ms(5);
+		r->w2cr_r = (uint32_t)gp_rh_vote(0x30120u, 384u); /* mxc.lvl */
+		delay_ms(5);
+		r->w2cr_t = (uint32_t)gp_rh_vote(0x30050u, 192u); /* gfx.lvl */
+		delay_ms(5);
+		r->p_cbw_flags |= 0x1000u;
+		con_hex2("GPUS", "cx=", r->w2cr_f, "mxc=", r->w2cr_r);
+#endif
 		gp_power_gx(r);
+#if GP_RAIL
+		/* GX clock gates after the attempt, in otherwise-unused slots. */
+		r->wsid = gp_rd32(GPU_GPUCC_BASE + 0x90a8u);	/* gx_gfx3d */
+		r->cbar_w = gp_rd32(GPU_GPUCC_BASE + 0x90bcu);	/* gx_gmu */
+		r->cbar_count = gp_rd32(GPU_GPUCC_BASE + 0x90c0u); /* gx_ff */
+		r->cbar_bank = (int)gp_rd32(GPU_GPUCC_BASE + 0x90b0u); /* vsense */
+#endif
 #endif
 		r->p_pwr_step = 20;
 		r->p_cxgdr2 = gp_rd32(GPU_GPUCC_BASE + 0x9108u);

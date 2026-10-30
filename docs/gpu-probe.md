@@ -361,3 +361,46 @@ Android 里这条轨道由 kgsl 按需 vote；XNU 启动时它 `enable=0`，所�
 **要开 GX，必须先通过 RPMh 对 `gfx.lvl` 投票**——这正是 sweet_rpmh.c 已经能做的
 那类命令（它现在只会投 PMIC LDO）。cmd-db 里 `cx.lvl` 地址已经读出来是 `0x30000`，
 `gfx.lvl`/`mx.lvl`/`mxc.lvl` 的地址还要再取一次（上一轮结果槽被覆盖了）。
+
+### v13：GX 域上不了电——它的开关在 GMU 手里
+
+为了开 GX，先把 RPMh 的 ARC 投票补上了（`GP_RAIL`）：在 shim 里用和
+`sweet_rpmh.c` 相同的 TCS 握手，往 apps_rsc drv-2 的 ACTIVE TCS 里写一条
+「level」命令。cmd-db（PA `0x80860000`，magic `0x0c0330db`，138 条）里查到：
+
+| 资源 | cmd-db 地址 | 投票结果 |
+|---|---|---|
+| `cx.lvl` | `0x30000` | 控制组，rc=0 ✓ |
+| `mx.lvl` | `0x30010` | rc=0 ✓ |
+| `gfx.lvl` | `0x30050` | rc=0 ✓ |
+| `mxc.lvl` | `0x30120` | **rc=-5（命令永不完成）** |
+
+但 GX 仍然起不来：清 `SW_COLLAPSE`、放 `GMEM_CLAMP_IO`、脉冲 BLK_ARES、
+启动 gx 时钟之后，`GX_GDSCR = 0x6822f000`——**`PWR_ON`(bit31) 依旧是 0**。
+（作为对比，同样手法开 CX 时 bit31 立刻置 1。）
+
+原因写在厂商驱动里，不是我们写错寄存器：
+
+```c
+/* kgsl_pwrctrl.c: kgsl_pwrctrl_pwrrail() */
+if (gmu_core_gpmu_isenabled(device))
+        return 0;   /* GMU 在跑时，AP 根本不碰 vdd/vddcx */
+```
+
+gen7（A730/A725）的 **GX 电源由 GMU 掌管**：`kgsl` 只在 GMU 没启用时才自己开
+`vdd`，否则整套上电/掉电都走 GMU 的 HFI 协议。换句话说：
+
+* CX（SMMU、GMU 自己所在域）可以由 AP 直接开——已验证；
+* **GX（图形核）必须等 GMU 固件跑起来**，AP 单方面写 GDSC 不会闭合。
+
+### 到目前为止 GPU 这条线的净结论
+
+1. GPU SMMU 的全局寄存器、SMR/S2CR、**context bank 全部可读写**，
+   我们已经能给它建 stage-1 页表并把 SID 0 指过去（v12）。
+2. GPU_CC_CX 是纯软件开关（v9）。
+3. GPU_CC_GX 不是——它由 GMU 控制（v13）。
+4. KGSL 的 RBBM 寄存器在 GX 域，所以在 GMU 起来之前永远是 0。
+
+⇒ 下一个真正的里程碑只能是 **GMU bring-up**：把 `gmu_gen70000.bin` 载入
+GMU 内存、开 GMU 时钟/复位、跑 HFI 握手。那是 UniXNU/NativeAdreno 里
+GMU + CP 初始化那几千行的核心，也是这条路从"寄存器可控"变成"引擎能跑"的分界。
