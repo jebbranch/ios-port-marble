@@ -219,6 +219,12 @@ static void irq_handler(void)
 #ifndef GP_CLK
 #define GP_CLK			0	/* v14: hub/gmu RCGs + gpu_cc_ahb */
 #endif
+#ifndef GP_GMU
+#define GP_GMU			0	/* v15: GMU block reset + register liveness */
+#endif
+#ifndef GP_CLK_SEL
+#define GP_CLK_SEL		6	/* hub RCG source: 0 tcxo, 6 gpll0/2 */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
 static const char gp_level_tag[] __attribute__((used)) =
@@ -229,7 +235,7 @@ static const char gp_level_tag[] __attribute__((used)) =
     "-v" GP_STR(GP_SURVEY) "e" GP_STR(GP_EARLY) "g" GP_STR(GP_GX)
     "w" GP_STR(GP_CBW) "t" GP_STR(GP_CBT)
     "d" GP_STR(GP_CMDB) "r" GP_STR(GP_RAIL)
-    "k" GP_STR(GP_CLK);
+    "k" GP_STR(GP_CLK) "m" GP_STR(GP_GMU) "s" GP_STR(GP_CLK_SEL);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -737,8 +743,8 @@ static void
 gp_clk_setup(volatile struct gpu_probe_result *r)
 {
 	static const struct { uint32_t cmd, cfg, sel; } rcg[2] = {
-		{ 0x93ecu, 0x93f0u, 6u },	/* hub_clk_src  */
-		{ 0x9318u, 0x931cu, 0u },	/* gmu_clk_src  */
+		{ 0x93ecu, 0x93f0u, GP_CLK_SEL },	/* hub_clk_src */
+		{ 0x9318u, 0x931cu, 0u },		/* gmu_clk_src */
 	};
 	static const uint32_t br[4] = { 0x93e8u, 0x911cu, 0x9148u, 0x913cu };
 	uint32_t cmd;
@@ -778,7 +784,49 @@ gp_clk_setup(volatile struct gpu_probe_result *r)
 	r->w2cr_f = gp_rd32(GPU_GPUCC_BASE + 0x911cu);
 	r->w2cr_r = gp_rd32(GPU_GPUCC_BASE + 0x9148u);
 	r->w2cr_t = gp_rd32(GPU_GPUCC_BASE + 0x913cu);
+	r->wcbar_old = gp_rd32(GPU_GPUCC_BASE + 0x9430u);	/* hub_ahb_div */
+	r->sctlr_w = gp_rd32(GPU_GPUCC_BASE + 0x93e8u);		/* hub_aon */
+	r->cbar_bank = (int)gp_rd32(GPU_GPUCC_BASE + 0x9144u);	/* cxo_clk */
 	con_hex2("GPUS", "hub=", r->wsid, "ahb=", r->w2cr_f);
+}
+#endif
+
+#if GP_GMU
+/*
+ * GMU liveness.  Before any firmware work: is the GMU register block
+ * responding, and is GPU_CC_GMU_BCR (0x9314, bit 0 = BLK_ARES) released?
+ * The CB page proved that an unclocked GPU block reads garbage instead of
+ * faulting, so garbage here is an answer, not a crash.  Slots:
+ *   slot= AO+0   cb-w= AO+4   cbregs-n= GMU+4   cb bank= GMU+8
+ *   trans= GMU+0   fault= BCR before   restore= BCR after
+ */
+static void
+gp_gmu_probe(volatile struct gpu_probe_result *r)
+{
+	uint32_t v;
+
+	r->last_step = 300;
+	r->w2cr_f = gp_rd32(GPU_GPUCC_BASE + 0x9314u);	/* GPU_CC_GMU_BCR */
+	r->last_step = 301;
+	if (!gp_fault && (r->w2cr_f & 1u)) {
+		gp_wr32(GPU_GPUCC_BASE + 0x9314u, r->w2cr_f & ~1u);
+		delay_ms(2);
+	}
+	r->w2cr_r = gp_rd32(GPU_GPUCC_BASE + 0x9314u);
+	r->last_step = 302;
+	r->wsid = gp_rd32(0x3d40000u);			/* GMU AO block */
+	r->last_step = 303;
+	r->cbar_w = gp_rd32(0x3d40004u);
+	r->last_step = 304;
+	r->w2cr_t = gp_rd32(0x3d68000u);		/* GMU core */
+	r->last_step = 305;
+	r->cbar_count = gp_rd32(0x3d68004u);
+	r->last_step = 306;
+	r->cbar_bank = (int)gp_rd32(0x3d68008u);
+	r->last_step = 307;
+	r->cbfrsynra = gp_rd32(0xb290000u);		/* GMU PDC */
+	r->last_step = 308;
+	con_hex2("GPUS", "ao=", r->wsid, "gmu=", r->w2cr_t);
 }
 #endif
 
@@ -847,6 +895,9 @@ gpu_probe_boot(void)
 	gp_power_cx(r);
 #if GP_CLK
 	gp_clk_setup(r);
+#endif
+#if GP_GMU
+	gp_gmu_probe(r);
 #endif
 #if GP_GX
 	gp_power_gx(r);

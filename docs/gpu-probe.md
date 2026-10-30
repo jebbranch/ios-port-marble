@@ -454,3 +454,37 @@ gpu_cc_ahb   = 0          ← 仍然开不起来
 GMU 侧要复刻的是 `adreno_gen7_gmu.c`：ITCM/DTCM 窗口（GMU VA 0 / 0x10004000，
 各 16 KiB）、`GEN7_GMU_CM3_SYSRESET`、`FW_INIT_RESULT` 轮询、`HFI_CTRL_INIT`，
 固件 `gmu_gen70000.bin` 已经拉到 `work/gpu-fw/`。
+
+### v15：GMU 寄存器块也还是"没时钟"
+
+`GP_GMU=1`：先读 `GPU_CC_GMU_BCR`(0x9314) —— **bit0 本来就是 0（已释放）**；
+再读 GMU 的两个窗口：
+
+```
+GMU AO 块 0x3d40000 / +4        = 0 / 0
+GMU 核   0x3d68000 / +4 / +8    = 0 / 0 / 1
+```
+
+和 CB 页当初一样：**寄存器可寻址但读回 0**，即 GMU 的 AP 侧接口还没有时钟。
+把 `hub_clk_src` 的源从 GPLL0/2 换成必开的 TCXO 再试，结果不变：
+
+```
+hub CMD_RCGR = 2 (ROOT_EN)   hub CFG_RCGR = 0 (TCXO)
+hub_aon(0x93e8) = 0          hub_ahb_div(0x9430) = 0
+gpu_cc_ahb(0x911c) = 0       ← 写 bit0 不latch
+```
+
+对照 `clk-branch.c`：`BRANCH_CLK_OFF=BIT(31)`，enable 就是写 `enable_reg` 的
+bit0（`regmap_update_bits`）。我们写的是对的，**是硬件不让我们开**——分频器
+`hub_ahb_div` 读 0，说明它上游就没有在跑，或者这一支属于 GMU 自己管理的时钟域。
+
+⇒ 到这里，GPU 这条线剩下的门槛非常明确了：
+
+1. **GPUCC 时钟树**（PLL0/PLL1 lucid_ole 配置 + hub 分频 + ahb/hub_aon 分支），
+   即把 `gpucc-waipio.c` 的时钟部分移植进来；
+2. **GMU 固件协议**（ITCM/DTCM 窗口、CM3 复位、FW_INIT、HFI），
+   即 `adreno_gen7_gmu.c` 的核心；
+3. 之后才是 CP 微码和命令环。
+
+第 1 项是几天，第 2 项是几周（NativeAdreno 那 7k 行的主体），第 3 项是另一个量级。
+到此为止，**"寄存器级可控"的部分已经全部做完并留下可复现的探针**。
