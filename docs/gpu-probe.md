@@ -431,3 +431,26 @@ GMU + CP 初始化那几千行的核心，也是这条路从"寄存器可控"变
 
 第 1–5 步都是"寄存器可控"级别的活，第 6 步之后才进入真正的驱动移植。
 本仓库已经把第 1 步做完了，第 3 步的关键（CB 可编程）也做完了。
+
+### v14：GPUCC 的两个 RCG 已能配置
+
+`GP_CLK=1` 在 CX 上电后配置 `hub_clk_src`(0x93ec/0x93f0，源 GPLL0/2) 和
+`gmu_clk_src`(0x9318/0x931c，源 TCXO)，再去开 `hub_aon`/`ahb`/`hub_cx_int`/`cx_gmu`。
+
+```
+hub CMD_RCGR = 0x2        (ROOT_EN=1, ROOT_OFF=0 → 在跑)
+hub CFG_RCGR = 0x600      (SRC_SEL=6)
+gmu CMD_RCGR = 0x2        (在跑)
+gmu CFG_RCGR = 0x0        (SRC_SEL=0 = TCXO)
+hub_cx_int   = 0x1        (已开)
+cx_gmu       = 0x2221     (已开)
+gpu_cc_ahb   = 0          ← 仍然开不起来
+```
+
+`gpu_cc_ahb` 依旧读 0，但 CB 寄存器能正常读写（v12 已证），所以它不是 CB 的
+前提；它的父级 `hub_ahb_div`(0x9430，硬件只读分频) 可能没被使能，留待 GMU
+阶段一起处理。
+
+GMU 侧要复刻的是 `adreno_gen7_gmu.c`：ITCM/DTCM 窗口（GMU VA 0 / 0x10004000，
+各 16 KiB）、`GEN7_GMU_CM3_SYSRESET`、`FW_INIT_RESULT` 轮询、`HFI_CTRL_INIT`，
+固件 `gmu_gen70000.bin` 已经拉到 `work/gpu-fw/`。

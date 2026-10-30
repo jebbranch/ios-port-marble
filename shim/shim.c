@@ -216,6 +216,9 @@ static void irq_handler(void)
 #ifndef GP_RAIL
 #define GP_RAIL			0	/* v13: RPMh ARC vote for gfx.lvl/mx.lvl */
 #endif
+#ifndef GP_CLK
+#define GP_CLK			0	/* v14: hub/gmu RCGs + gpu_cc_ahb */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
 static const char gp_level_tag[] __attribute__((used)) =
@@ -225,7 +228,8 @@ static const char gp_level_tag[] __attribute__((used)) =
     "-r" GP_STR(GP_CB_REGS) GP_STR(GP_GR1_READ) GP_STR(GP_KGSL_SCAN)
     "-v" GP_STR(GP_SURVEY) "e" GP_STR(GP_EARLY) "g" GP_STR(GP_GX)
     "w" GP_STR(GP_CBW) "t" GP_STR(GP_CBT)
-    "d" GP_STR(GP_CMDB) "r" GP_STR(GP_RAIL);
+    "d" GP_STR(GP_CMDB) "r" GP_STR(GP_RAIL)
+    "k" GP_STR(GP_CLK);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -720,6 +724,64 @@ gp_rh_vote(uint32_t addr, uint32_t level)
 }
 #endif
 
+#if GP_CLK
+/*
+ * The two RCGs the SMMU and the GMU sit behind.  RCG2 layout (clk-rcg2.c):
+ * CMD_RCGR bit0 = UPDATE, bit1 = ROOT_EN, bit31 = ROOT_OFF; CFG_RCGR has
+ * SRC_SEL in bits 10:8, using the parent_map value (not the index).
+ * hub: parents {0 tcxo, 3 pll1, 5 gpll0, 6 gpll0/2}; gmu: add {1 pll0}.
+ * GPLL0 feeds half the SoC and is always running, so 6 is the safe pick;
+ * the GMU source is left on TCXO (0) for the first bring-up.
+ */
+static void
+gp_clk_setup(volatile struct gpu_probe_result *r)
+{
+	static const struct { uint32_t cmd, cfg, sel; } rcg[2] = {
+		{ 0x93ecu, 0x93f0u, 6u },	/* hub_clk_src  */
+		{ 0x9318u, 0x931cu, 0u },	/* gmu_clk_src  */
+	};
+	static const uint32_t br[4] = { 0x93e8u, 0x911cu, 0x9148u, 0x913cu };
+	uint32_t cmd;
+	unsigned i;
+
+	for (i = 0; i < 2u; i++) {
+		uintptr_t c = GPU_GPUCC_BASE + rcg[i].cmd;
+		uintptr_t f = GPU_GPUCC_BASE + rcg[i].cfg;
+		uint32_t v = gp_rd32(f);
+
+		if (gp_fault)
+			continue;
+		v &= ~0x700u;
+		v |= rcg[i].sel << 8;
+		gp_wr32(f, v);
+		cmd = gp_rd32(c);
+		if (gp_fault)
+			continue;
+		gp_wr32(c, (cmd | 0x3u));	/* ROOT_EN + UPDATE */
+		__asm__ volatile("dsb sy" ::: "memory");
+	}
+
+	for (i = 0; i < 4u; i++) {
+		uintptr_t a = GPU_GPUCC_BASE + br[i];
+		uint32_t v = gp_rd32(a);
+
+		if (!gp_fault && !(v & 1u))
+			gp_wr32(a, v | 1u);
+	}
+	__asm__ volatile("dsb sy" ::: "memory");
+
+	/* Readbacks into slots the survey leaves alone. */
+	r->wsid = gp_rd32(GPU_GPUCC_BASE + 0x93ecu);
+	r->cbar_w = gp_rd32(GPU_GPUCC_BASE + 0x93f0u);
+	r->cbar_count = gp_rd32(GPU_GPUCC_BASE + 0x9318u);
+	r->cbar_bank = (int)gp_rd32(GPU_GPUCC_BASE + 0x931cu);
+	r->w2cr_f = gp_rd32(GPU_GPUCC_BASE + 0x911cu);
+	r->w2cr_r = gp_rd32(GPU_GPUCC_BASE + 0x9148u);
+	r->w2cr_t = gp_rd32(GPU_GPUCC_BASE + 0x913cu);
+	con_hex2("GPUS", "hub=", r->wsid, "ahb=", r->w2cr_f);
+}
+#endif
+
 /* v11: stage-1 tables, identity mapped (the shim is VA==PA). */
 static uint64_t gp_cbw_l1[512] __attribute__((aligned(4096)));
 static uint64_t gp_cbw_l2[512] __attribute__((aligned(4096)));
@@ -783,6 +845,9 @@ gpu_probe_boot(void)
 #if GP_EARLY
 	/* Power first, then let the survey read the live block. */
 	gp_power_cx(r);
+#if GP_CLK
+	gp_clk_setup(r);
+#endif
 #if GP_GX
 	gp_power_gx(r);
 #endif
