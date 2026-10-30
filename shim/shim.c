@@ -234,6 +234,9 @@ static void irq_handler(void)
 #ifndef GP_VOTE
 #define GP_VOTE			0	/* v18: scan the HLOS1 vote page at 0x7000 */
 #endif
+#ifndef GP_RSCC
+#define GP_RSCC			0	/* v21: vendor PDC + RSCC ucode load */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
 static const char gp_level_tag[] __attribute__((used)) =
@@ -245,7 +248,8 @@ static const char gp_level_tag[] __attribute__((used)) =
     "w" GP_STR(GP_CBW) "t" GP_STR(GP_CBT)
     "d" GP_STR(GP_CMDB) "r" GP_STR(GP_RAIL)
     "k" GP_STR(GP_CLK) "m" GP_STR(GP_GMU) "s" GP_STR(GP_CLK_SEL)
-    "b" GP_STR(GP_BR) "g" GP_STR(GP_GCC) "o" GP_STR(GP_VOTE);
+    "b" GP_STR(GP_BR) "g" GP_STR(GP_GCC) "o" GP_STR(GP_VOTE)
+    "c" GP_STR(GP_RSCC);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -837,11 +841,12 @@ gp_clk_setup(volatile struct gpu_probe_result *r)
 	/* Named v9 slots: the survey leaves these alone when it is off. */
 	r->p_cb0_ttbr0 = gp_rd32(GPU_GPUCC_BASE + 0x93ecu);	/* hub CMD */
 	r->p_cb0_ttbr1 = gp_rd32(GPU_GPUCC_BASE + 0x93f0u);	/* hub CFG */
-	r->p_cb0_tcr2 = gp_rd32(GPU_GPUCC_BASE + 0x9318u);	/* gmu CMD */
+	r->p_cb0_tcr = gp_rd32(GPU_GPUCC_BASE + 0x93f4u);	/* hub M */
+	r->p_cb0_tcr2 = gp_rd32(GPU_GPUCC_BASE + 0x93f8u);	/* hub N */
+	r->p_cb0_mair0 = gp_rd32(GPU_GPUCC_BASE + 0x93fcu);	/* hub D */
 	r->p_cb0_mair1 = gp_rd32(GPU_GPUCC_BASE + 0x911cu);	/* ahb */
-	r->p_cb0_tcr = gp_rd32(GPU_GPUCC_BASE + 0x9430u);	/* hub_ahb_div */
-	r->p_cb0_mair0 = gp_rd32(GPU_GPUCC_BASE + 0x93e8u);	/* hub_aon */
-	r->p_cb0_cbar = gp_rd32(GPU_GPUCC_BASE + 0x9144u);	/* cxo */
+	r->p_cb0_cbar = gp_rd32(GPU_GPUCC_BASE + 0x9430u);	/* hub_ahb_div */
+	r->p_cb0_cbf = gp_rd32(GPU_GPUCC_BASE + 0x9318u);	/* gmu CMD */
 	con_hex2("GPUS", "hub=", r->p_cb0_ttbr0, "ahb=", r->p_cb0_mair1);
 }
 #endif
@@ -868,6 +873,56 @@ gp_gmu_probe(volatile struct gpu_probe_result *r)
 		delay_ms(2);
 	}
 	r->w2cr_r = gp_rd32(GPU_GPUCC_BASE + 0x9314u);
+#if GP_GMU == 4
+	/*
+	 * v20: the GPU's AHB path also has GCC-side gates that the vendor
+	 * enables through the clock framework: gcc_qmip_gpu_ahb_clk
+	 * (0x81008[0], hwcg bit1) and gcc_gpu_memnoc_gfx_clk (0x81010[0]).
+	 * Open those, then look at gpu_cc_ahb and the GMU again.
+	 */
+	{
+		static const uint32_t g[3] = { 0x181008u, 0x181010u, 0x162000u };
+		unsigned i;
+
+		for (i = 0; i < 3u; i++) {
+			uint32_t v = gp_rd32(g[i]);
+
+			if (!gp_fault) {
+				gp_wr32(g[i], v | 1u);
+				__asm__ volatile("dsb sy" ::: "memory");
+			}
+		}
+		delay_ms(2);
+	}
+	r->p_cb0_sctlr = gp_rd32(GPU_GPUCC_BASE + 0x911cu);	/* ahb */
+	r->last_step = 330;
+	r->p_cb0_ttbr0 = gp_rd32(0x3d68000u + 0x1f800u);	/* CM3_SYSRESET */
+	r->last_step = 331;
+	r->p_cb0_ttbr1 = gp_rd32(0x3d68000u + 0x1f81cu);	/* FW_INIT */
+	r->last_step = 332;
+	r->p_cb0_tcr = gp_rd32(0x3d68000u + 0x1b400u);		/* ITCM[0] */
+	con_hex2("GPUS", "ahb=", r->p_cb0_sctlr, "sysrst=", r->p_cb0_ttbr0);
+#endif
+#if GP_GMU == 3
+	/*
+	 * v19: raise the CX rail before touching the GMU.  Closing the CX GDSC
+	 * is not the same as having a usable CX domain: the rail level comes
+	 * from RPMh (cx.lvl), and Android's kgsl raises it while the GPU runs.
+	 * Then read the GMU at the real gen7 offsets.
+	 */
+	r->p_cbw_before = (uint32_t)gp_rh_vote(0x30000u, 384u);	/* cx.lvl */
+	delay_ms(10);
+	r->last_step = 320;
+	r->p_cb0_sctlr = gp_rd32(0x3d68000u + 0x1f800u);
+	r->last_step = 321;
+	r->p_cb0_ttbr0 = gp_rd32(0x3d68000u + 0x1f81cu);
+	r->last_step = 322;
+	r->p_cb0_ttbr1 = gp_rd32(0x3d68000u + 0x1f980u);
+	r->last_step = 323;
+	r->p_cb0_tcr = gp_rd32(0x3d68000u + 0x1f984u);
+	r->p_cbw_flags |= 0x1000u;
+	con_hex2("GPUS", "cxvote=", r->p_cbw_before, "sysrst=", r->p_cb0_sctlr);
+#endif
 #if GP_GMU == 2
 	/* Real gen7 offsets (gen7_reg.h), relative to the gmu reg base. */
 	r->last_step = 310;
@@ -990,6 +1045,58 @@ gp_vote_scan(volatile struct gpu_probe_result *r)
 }
 #endif
 
+#if GP_RSCC
+/*
+ * Replay gen7_load_rsc_ucode() + gen7_load_pdc_ucode() (adreno_gen7_gmu.c)
+ * with the register numbers from gen7_reg.h.  RSCC register numbers are
+ * word offsets; RSCC lives at 0x3d50000 and the PDC at 0xb290000.
+ * These are the GPU's own sleep/wake sequencer and its PDC handshake; the
+ * GMU is expected to become reachable once they are in place.
+ */
+static void
+gp_rscc_load(volatile struct gpu_probe_result *r)
+{
+	uintptr_t rs = 0x3d50000UL;
+	uintptr_t pd = 0xb290000UL;
+	static const uint32_t seq[5] = {
+		0xeaaae5a0u, 0xe1a1ebabu, 0xa2e0a581u, 0xecac82e2u, 0x0020edadu
+	};
+	unsigned i;
+
+	r->last_step = 600;
+	gp_wr32(pd + 0x4520u, 0u);		/* PDC GPU SEQ_START_ADDR */
+	r->last_step = 601;
+	gp_wr32(pd + 0x4500u, 0x80000001u);	/* PDC GPU ENABLE_PDC */
+
+	r->last_step = 602;
+	gp_wr32(rs + 0x10u, 1u << 24);		/* RSC_STATUS0: no SDE gating */
+	r->last_step = 603;
+	gp_wr32(rs + 0x2cu, 1u);		/* PDC slave id */
+	gp_wr32(rs + 0x38u, 0u);
+	gp_wr32(rs + 0x34u, 0u);
+	gp_wr32(rs + 0x40u, 0u);
+	gp_wr32(rs + 0x3cu, 0u);
+	gp_wr32(rs + 0x48u, 0x80000000u);
+	gp_wr32(rs + 0x44u, 0u);
+	gp_wr32(rs + 0x400u, 0u);		/* override start */
+	gp_wr32(rs + 0x20u, 0x4520u);		/* PDC seq start */
+	gp_wr32(rs + 0x24u, 0x4510u);
+	gp_wr32(rs + 0x28u, 0x4514u);
+	r->last_step = 604;
+	for (i = 0; i < 5u; i++)
+		gp_wr32(rs + 0x600u + 4u * i, seq[i]);
+	__asm__ volatile("dsb sy" ::: "memory");
+	delay_ms(2);
+
+	r->last_step = 605;
+	r->p_cb0_sctlr = gp_rd32(rs + 0x20u);		/* RSCC seq start rb */
+	r->p_cb0_ttbr0 = gp_rd32(pd + 0x4500u);		/* PDC enable rb */
+	r->p_cb0_ttbr1 = gp_rd32(0x3d68000u + 0x1f800u);	/* CM3_SYSRESET */
+	r->p_cb0_tcr = gp_rd32(GPU_GPUCC_BASE + 0x911cu);	/* ahb */
+	con_hex2("GPUS", "rscc=", r->p_cb0_sctlr, "gmu=", r->p_cb0_ttbr1);
+}
+#endif
+
 /* v11: stage-1 tables, identity mapped (the shim is VA==PA). */
 static uint64_t gp_cbw_l1[512] __attribute__((aligned(4096)));
 static uint64_t gp_cbw_l2[512] __attribute__((aligned(4096)));
@@ -1064,6 +1171,9 @@ gpu_probe_boot(void)
 #endif
 #if GP_VOTE
 	gp_vote_scan(r);
+#endif
+#if GP_RSCC
+	gp_rscc_load(r);
 #endif
 #if GP_GX
 	gp_power_gx(r);
@@ -1314,14 +1424,33 @@ wdone:
 						goto cmdb_done;
 					walked++;
 #if GP_CMDB == 2
-					/* dump any resource whose name starts with "gpu" */
-					if ((k0 & 0xffffffu) == 0x757067u && n < 2) {
-						if (n == 0) {
-							r->wsid = k0;
-							r->w2cr_old = gp_rd32(e + 16u);
-						} else {
-							r->wsmr = k0;
-							r->w2cr = gp_rd32(e + 16u);
+					/*
+					 * Look for clock-like RPMh resources: names are at
+					 * most 8 bytes, so "gpu_ahb"/"gfx_ahb" fit but
+					 * "gpu_cc_ahb" does not.  Keep up to four in
+					 * named fields the rest of the probe never writes.
+					 */
+					if (((k0 & 0xffffffu) == 0x757067u ||
+					     (k0 & 0xffffffu) == 0x786667u) && n < 4u) {
+						uint32_t addr = gp_rd32(e + 16u);
+
+						switch (n) {
+						case 0:
+							r->p_cb0_sctlr = k0;
+							r->p_cb0_ttbr0 = addr;
+							break;
+						case 1:
+							r->p_cb0_ttbr1 = k0;
+							r->p_cb0_tcr = addr;
+							break;
+						case 2:
+							r->p_cb0_tcr2 = k0;
+							r->p_cb0_mair0 = addr;
+							break;
+						default:
+							r->p_cb0_mair1 = k0;
+							r->p_cb0_cbar = addr;
+							break;
 						}
 						n++;
 					}
@@ -1341,6 +1470,9 @@ cmdb_done:
 		/* Slots the survey never writes, so nothing can clobber them:
 		 * slot= cx.lvl   l5-old= gfx.lvl   cb-w= mx.lvl
 		 * cbregs-n= mxc.lvl   fault= magic   restore= walked */
+#if GP_CMDB == 2
+		r->p_cb0_cba2r = n;	/* matches */
+#endif
 		r->wsid = found[0];
 		r->wcbar_old = found[1];
 		r->cbar_w = found[2];

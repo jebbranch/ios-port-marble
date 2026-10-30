@@ -552,3 +552,54 @@ GPUCC 侧这一轮又排除了两个可能：
 GMU 已经起来的上下文里才能打开**——也就是经典的"先有鸡还是先有蛋"。
 对应的正规解法是走 **AOP 辅助的 GMU 启动**（DT 里 GMU 节点有
 `mboxes = <&aop 0>`），或者把 `adreno_gen7_gmu` 的整条 probe 路径移植进来。
+
+### v19–v21：GMU 寄存器块对 AP 不可达，边界已经很清楚了
+
+这一轮把厂商 `gen7_gmu.c` 里 AP 侧能做的准备全部复刻了一遍，读数如下。
+
+**1. Android 侧的关键旁证**：GPU 活跃（`clock_mhz=550`）时，GPUCC 这些时钟的
+`clk_enable_count` **全是 0**：
+
+```
+gpu_cc_ahb_clk en=0  gpu_cc_cx_gmu_clk en=0  gpu_cc_hub_cx_int_clk en=0
+gpu_cc_gx_gfx3d_clk en=0 rate=0
+```
+
+说明这些时钟在**GMU 起来之后由 GMU 自己管理**，AP 的 `clk` 框架只是最初
+把它们打开过一次。`gpu_cc_ahb` 写不进 bit0 也就说得通了——它属于 GMU 那一族。
+
+**2. 我们已按厂商顺序做完的事**（全部真机验证）：
+
+| 步骤 | 结果 |
+|---|---|
+| CX GDSC 上电 + CX BCR 释放 | ✓ |
+| RPMh `cx.lvl=384` 投票 | rc=0 ✓ |
+| hub/gmu RCG（源、CFG、M/N/D） | CMD=2、CFG=0x600、M=0（HW_CLK_CTRL_MODE 下 M 是硬件控制，读 0 正常） |
+| hub_aon(0x93e8) | ✓ |
+| GCC `0x62000[16:15]`、`0x81008[0]`、`0x81010[0]` | 写入回读 ✓ |
+| HLOS1 投票页 0x7000 | 5 个投上 |
+| PDC ucode（0xb290000+0x4500/0x4520） | 回读 `0x80000001` ✓ |
+| RSCC ucode（0x3d50000，seq start 0x4520 + 5 条微码） | 回读 `0x4520` ✓ |
+
+**3. GMU 寄存器块仍然不可达**：
+
+```
+0x3d68000+0x1f800 (CM3_SYSRESET)    = 0xdeafbead
+0x3d68000+0x1f81c (FW_INIT_RESULT)  = 0xdeafbead / 同步中止
+0x3d68000+0x1b400 (ITCM[0])         = 同步中止
+```
+
+`0xdeafbead` 是被门控从设备返回的固定伪造值。**AP 侧能开的门都开了，GMU 仍然
+不响应。** 这不是我们漏了某个寄存器，而是 GMU 的上电握手（RSCC/AOP/XPU 之一）
+还没有被正确触发。
+
+### 下一步：用 kprobe 直接抄厂商
+
+既然盲目试寄存器已经到边界，最可靠的办法是**在 Android 上挂 kprobe**，
+抓厂商驱动在 GPU 上电时真实写下的 `（寄存器, 值）` 序列：
+
+* `gmu_core_regwrite` / `gmu_core_regread`
+* `clk_branch2_enable`（看 `gpu_cc_ahb` 到底怎么开的）
+* gdsc enable、`gen7_gmu_device_start`
+
+这条路线这个仓库已经用过（音频阶段用 kprobe 抓过厂商报文），可行。
