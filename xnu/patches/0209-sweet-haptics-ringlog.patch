@@ -15,7 +15,7 @@
 + * user-client and session events visible in the ring no matter when they
 + * happen.
 + */
-+extern void sweet_log_append(const char *c, int size);
++extern "C" void sweet_log_append(const char *c, int size);
 +
 +static void
 +sweet_hap_ring_log(const char *fmt, ...)
