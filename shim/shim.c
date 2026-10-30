@@ -196,7 +196,22 @@ static void irq_handler(void)
 #define GP_SURVEY		0	/* v8: CB bank at the real offset + GPUCC */
 #endif
 #ifndef GP_PWR
-#define GP_PWR			0	/* v9: bring GPU_CC_CX up, then re-read */
+#define GP_PWR			0	/* v9: bring GPU_CC_CX up after the survey */
+#endif
+#ifndef GP_EARLY
+#define GP_EARLY		0	/* v10: power CX (and GX) before the survey */
+#endif
+#ifndef GP_GX
+#define GP_GX			0	/* v10: also power GPU_CC_GX */
+#endif
+#ifndef GP_CBW
+#define GP_CBW			0	/* v11: program CB0 + SID 0 */
+#endif
+#ifndef GP_CBT
+#define GP_CBT			0	/* v11a: is the CB register file writable? */
+#endif
+#ifndef GP_CMDB
+#define GP_CMDB			0	/* v12: AOP cmd-db: find gfx.lvl and friends */
 #endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
@@ -205,7 +220,9 @@ static const char gp_level_tag[] __attribute__((used)) =
     "-c" GP_STR(GP_CBAR_BANK) "w" GP_STR(GP_CBAR_WRITE)
     "-s" GP_STR(GP_SCTLR_BANK) "w" GP_STR(GP_SCTLR_WRITE)
     "-r" GP_STR(GP_CB_REGS) GP_STR(GP_GR1_READ) GP_STR(GP_KGSL_SCAN)
-    "-v" GP_STR(GP_SURVEY);
+    "-v" GP_STR(GP_SURVEY) "e" GP_STR(GP_EARLY) "g" GP_STR(GP_GX)
+    "w" GP_STR(GP_CBW) "t" GP_STR(GP_CBT)
+    "d" GP_STR(GP_CMDB);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -405,6 +422,197 @@ gp_cb_base(uint32_t id1)
 	return GPU_SMMU_BASE + ((uintptr_t)(1u << (npg + 1u)) << sh);
 }
 
+/*
+ * GPU_CC_CX / GPU_CC_GX power switches.
+ *
+ * Follows the vendor gdsc-regulator driver: GDSCR.PWR_ON is bit 31,
+ * HW_CONTROL bit 1, SW_COLLAPSE bit 0 (1 = collapsed).  Under HW control the
+ * AP has to take the switch back by clearing HW_CONTROL first.  The GX domain
+ * additionally wants a BLK_ARES pulse, a GMEM_RESET pulse and the release of
+ * GMEM_CLAMP_IO before the switch is closed.
+ *
+ * Every write goes through the fault-tolerant accessor, so a block that is
+ * really gone records a flag instead of taking the boot with it.
+ */
+static void
+gp_power_cx(volatile struct gpu_probe_result *r)
+{
+	uintptr_t g = GPU_GPUCC_BASE;
+	uint32_t v;
+	unsigned i;
+	int ok = 1;
+
+	r->p_pwr_step = 1;
+	v = gp_rd32(g + 0x9108u);		/* GPU_CC_CX_GDSCR */
+	con_hex("GPUS", 1);
+	if (gp_fault) {
+		r->p_pwr_flags |= 1u;
+		return;
+	}
+	if (!(v & (1u << 31))) {
+		uint32_t w = v & ~(1u << 0);
+
+		if (v & (1u << 1)) {
+			w &= ~(1u << 1);
+			r->p_pwr_flags |= 0x100u;
+		}
+		r->p_pwr_step = 2;
+		gp_wr32(g + 0x9108u, w);
+		if (gp_fault) {
+			r->p_pwr_flags |= 2u;
+			ok = 0;
+		}
+		r->p_pwr_step = 3;
+		for (i = 0; ok && i < 1500u; i++) {
+			v = gp_rd32(g + 0x9108u);
+			if (gp_fault) {
+				r->p_pwr_flags |= 4u;
+				ok = 0;
+			} else if (v & (1u << 31)) {
+				break;
+			}
+			delay_ms(1);
+		}
+		if (ok && !(v & (1u << 31)))
+			r->p_pwr_flags |= 8u;
+		else if (ok)
+			r->p_pwr_flags |= 0x200u;	/* powered */
+	} else {
+		r->p_pwr_flags |= 0x400u;		/* was already on */
+	}
+	con_hex2("GPUS", "cx=", v, "fl=", r->p_pwr_flags);
+
+	/*
+	 * GPU_CC_CX_BCR (0x9104, bit 0 = BLK_ARES).  A powered block that is
+	 * still held in reset reads back as per-boot garbage and drops writes,
+	 * which is exactly what the CB page looked like.  Deassert it and keep
+	 * both readbacks in the old fault/restore slots for the log.
+	 */
+	r->p_pwr_step = 5;
+	v = gp_rd32(g + 0x9104u);
+	r->w2cr_f = v;
+	if (!gp_fault && (v & 1u)) {
+		gp_wr32(g + 0x9104u, v & ~1u);
+		delay_ms(2);
+		r->w2cr_r = gp_rd32(g + 0x9104u);
+		if (!gp_fault && (r->w2cr_r & 1u))
+			r->p_pwr_flags |= 0x80000u;	/* still asserted */
+		else
+			r->p_pwr_flags |= 0x100000u;	/* released now */
+	} else if (!gp_fault) {
+		r->w2cr_r = v;
+		r->p_pwr_flags |= 0x200000u;		/* was already released */
+	}
+	con_hex2("GPUS", "bcr=", r->w2cr_f, "bcr2=", r->w2cr_r);
+
+	/* Ungate: smmu vote, ahb, hub_cx_int, cx_gmu. */
+	{
+		static const uint32_t offs[4] = {
+			0x7000u, 0x911cu, 0x9148u, 0x913cu
+		};
+
+		for (i = 0; ok && i < 4u; i++) {
+			r->p_pwr_step = 10u + i;
+			v = gp_rd32(g + offs[i]);
+			if (gp_fault) {
+				r->p_pwr_flags |= 0x1000u << i;
+				continue;
+			}
+			if (!(v & 1u)) {
+				gp_wr32(g + offs[i], v | 1u);
+				if (gp_fault)
+					r->p_pwr_flags |= 0x1000u << i;
+			}
+		}
+	}
+	con_hex("GPUS", 2);
+}
+
+static void
+gp_power_gx(volatile struct gpu_probe_result *r)
+{
+	uintptr_t g = GPU_GPUCC_BASE;
+	const uint32_t srst[3] = { 0x9058u, 0x9358u, 0x958cu };
+	uint32_t v, w;
+	unsigned i;
+
+	r->p_pwr_step = 40;
+	v = gp_rd32(g + 0x905cu);		/* GPU_CC_GX_GDSCR */
+	if (gp_fault) {
+		r->p_pwr_flags |= 0x10000u;
+		return;
+	}
+	if (v & (1u << 31))
+		return;				/* already on */
+
+	if (v & (1u << 1)) {
+		r->p_pwr_flags |= 0x20000u;	/* took it from HW */
+		gp_wr32(g + 0x905cu, v & ~(1u << 1));
+	}
+
+	/* BLK_ARES pulse, then GMEM_RESET pulse + release clamp. */
+	r->p_pwr_step = 41;
+	for (i = 0; i < 3u; i++) {
+		w = gp_rd32(g + srst[i]);
+		if (!gp_fault)
+			gp_wr32(g + srst[i], w | 1u);
+	}
+	delay_ms(1);
+	for (i = 0; i < 3u; i++) {
+		w = gp_rd32(g + srst[i]);
+		if (!gp_fault)
+			gp_wr32(g + srst[i], w & ~1u);
+	}
+	r->p_pwr_step = 42;
+	w = gp_rd32(g + 0x9504u);		/* GX domain register */
+	if (!gp_fault) {
+		gp_wr32(g + 0x9504u, w | (1u << 4));	/* GMEM_RESET */
+		delay_ms(1);
+		gp_wr32(g + 0x9504u, (w & ~(1u << 4)) & ~1u);
+	}
+
+	/* Close the switch and wait for PWR_ON. */
+	r->p_pwr_step = 43;
+	v = gp_rd32(g + 0x905cu);
+	if (gp_fault)
+		return;
+	gp_wr32(g + 0x905cu, v & ~1u);
+	for (i = 0; i < 1500u; i++) {
+		v = gp_rd32(g + 0x905cu);
+		if (gp_fault)
+			break;
+		if (v & (1u << 31)) {
+			r->p_pwr_flags |= 0x40000u;
+			break;
+		}
+		delay_ms(1);
+	}
+
+	/* GX clocks: gfx3d, gx_gmu, gx_ff, memnoc_gfx, gx_vsense. */
+	{
+		static const uint32_t offs[5] = {
+			0x90a8u, 0x90bcu, 0x90c0u, 0x9150u, 0x90b0u
+		};
+
+		r->p_pwr_step = 44;
+		for (i = 0; i < 5u; i++) {
+			w = gp_rd32(g + offs[i]);
+			if (gp_fault)
+				continue;
+			if (!(w & 1u))
+				gp_wr32(g + offs[i], w | 1u);
+		}
+	}
+	r->p_pwr_step = 45;
+	r->p_kgsl_ident = gp_rd32(GPU_KGSL_BASE + 0x000u);
+	r->p_kgsl_rbbm2 = gp_rd32(GPU_KGSL_BASE + 0x840u);
+	con_hex2("GPUS", "gx=", v, "id=", r->p_kgsl_ident);
+}
+
+/* v11: stage-1 tables, identity mapped (the shim is VA==PA). */
+static uint64_t gp_cbw_l1[512] __attribute__((aligned(4096)));
+static uint64_t gp_cbw_l2[512] __attribute__((aligned(4096)));
+
 static void
 gpu_probe_boot(void)
 {
@@ -460,6 +668,15 @@ gpu_probe_boot(void)
 	con_hex2("GPU", "scr=", r->scr0, "rflt=", r->rfault);
 	if (rf)
 		goto done;
+
+#if GP_EARLY
+	/* Power first, then let the survey read the live block. */
+	gp_power_cx(r);
+#if GP_GX
+	gp_power_gx(r);
+#endif
+	con_hex("GPUS", 5);
+#endif
 
 	id0 = r->id0;
 	id1 = r->id1;
@@ -666,6 +883,152 @@ wdone:
 		r->op_fault |= 0x8000u;
 #endif
 
+#if GP_CMDB
+	/*
+	 * v12: the GX rail needs an RPMh vote, and a vote needs the resource
+	 * address from the AOP cmd-db.  Parse it the way sweet_rpmh.c does:
+	 * 8 slave descriptors at 0x8 + 16i (u16 slave, u16 entry offset,
+	 * u16 aux offset, u16 count), entries of 24 bytes after the 144-byte
+	 * header, resource address at +16.  Names are 8 bytes.
+	 * Old slots: slot= cx.lvl  old= gfx.lvl  smr= mx.lvl  byp= mxc.lvl
+	 *            fault= magic  restore= entries walked
+	 */
+	{
+		uintptr_t db = 0x80860000UL;	/* aop_cmd_db_region */
+		uint32_t magic = gp_rd32(db + 4u);
+		uint32_t found[4] = { 0, 0, 0, 0 };
+		unsigned h, j, walked = 0;
+
+		r->w2cr_f = magic;
+		r->last_step = 240;
+		if (magic == 0x0c0330dbu) {
+			for (h = 0; h < 8u; h++) {
+				uint32_t hd = db + 8u + 16u * h;
+				uint32_t w0 = gp_rd32(hd);
+				uint32_t w1 = gp_rd32(hd + 4u);
+				uint32_t slave = w0 & 0xffffu;
+				uint32_t eoff = w0 >> 16;
+				uint32_t cnt = w1 >> 16;
+
+				if (!slave || cnt > 512u)
+					break;
+				for (j = 0; j < cnt; j++) {
+					uint32_t e = db + 144u + eoff + 24u * j;
+					uint32_t k0 = gp_rd32(e);
+					uint32_t k1 = gp_rd32(e + 4u);
+
+					if (gp_fault)
+						goto cmdb_done;
+					walked++;
+					if (k0 == 0x6c2e7863u && k1 == 0x00006c76u)
+						found[0] = gp_rd32(e + 16u); /* cx.lvl */
+					else if (k0 == 0x2e786667u && k1 == 0x006c766cu)
+						found[1] = gp_rd32(e + 16u); /* gfx.lvl */
+					else if (k0 == 0x6c2e786du && k1 == 0x00006c76u)
+						found[2] = gp_rd32(e + 16u); /* mx.lvl */
+					else if (k0 == 0x2e63786du && k1 == 0x006c766cu)
+						found[3] = gp_rd32(e + 16u); /* mxc.lvl */
+				}
+			}
+		}
+cmdb_done:
+		r->wsid = found[0];
+		r->w2cr_old = found[1];
+		r->wsmr = found[2];
+		r->w2cr = found[3];
+		r->w2cr_r = walked;
+		con_hex2("GPUS", "cx=", found[0], "gfx=", found[1]);
+		con_hex2("GPUS", "mx=", found[2], "mxc=", found[3]);
+	}
+#endif
+
+#if GP_CBT
+	/*
+	 * v11a: is the CB register file writable now?  Two harmless config
+	 * registers get a pattern and are left at the written value, so the
+	 * survey below reports them (p_cb0_tcr2 / p_cb0_mair1).  SCTLR is not
+	 * touched, so the bank cannot start translating anything.
+	 */
+	{
+		uintptr_t cb = gp_cb_base(id1);
+
+		r->p_cbw_flags = 0x200u;	/* marker: the CB test ran */
+		r->last_step = 222;
+		gp_wr32(cb + 0x10u, 0x5u);		/* TCR2 */
+		__asm__ volatile("dsb sy" ::: "memory");
+		r->last_step = 223;
+		r->w2cr_t = gp_rd32(cb + 0x10u);
+		r->last_step = 224;
+		gp_wr32(cb + 0x3cu, 0xaabbccddu);	/* MAIR1 */
+		__asm__ volatile("dsb sy" ::: "memory");
+		r->last_step = 225;
+		r->wsctlr = gp_rd32(cb + 0x3cu);
+		con_hex2("GPUS", "tcr2=", r->w2cr_t, "mair1=", r->wsctlr);
+	}
+#endif
+
+#if GP_CBW
+	/*
+	 * v11: make CB0 a stage-1 translator over a 1 GiB identity map and
+	 * point SID 0 at it.  The tables sit in the shim's BSS (VA == PA), are
+	 * cleaned to PoC, and the CB is disabled before its state changes.
+	 * No GPU client exists yet, so an enabled CB with a fault policy of
+	 * "terminate" cannot touch anything until the engine runs.
+	 */
+	{
+		uintptr_t s = GPU_SMMU_BASE;
+		uintptr_t cb = gp_cb_base(id1);
+		uintptr_t l1 = (uintptr_t)gp_cbw_l1;
+		uintptr_t l2 = (uintptr_t)gp_cbw_l2;
+		uintptr_t p;
+		unsigned k;
+		uint32_t f = 0;
+
+		gp_cbw_l1[0] = (uint64_t)l2 | 3u;
+		for (k = 0; k < 512u; k++)
+			gp_cbw_l2[k] = ((uint64_t)k << 21) | 0x701u;
+		for (p = l1; p < l1 + 0x2000u; p += 64u)
+			__asm__ volatile("dc civac, %0" :: "r"(p) : "memory");
+		__asm__ volatile("dsb sy" ::: "memory");
+
+		r->last_step = 200;
+		gp_wr32(cb + 0x00u, 0u);	/* disable first */
+		r->last_step = 201;
+		gp_wr32(s + 0x1000u, 0x1f000u);	/* CBAR(0): S1 trans, S2 bypass */
+		r->last_step = 202;
+		gp_wr32(s + 0x1800u, 1u);	/* CBA2R(0): AArch64 */
+		r->last_step = 203;
+		gp_wr32(cb + 0x20u, (uint32_t)l1);
+		gp_wr32(cb + 0x24u, (uint32_t)((uint64_t)l1 >> 32));
+		r->last_step = 204;
+		gp_wr32(cb + 0x10u, 0u);	/* TCR2 */
+		r->last_step = 205;
+		gp_wr32(cb + 0x30u, 0x3520u);	/* T0SZ=32, 4K, inner WBWA */
+		r->last_step = 206;
+		gp_wr32(cb + 0x38u, 0xffu);	/* MAIR0: attr0 = Normal WB */
+		r->last_step = 207;
+		gp_wr32(cb + 0x00u, 0x1u);	/* M=1 */
+		r->last_step = 208;
+		gp_wr32(s + 0x800u, 0x80000000u);	/* SMR(0): SID 0 */
+		r->last_step = 209;
+		gp_wr32(s + 0xc00u, 0x1u);	/* S2CR(0): TRANS -> CB0 */
+		__asm__ volatile("dsb sy" ::: "memory");
+
+		r->last_step = 210;
+		r->smr0 = gp_rd32(s + 0x800u);
+		if (gp_fault)
+			f |= 1u;
+		r->s2cr0 = gp_rd32(s + 0xc00u);
+		if (gp_fault)
+			f |= 2u;
+		r->sid0_slot = 0;
+		r->p_cbw_flags = 0x100u | f;
+		r->p_cbw_before = 0;
+		r->p_cbw_after = gp_rd32(cb + 0x00u);
+		con_hex2("GPUS", "smr=", r->smr0, "s2cr=", r->s2cr0);
+	}
+#endif
+
 #if GP_SURVEY
 	/*
 	 * v8 read-only survey: context banks at the *computed* base plus the
@@ -766,117 +1129,34 @@ wdone:
 	}
 #endif
 
-#if GP_PWR
-	/*
-	 * Bring GPU_CC_CX up the way the vendor gdsc-regulator driver does:
-	 * GDSCR.PWR_ON is bit 31, HW_CONTROL is bit 1, SW_COLLAPSE is bit 0
-	 * (1 = collapsed).  Under HW control the AP cannot simply clear
-	 * SW_COLLAPSE; the driver first takes the switch back by clearing
-	 * HW_CONTROL, which is what we do here as well.
-	 *
-	 * Then ungate the four branches the SMMU and the GMU need.  Each
-	 * branch's enable register carries bit 31 = "halted" once enabled.
-	 */
+#if GP_PWR || GP_EARLY
 	{
-		uintptr_t g = GPU_GPUCC_BASE;
-		uintptr_t cb = gp_cb_base(id1);
-		uint32_t v;
-		int ok = 1;
+		uintptr_t cb = (id1 == 0xffffffffu) ? 0 : gp_cb_base(id1);
 
-		if (id1 == 0xffffffffu) {	/* SMMU never read: CB address unknown */
-			cb = 0;
+		if (id1 == 0xffffffffu)
 			r->p_pwr_flags |= 0x8000u;
-		}
-
-		r->p_pwr_step = 1;
-		v = gp_rd32(g + 0x9108u);
-		con_hex("GPUS", 1);	/* read CX_GDSCR */
-		if (gp_fault) {
-			r->p_pwr_flags |= 1u;	/* GPUCC itself not reachable */
-			ok = 0;
-		}
-		if (ok && !(v & (1u << 31))) {	/* CX is collapsed */
-			uint32_t w = v & ~(1u << 0);
-
-			if (v & (1u << 1)) {
-				w &= ~(1u << 1);
-				r->p_pwr_flags |= 0x100u;  /* took it from HW */
-			}
-			r->p_pwr_step = 2;
-			gp_wr32(g + 0x9108u, w);
-			if (gp_fault) {
-				r->p_pwr_flags |= 2u;
-				ok = 0;
-			}
-			r->p_pwr_step = 3;
-			for (i = 0; ok && i < 1500u; i++) {
-				v = gp_rd32(g + 0x9108u);
-				if (gp_fault) {
-					r->p_pwr_flags |= 4u;
-					ok = 0;
-				} else if (v & (1u << 31)) {
-					break;
-				}
-				delay_ms(1);
-			}
-			if (ok && !(v & (1u << 31)))
-				r->p_pwr_flags |= 8u;	/* never came up */
-			else if (ok)
-				r->p_pwr_flags |= 0x200u; /* powered */
-		} else if (ok) {
-			r->p_pwr_flags |= 0x400u;	/* was already on */
-		}
-		con_hex2("GPUS", "cx=", v, "fl=", r->p_pwr_flags);
-
-		/* Ungate: smmu vote, ahb, hub_cx_int, cx_gmu. */
-		{
-			static const uint32_t offs[4] = {
-				0x7000u, 0x911cu, 0x9148u, 0x913cu
-			};
-
-			for (i = 0; ok && i < 4u; i++) {
-				r->p_pwr_step = 10u + i;
-				v = gp_rd32(g + offs[i]);
-				if (gp_fault) {
-					r->p_pwr_flags |= 0x1000u << i;
-					continue;
-				}
-				if (!(v & 1u)) {
-					gp_wr32(g + offs[i], v | 1u);
-					if (gp_fault)
-						r->p_pwr_flags |= 0x1000u << i;
-				}
-			}
-		}
-
+#if !GP_EARLY
+		gp_power_cx(r);		/* with GP_EARLY it already ran */
+#endif
+#if GP_GX
+		gp_power_gx(r);
+#endif
 		r->p_pwr_step = 20;
-		con_hex("GPUS", 3);	/* clocks done, reading back */
-		r->p_cxgdr2 = gp_rd32(g + 0x9108u);
-		r->p_clk_ahb2 = gp_rd32(g + 0x911cu);
-		r->p_clk_cxgmu2 = gp_rd32(g + 0x913cu);
-		r->p_clk_hubcx2 = gp_rd32(g + 0x9148u);
-		r->p_clk_smmuvote2 = gp_rd32(g + 0x7000u);
-		r->p_clk_memnoc2 = gp_rd32(g + 0x9150u);
+		r->p_cxgdr2 = gp_rd32(GPU_GPUCC_BASE + 0x9108u);
+		r->p_clk_ahb2 = gp_rd32(GPU_GPUCC_BASE + 0x911cu);
+		r->p_clk_cxgmu2 = gp_rd32(GPU_GPUCC_BASE + 0x913cu);
+		r->p_clk_hubcx2 = gp_rd32(GPU_GPUCC_BASE + 0x9148u);
+		r->p_clk_smmuvote2 = gp_rd32(GPU_GPUCC_BASE + 0x7000u);
+		r->p_clk_memnoc2 = gp_rd32(GPU_GPUCC_BASE + 0x9150u);
 		r->p_kgsl_rbbm2 = gp_rd32(GPU_KGSL_BASE + 0x840u);
 		r->last_step = 30;
 		if (cb)
 			r->p_cb0_sctlr2 = gp_rd32(cb + 0x00u);
 		r->last_step = 31;
-		/*
-		 * Fallback packing for a kernel that predates the v9 fields:
-		 *   fault(w2cr_f)=cxgdr2  restore(w2cr_r)=rbbm2
-		 *   trans(w2cr_t)=cb0_sctlr2  cbar_old(wcbar_old)=pwr_flags
-		 *   cb w(cbar_w)=pwr_step  cb bank(cbar_bank)=1  (marker)
-		 */
-		r->w2cr_f = r->p_cxgdr2;
-		r->w2cr_r = r->p_kgsl_rbbm2;
-		r->w2cr_t = r->p_cb0_sctlr2;
-		r->wcbar_old = r->p_pwr_flags;
-		r->cbar_w = r->p_pwr_step;
-		r->cbar_bank = 1;
+		r->cbar_bank = 1;	/* marker: the post-power block ran */
 		con_hex2("GPU", "cx=", r->p_cxgdr2, "rbbm=", r->p_kgsl_rbbm2);
 		con_hex2("GPU", "cb0=", r->p_cb0_sctlr2, "fl=", r->p_pwr_flags);
-		con_hex("GPUS", 4);	/* CB0 read back */
+		con_hex("GPUS", 4);
 	}
 #endif
 

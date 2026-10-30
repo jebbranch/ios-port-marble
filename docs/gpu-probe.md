@@ -277,3 +277,87 @@ KGSL RBBM_IDENT=0 RBBM_STATUS=0
 ⇒ 下一步（v9）：`GP_PWR=1` 清 `SW_COLLAPSE`、轮询 `PWR_ON`，再读 CB0 / KGSL，
 看 CB 页和 GPU 引擎是否随之上电。同时打开 `cpus=8`（用户确认稳定），
 免得单核把界面拖死。
+
+### v9 真机读数（2026-10-30 19:17 启动）：CX 能上电，CB 页是活的
+
+对应构建 `GP_SURVEY=1 GP_PWR=1`，单核改成 `cpus=8`。
+
+```
+CX_GDSCR 前 = 0x22f001   (PWR_ON=0 HW_CONTROL=0 SW_COLLAPSE=1)
+CX_GDSCR 后 = 0xf822f000 (PWR_ON=1 HW_CONTROL=0 SW_COLLAPSE=0)   ← 写 bit0=0 就起来了
+GX_GDSCR     = 0x22f001  (GX 仍然关着)
+CB0.SCTLR 前 = 0
+CB0.SCTLR 后 = 0x3fffe71e (M=0，硬件复位值；关键是非 0 = 该块已上电)
+KGSL RBBM_STATUS 后 = 0   (GPU 核还在 GX 域，未上电)
+pwr_flags = 0x200         (位含义见 shim.c：0x200 = powered)
+```
+
+结论：
+
+1. **`GPU_CC_CX` 是纯软件开关**：`HW_CONTROL=0`，清 `SW_COLLAPSE` 后 `PWR_ON`
+   在 1 ms 轮询内就置起，不需要 RPMh/AOP 投票。上一轮“CX 关着”是这台机器
+   在 ABL 交接后的默认状态，不是硬件锁。
+2. **context bank 页随后可读**（SCTLR 从 0 变成复位值），说明 SMMU 的 CB
+   确实在 CX 域里；之前所有“CB 不可用”的结论同时错在两点：地址用了 0x80000
+   （死总线），以及没有先上电。
+3. KGSL `RBBM_STATUS` 仍是 0：那是 **GX 域**（图形核）的寄存器，要另外开
+   `GX_GDSCR` + GMEM clamp/reset + `gx_gfx3d` 时钟。
+
+下一步见下面 v10/v11。
+
+### v12/v13 真机（2026-10-30 20:00–20:20）：**CB0 编程成功，AP 拿下了 GPU SMMU**
+
+先纠正一个过程错误：`GP_CBT` / `GP_CBW` 两个开关加进了 `shim/shim.c`，
+但**忘了加进 `shim/build_xnu.sh` 的 CFLAGS**，所以前两轮"测试"其实什么都没跑
+（镜像 tag 里的 `t0w0` 就是证据）。补上之后结论完全不同。
+
+#### CB 寄存器可写
+
+`GP_CBT=1`：往 CB0.TCR2 写 0x5、CB0.MAIR1 写 `0xaabbccdd`，回读
+`tcr2=0x65`（我们写的 bit0/2 在，其余是 RO 位）、`mair1=0xaabbccdd`（原样）。
+**寄存器堆是好的**，之前读到的"垃圾"只是没人初始化过的复位值。
+
+#### 整段 stage-1 配置与回读（`GP_CBW=1`）
+
+| 寄存器 | 写入 | 回读 |
+|---|---|---|
+| CB0.SCTLR | `0x1`（M=1） | `0x1` ✓ |
+| CB0.TTBR0 | 页表 PA `0xa8007000` | `0xa8007000` ✓ |
+| CB0.TCR | `0x3520`（T0SZ=32、4K、inner WBWA） | `0x3520` ✓ |
+| CB0.TCR2 | `0` | `0x60`（RO 位） |
+| CB0.MAIR0 | `0xff` | `0xff` ✓ |
+| CBAR(0) | `0x1f000`（S1 trans + S2 bypass + WB） | `0x1f000` ✓ |
+| CBA2R(0) | `0x1`（AArch64） | `0x1` ✓ |
+| SMR(0) | `0x80000000`（VALID / SID 0 / mask 0） | `0x80000000` ✓ |
+| S2CR(0) | `0x1`（TRANS → CB0） | `0x1` ✓ |
+
+页表是 shim BSS 里自建的 1 GiB 恒等映射（512 个 2 MiB block），写完后
+`dc civac` 清到 PoC。
+
+**意义**：SID 0（`gfx3d_user`）从「未匹配任何 SMR」变成了「stage-1 走 CB0」，
+CB0 由我们自己的页表翻译。GPU SMMU 的**控制面完全归 AP**，和 apps-smmu
+被 hypervisor 改写 S2CR 的处境完全不同。剩下的是数据面之外的东西：
+GX 域上电（RPMh `gfx.lvl`）、GMU 固件、CP 固件。
+
+#### 附带确认的两件事
+
+1. `gpu_cc_ahb`(0x911c) 始终读 0，但 CB 寄存器照样能写——它不是 CB 访问的前提，
+   之前把它当成"寄存器堆没时钟"的证据是错的。
+2. CX 域的 GDSC 上电后，CB 的复位值每次开机都不同（`0xffee3a5b` 之类），
+   这是未初始化寄存器的正常表现，不是"死总线"。
+
+#### 下一步的硬门槛：GX 域
+
+`GX_GDSCR.PWR_ON` 在清 `SW_COLLAPSE`、放 `GMEM_CLAMP_IO`、脉冲 BLK_ARES 之后
+**仍然是 0**（1.5 s 超时）。Android 侧 debugfs 给了答案：
+
+```
+/sys/kernel/debug/regulator/...gfxlvl-pm8350_s5_level   enable=0  voltage=48
+/sys/kernel/debug/regulator/...mxclvl-pm8350c_s2_gfx_voter_level  voltage=192
+```
+
+GX GDSC 的父级是 `pm8350c_s2_gfx_voter_level`，再往上是 PM8350 S5（`gfx.lvl`）。
+Android 里这条轨道由 kgsl 按需 vote；XNU 启动时它 `enable=0`，所以 GDSC 关不上。
+**要开 GX，必须先通过 RPMh 对 `gfx.lvl` 投票**——这正是 sweet_rpmh.c 已经能做的
+那类命令（它现在只会投 PMIC LDO）。cmd-db 里 `cx.lvl` 地址已经读出来是 `0x30000`，
+`gfx.lvl`/`mx.lvl`/`mxc.lvl` 的地址还要再取一次（上一轮结果槽被覆盖了）。
