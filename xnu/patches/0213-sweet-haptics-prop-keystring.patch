@@ -1,0 +1,38 @@
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -304,12 +304,16 @@
+ 
+ 			while (it != NULL && (k = it->getNextObject()) != NULL) {
+ 				const OSSymbol *ks = OSDynamicCast(OSSymbol, k);
++				const OSString *kstr = ks ? NULL :
++				    OSDynamicCast(OSString, k);
+ 
+-				if (ks == NULL) {
++				if (ks == NULL && kstr == NULL) {
+ 					continue;
+ 				}
+-				sweet_hap_log_value(ks->getCStringNoCopy(),
+-				    sub->getObject(ks), depth + 1);
++				sweet_hap_log_value(
++				    ks ? ks->getCStringNoCopy() : kstr->getCStringNoCopy(),
++				    ks ? sub->getObject(ks) : sub->getObject(kstr),
++				    depth + 1);
+ 			}
+ 			if (it != NULL) {
+ 				it->release();
+@@ -357,9 +361,13 @@
+ 	OSObject *key;
+ 	while ((key = it->getNextObject()) != NULL) {
+ 		const OSSymbol *sym = OSDynamicCast(OSSymbol, key);
++		const OSString *str = sym ? NULL : OSDynamicCast(OSString, key);
+ 
+-		sweet_hap_log_value(sym ? sym->getCStringNoCopy() : "?",
+-		    sym ? dict->getObject(sym) : NULL, 0);
++		sweet_hap_log_value(
++		    sym ? sym->getCStringNoCopy() :
++		    (str ? str->getCStringNoCopy() : "?"),
++		    sym ? dict->getObject(sym) :
++		    (str ? dict->getObject(str) : NULL), 0);
+ 	}
+ 	it->release();
+ }
