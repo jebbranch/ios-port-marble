@@ -168,8 +168,11 @@ jobs:
             echo "commit: ${{ github.sha }}"
             echo
             echo "=== errors ==="
-            grep -nE 'error:|fatal error|undefined|undeclared|expected' /tmp/build.log \
-              | grep -viE 'unifdef|--- ERROR ---' | head -80 || true
+            # Patch-application noise lands early in the log and used to fill
+            # the whole 80-line window, hiding the actual compile error.
+            grep -nE 'error:|fatal error' /tmp/build.log \
+              | grep -viE 'unifdef|--- ERROR ---|patch does not apply|already exists in working directory|Skipping patch' \
+              | head -120 || true
             echo
             echo "=== tail ==="
             tail -60 /tmp/build.log || true

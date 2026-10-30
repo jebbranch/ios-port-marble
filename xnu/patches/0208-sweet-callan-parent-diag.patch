@@ -180,7 +180,7 @@
  	setProperty("IOClass", "AppleHapticsSupportCallan");
  	setProperty("IOProviderClass", "AppleARMIODevice");
  	setProperty("IOUserClientClass", "AppleHapticsSupportUserClient");
-@@ -424,15 +551,55 @@
+@@ -424,15 +551,56 @@
  		setProperty("IONameMatch", match);
  		match->release();
  	}
@@ -228,9 +228,10 @@
 +	 * externalMethod 的 selector/参数/XML 记录由 SweetHapticsUCBase 完成。
 +	 */
 +	if (owningTask != NULL) {
-+		OSSharedPtr<OSObject> ent = IOUserClient::copyClientEntitlement(
-+		    owningTask, "com.apple.ahs.userclientaccess");
++		OSObject *ent = IOUserClient::copyClientEntitlement(owningTask,
++		    "com.apple.ahs.userclientaccess");
 +
++		/* 与 IOService.cpp 相同：copy 语义，忽略返回值的释放。 */
 +		entitled = (ent == kOSBooleanTrue);
 +	}
 +	IOLog("SWEET HAPTICS: AHSUC initWithTask pid=%d type=%u "
