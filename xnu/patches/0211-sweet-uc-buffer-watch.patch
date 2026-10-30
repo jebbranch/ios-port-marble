@@ -1,0 +1,90 @@
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -24,6 +24,7 @@
+ #include <IOKit/IOUserClient.h>
+ #include <IOKit/IOMemoryDescriptor.h>
+ #include <IOKit/IOBufferMemoryDescriptor.h>
++#include <IOKit/IOTimerEventSource.h>
+ #include <libkern/c++/OSCollectionIterator.h>
+ #include <libkern/c++/OSArray.h>
+ #include <libkern/c++/OSString.h>
+@@ -72,6 +73,7 @@
+ /* The haptics buffer the client maps.  Retained for the lifetime of the
+  * kernel so the close-time dump cannot touch freed memory. */
+ static IOBufferMemoryDescriptor *gSweetHapBuf;
++static IOTimerEventSource *gSweetHapTimer;
+ static uint8_t gSweetHapLast[64];
+ static bool gSweetHapHaveLast;
+ 
+@@ -94,8 +96,10 @@
+ 	    UInt32 refCon) APPLE_KEXT_OVERRIDE;
+ 	virtual IOReturn clientMemoryForType(UInt32 type, IOOptionBits *options,
+ 	    IOMemoryDescriptor **memory) APPLE_KEXT_OVERRIDE;
++	virtual void free(void) APPLE_KEXT_OVERRIDE;
+ private:
+ 	void dumpBuffer(const char *why);
++	static void sweetHapTick(OSObject *owner, IOTimerEventSource *timer);
+ 	int fPid;
+ };
+ 
+@@ -211,6 +215,16 @@
+ 	SWEET_HAP_LOG("SWEET HAPTICS: %s notify port type=%u ref=%#x\n", getName(),
+ 	    (unsigned)type, (unsigned)refCon);
+ 	return kIOReturnSuccess;
++}
++
++void
++SweetHapticsUCBase::sweetHapTick(OSObject *owner, IOTimerEventSource *timer)
++{
++	SweetHapticsUCBase *self = (SweetHapticsUCBase *)owner;
++
++	/* Content-change watch on the mapped shared buffer; diagnostics only. */
++	self->dumpBuffer("  buffer");
++	timer->setTimeoutMS(1000);
+ }
+ 
+ void
+@@ -254,6 +268,21 @@
+ 		    sym ? sym->getCStringNoCopy() : "?");
+ 	}
+ 	it->release();
++}
++
++void
++SweetHapticsUCBase::free(void)
++{
++	if (gSweetHapTimer != NULL) {
++		IOWorkLoop *wl = getWorkLoop();
++
++		if (wl != NULL) {
++			wl->removeEventSource(gSweetHapTimer);
++		}
++		gSweetHapTimer->release();
++		gSweetHapTimer = NULL;
++	}
++	IOUserClient::free();
+ }
+ 
+ IOReturn
+@@ -269,6 +298,21 @@
+ 	if (buf == NULL) {
+ 		return kIOReturnNoMemory;
+ 	}
++	if (gSweetHapTimer == NULL && getWorkLoop() != NULL) {
++		gSweetHapTimer = IOTimerEventSource::timerEventSource(this,
++		    &SweetHapticsUCBase::sweetHapTick);
++		if (gSweetHapTimer != NULL) {
++			if (getWorkLoop()->addEventSource(gSweetHapTimer) ==
++			    kIOReturnSuccess) {
++				gSweetHapTimer->setTimeoutMS(1000);
++				SWEET_HAP_LOG("SWEET HAPTICS: %s buffer watch on\n",
++				    getName());
++			} else {
++				gSweetHapTimer->release();
++				gSweetHapTimer = NULL;
++			}
++		}
++	}
+ 	if (gSweetHapBuf == NULL) {
+ 		buf->retain();          /* our copy; the client owns its map ref */
+ 		gSweetHapBuf = buf;
