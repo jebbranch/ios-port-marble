@@ -1,0 +1,52 @@
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -31,6 +31,7 @@
+ #include <libkern/libkern.h>
+ #include <kern/task.h>
+ #include <sys/proc.h>
++#include <pexpert/pexpert.h>
+ 
+ #include <stdarg.h>
+ 
+@@ -132,6 +133,32 @@
+ 	    len > n ? " ..." : "");
+ }
+ 
++
++/*
++ * ButtonResolver asks selector 1 for the number of button-haptics assets.
++ * iOS ships 18 of them (/Library/Audio/Tunings/D22/ButtonHaptics has
++ * Variant{1,2,3}.{Single,Second}Click.{Normal,SemiSoft,Soft}); returning 1
++ * here was an experiment and may be what makes the client give up before
++ * any playback selector arrives.  Override with boot-arg ahsassets=N.
++ */
++static uint64_t
++sweet_hap_asset_count(void)
++{
++	static uint64_t count;
++	static bool have;
++
++	if (!have) {
++		uint32_t v = 18;
++
++		PE_parse_boot_argn("ahsassets", &v, sizeof(v));
++		count = v;
++		have = true;
++		SWEET_HAP_LOG("SWEET HAPTICS: asset count %llu\n",
++		    (unsigned long long)count);
++	}
++	return count;
++}
++
+ IOReturn
+ SweetHapticsUCBase::externalMethod(uint32_t selector,
+     IOExternalMethodArguments *arguments, IOExternalMethodDispatch *dispatch,
+@@ -172,7 +199,7 @@
+ 	 */
+ 	if (arguments->scalarOutputCount != 0 && selector == 1 &&
+ 	    strcmp(getName(), "AppleAOPButtonHapticsServiceUserClient") == 0) {
+-		arguments->scalarOutput[0] = 1;
++		arguments->scalarOutput[0] = sweet_hap_asset_count();
+ 	}
+ 	return kIOReturnSuccess;
+ }
