@@ -404,3 +404,30 @@ gen7（A730/A725）的 **GX 电源由 GMU 掌管**：`kgsl` 只在 GMU 没启用
 ⇒ 下一个真正的里程碑只能是 **GMU bring-up**：把 `gmu_gen70000.bin` 载入
 GMU 内存、开 GMU 时钟/复位、跑 HFI 握手。那是 UniXNU/NativeAdreno 里
 GMU + CP 初始化那几千行的核心，也是这条路从"寄存器可控"变成"引擎能跑"的分界。
+
+## GMU bring-up：下一步的完整清单（2026-10-30 收尾）
+
+固件已经从这台机器上拉到 `work/gpu-fw/`：
+
+| 文件 | 大小 | SHA-256（前 16 位） |
+|---|---|---|
+| `gmu_gen70000.bin` | 57 272 | `b2d3f0e2a98fd625` |
+| `a730_sqe.fw` | 74 676 | `e67d1829f57fc832` |
+| `a730_zap.mdt` + `.b00/.b01/.b02` | 10 324 | — |
+
+要复刻的厂商顺序（`adreno-gmu`/`kgsl` 侧）：
+
+1. **CX 上电**（已验证）＋ `gpu_cc_ahb`/`hub` 时钟链（目前 `ahb=0`，hub RCG 未配）。
+2. **GMU 时钟**：`gmu_clk`、`cxo`、`axi`、`memnoc`、`ahb`、`hub`、`apb`，
+   其中 `gmu_clk_src`(0x9318)/`hub_clk_src`(0x93ec) 两个 RCG 需要配 PLL 源。
+3. **GMU 自己的 SMMU 通道**：SID 5（`iommus = <&kgsl_smmu 5 0x400>`）。
+   CB 现在已经能编程，这条比之前预期容易。
+4. **固件加载**：把 `gmu_gen70000.bin` 放进 GMU 可见内存，写 GMU 的
+   "FW start" 寄存器组。
+5. **释放 GMU 复位**（`GPU_CC_GMU_BCR` = 0x9314）并等 HFI 就绪（IRQ 0x130）。
+6. **HFI 握手后 GX 才由 GMU 打开**——这就是为什么 AP 自己写 `GX_GDSCR`
+   永远等不到 `PWR_ON`。
+7. CP 微码（`a730_sqe.fw`）+ ZAP（`a730_zap.*`）再往后是命令环和 GPU 调度。
+
+第 1–5 步都是"寄存器可控"级别的活，第 6 步之后才进入真正的驱动移植。
+本仓库已经把第 1 步做完了，第 3 步的关键（CB 可编程）也做完了。
