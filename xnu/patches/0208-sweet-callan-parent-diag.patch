@@ -1,0 +1,241 @@
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -361,36 +361,163 @@
+ }
+ 
+ /*
+- * AppleHapticsSupportCallan / AppleHapticsSupportUserClient.
++ * AppleHapticsSupport / AppleHapticsSupportCallan /
++ * AppleHapticsSupportUserClient.
+  *
+- * On a real device the HID event system opens the Callan user client for
+- * UIKit/HID haptics (keyboard feedback, context menus, system controls).
+- * The Redmi has no Taptic Engine, so Apple's Callan driver is absent and
+- * those events currently die before reaching any user client.  Publish a
+- * service with the same matching shape and a logging user client so we can
+- * see the protocol; no real-device calibration or serial data is embedded.
++ * 参考机（iPhone X / iOS 16）上的真实类链是
++ *
++ *     IOService
++ *       -> AppleHapticsSupport          (0x170 bytes, 自 168 号槽起有 24 个虚函数)
++ *         -> AppleHapticsSupportCallan  (0x200 bytes)
++ *
++ * AppleHapticsSupport 负责 start/registerService、AHSCommandQueue、AOP 会话，
++ * Callan 只实现父类留出的槽位。UserClient 通过 externalMethod selector 0..9
++ * 与用户态交换 XML（Symbols / Values / AccessOptions / AOP 符号内存布局）。
++ *
++ * 这里按同样形状重建服务，并加入 P1 可区分诊断：
++ *   - start / registerService / provider 名称与类名 / 完整 OSMetaClass 链
++ *   - newUserClient 每次尝试、类型与结果
++ *   - callPlatformFunction 收到的 AHSFunction 名称与参数
++ *   - notifyHapticsSessionChange
++ *   - UserClient 打开时的 entitlement 结果
++ *
++ * 不产生任何伪造触感：所有事件仍来自真实内核/用户态路径。
+  */
+-class AppleHapticsSupportUserClient : public SweetHapticsUCBase {
+-	OSDeclareDefaultStructors(AppleHapticsSupportUserClient);
+-};
+-OSDefineMetaClassAndStructors(AppleHapticsSupportUserClient, SweetHapticsUCBase);
+ 
+-class AppleHapticsSupportCallan : public IOService {
++static const char *
++sweet_ahs_class(const OSObject *obj)
++{
++	return obj != NULL ? obj->getMetaClass()->getClassName() : "(null)";
++}
++
++static void
++sweet_ahs_log_chain(const IOService *svc, const char *what)
++{
++	char chain[192];
++	size_t used = 0;
++	const OSMetaClass *mc;
++
++	chain[0] = '\0';
++	if (svc != NULL) {
++		for (mc = svc->getMetaClass(); mc != NULL;
++		    mc = mc->getSuperClass()) {
++			const char *name = mc->getClassName();
++			size_t len = strlen(name);
++
++			if (used + len + 3 >= sizeof(chain)) {
++				break;
++			}
++			if (used != 0) {
++				chain[used++] = '<';
++				chain[used++] = '-';
++			}
++			memcpy(chain + used, name, len);
++			used += len;
++		}
++	}
++	chain[used] = '\0';
++	IOLog("SWEET HAPTICS: %s chain %s\n", what, chain);
++}
++
++class AppleHapticsSupport : public IOService {
++	OSDeclareDefaultStructors(AppleHapticsSupport);
++public:
++	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++	virtual void stop(IOService *provider) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn newUserClient(task_t owningTask, void *securityID,
++	    UInt32 type, OSDictionary *properties,
++	    IOUserClient **handler) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn callPlatformFunction(const OSSymbol *functionName,
++	    bool waitForFunction, void *param1, void *param2, void *param3,
++	    void *param4) APPLE_KEXT_OVERRIDE;
++	virtual void notifyHapticsSessionChange(bool active, OSObject *event);
++};
++OSDefineMetaClassAndStructors(AppleHapticsSupport, IOService);
++
++bool
++AppleHapticsSupport::start(IOService *provider)
++{
++	IOLog("SWEET HAPTICS: AppleHapticsSupport::start provider=%s(%s) self=%s\n",
++	    provider != NULL ? provider->getName() : "(null)",
++	    sweet_ahs_class(provider), sweet_ahs_class(this));
++	sweet_ahs_log_chain(this, "AppleHapticsSupport");
++	if (!IOService::start(provider)) {
++		IOLog("SWEET HAPTICS: AppleHapticsSupport::start "
++		    "IOService::start failed\n");
++		return false;
++	}
++	registerService();
++	IOLog("SWEET HAPTICS: AppleHapticsSupport::start registerService done "
++	    "class=%s\n", getMetaClass()->getClassName());
++	return true;
++}
++
++void
++AppleHapticsSupport::stop(IOService *provider)
++{
++	IOLog("SWEET HAPTICS: AppleHapticsSupport::stop provider=%s\n",
++	    provider != NULL ? provider->getName() : "(null)");
++	IOService::stop(provider);
++}
++
++IOReturn
++AppleHapticsSupport::newUserClient(task_t owningTask, void *securityID,
++    UInt32 type, OSDictionary *properties, IOUserClient **handler)
++{
++	IOReturn ret;
++
++	IOLog("SWEET HAPTICS: AppleHapticsSupport::newUserClient type=%u pid=%d "
++	    "props=%s\n", (unsigned)type,
++	    owningTask != NULL ? task_pid(owningTask) : -1,
++	    properties != NULL ? "yes" : "no");
++	ret = IOService::newUserClient(owningTask, securityID, type, properties,
++	    handler);
++	IOLog("SWEET HAPTICS: AppleHapticsSupport::newUserClient -> %#x client=%p\n",
++	    ret, handler != NULL ? *handler : NULL);
++	return ret;
++}
++
++IOReturn
++AppleHapticsSupport::callPlatformFunction(const OSSymbol *functionName,
++    bool waitForFunction, void *param1, void *param2, void *param3,
++    void *param4)
++{
++	IOLog("SWEET HAPTICS: AppleHapticsSupport::callPlatformFunction %s "
++	    "wait=%d p1=%p p2=%p p3=%p p4=%p\n",
++	    functionName != NULL ? functionName->getCStringNoCopy() : "(null)",
++	    waitForFunction ? 1 : 0, param1, param2, param3, param4);
++	return IOService::callPlatformFunction(functionName, waitForFunction,
++	    param1, param2, param3, param4);
++}
++
++void
++AppleHapticsSupport::notifyHapticsSessionChange(bool active, OSObject *event)
++{
++	IOLog("SWEET HAPTICS: notifyHapticsSessionChange active=%d event=%p(%s)\n",
++	    active ? 1 : 0, event, sweet_ahs_class(event));
++}
++
++class AppleHapticsSupportCallan : public AppleHapticsSupport {
+ 	OSDeclareDefaultStructors(AppleHapticsSupportCallan);
+ public:
+ 	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++	virtual void stop(IOService *provider) APPLE_KEXT_OVERRIDE;
+ 	virtual IOReturn setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
+ };
+-OSDefineMetaClassAndStructors(AppleHapticsSupportCallan, IOService);
++OSDefineMetaClassAndStructors(AppleHapticsSupportCallan, AppleHapticsSupport);
+ 
+ bool
+ AppleHapticsSupportCallan::start(IOService *provider)
+ {
+ 	OSArray *match;
+ 
+-	if (!IOService::start(provider)) {
+-		return false;
+-	}
++	IOLog("SWEET HAPTICS: AppleHapticsSupportCallan::start provider=%s(%s)\n",
++	    provider != NULL ? provider->getName() : "(null)",
++	    sweet_ahs_class(provider));
++	/*
++	 * 属性必须在 registerService 之前就位：消费者按 IORegistry 属性决定
++	 * 是否打开 UserClient，服务发布后再补属性对已经匹配的客户端不可见。
++	 */
+ 	setProperty("IOClass", "AppleHapticsSupportCallan");
+ 	setProperty("IOProviderClass", "AppleARMIODevice");
+ 	setProperty("IOUserClientClass", "AppleHapticsSupportUserClient");
+@@ -424,14 +551,55 @@
+ 		setProperty("IONameMatch", match);
+ 		match->release();
+ 	}
+-	registerService();
+-	IOLog("SWEET HAPTICS: AppleHapticsSupportCallan registered\n");
+-	return true;
++	return AppleHapticsSupport::start(provider);
+ }
+ 
++void
++AppleHapticsSupportCallan::stop(IOService *provider)
++{
++	IOLog("SWEET HAPTICS: AppleHapticsSupportCallan::stop provider=%s\n",
++	    provider != NULL ? provider->getName() : "(null)");
++	AppleHapticsSupport::stop(provider);
++}
++
+ IOReturn
+ AppleHapticsSupportCallan::setProperties(OSObject *properties)
+ {
+ 	sweet_haptics_props(this, properties);
+ 	return IOService::setProperties(properties);
+ }
++
++class AppleHapticsSupportUserClient : public SweetHapticsUCBase {
++	OSDeclareDefaultStructors(AppleHapticsSupportUserClient);
++public:
++	virtual bool initWithTask(task_t owningTask, void *securityID, UInt32 type,
++	    OSDictionary *properties) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(AppleHapticsSupportUserClient, SweetHapticsUCBase);
++
++bool
++AppleHapticsSupportUserClient::initWithTask(task_t owningTask, void *securityID,
++    UInt32 type, OSDictionary *properties)
++{
++	bool entitled = false;
++
++	/*
++	 * 真机 UC 在 initWithTask 里要求
++	 * com.apple.ahs.userclientaccess == kOSBooleanTrue，否则直接失败。
++	 * 这里只记录不拒绝：先区分“系统没带 entitlement”与“带了但后续
++	 * selector 不匹配”，否则永远看不到后面的请求。
++	 * externalMethod 的 selector/参数/XML 记录由 SweetHapticsUCBase 完成。
++	 */
++	if (owningTask != NULL) {
++		OSSharedPtr<OSObject> ent = IOUserClient::copyClientEntitlement(
++		    owningTask, "com.apple.ahs.userclientaccess");
++
++		entitled = (ent == kOSBooleanTrue);
++	}
++	IOLog("SWEET HAPTICS: AHSUC initWithTask pid=%d type=%u "
++	    "entitlement=%s\n",
++	    owningTask != NULL ? task_pid(owningTask) : -1, (unsigned)type,
++	    entitled ? "present" : "absent");
++	return SweetHapticsUCBase::initWithTask(owningTask, securityID, type,
++	    properties);
++}
