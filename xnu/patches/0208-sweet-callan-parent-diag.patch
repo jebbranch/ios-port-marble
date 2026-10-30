@@ -180,12 +180,13 @@
  	setProperty("IOClass", "AppleHapticsSupportCallan");
  	setProperty("IOProviderClass", "AppleARMIODevice");
  	setProperty("IOUserClientClass", "AppleHapticsSupportUserClient");
-@@ -424,14 +551,55 @@
+@@ -424,15 +551,55 @@
  		setProperty("IONameMatch", match);
  		match->release();
  	}
 -	registerService();
--	IOLog("SWEET HAPTICS: AppleHapticsSupportCallan registered\n");
+-	IOLog("SWEET HAPTICS: AppleHapticsSupportCallan registered provider=%s\n",
+-	    provider->getName());
 -	return true;
 +	return AppleHapticsSupport::start(provider);
  }

@@ -1,6 +1,6 @@
 --- a/iokit/KernelConfigTables.cpp
 +++ b/iokit/KernelConfigTables.cpp
-@@ -109,7 +109,7 @@
+@@ -109,6 +109,6 @@
      "   {"
      "     'IOClass'         = AppleHapticsSupportCallan;"
 -    "     'IOProviderClass' = AppleARMIODevice;"
