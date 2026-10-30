@@ -1127,9 +1127,12 @@ extern const uint8_t gmu_fw_start[], gmu_fw_end[];
 
 /* GMU cache block lands here (64 KiB, page aligned, identity mapped). */
 static uint8_t gmu_cache[0x10000] __attribute__((aligned(4096)));
+static uint8_t gmu_hfi[0x10000] __attribute__((aligned(4096)));
 static uint64_t gmu_l1[512] __attribute__((aligned(4096)));
 static uint64_t gmu_l2[512] __attribute__((aligned(4096)));
 static uint64_t gmu_l3[512] __attribute__((aligned(4096)));
+static uint64_t gmu_h2[512] __attribute__((aligned(4096)));
+static uint64_t gmu_h3[512] __attribute__((aligned(4096)));
 
 /*
  * Map GMU VA 0x4000..0x14000 (the firmware's cache block) through context
@@ -1158,7 +1161,22 @@ gp_gmu_iommu(volatile struct gpu_probe_result *r)
 	gmu_l2[0] = (uint64_t)l3 | 3u;		/* L2[0] -> L3 table */
 	for (i = 4; i < 20u; i++)		/* VA 0x4000..0x14000 */
 		gmu_l3[i] = (uint64_t)(buf + (i - 4u) * 0x1000u) | 0x703u;
-	for (p = l1; p < l1 + 0x3000u; p += 64u)
+
+	/*
+	 * HFI queue table lives in GMU_VA 0x60000000 (the vendor's
+	 * "GMU_NONCACHED_KERNEL" window).  L1 index 1 covers 0x40000000..
+	 * 0x7fffffff, L2 index 0 gives 0x60000000..0x601fffff.
+	 */
+	for (i = 0; i < 512u; i++) {
+		gmu_h2[i] = 0;
+		gmu_h3[i] = 0;
+	}
+	gmu_l1[1] = (uint64_t)(uintptr_t)gmu_h2 | 3u;
+	gmu_h2[0] = (uint64_t)(uintptr_t)gmu_h3 | 3u;
+	for (i = 0; i < 16u; i++)
+		gmu_h3[i] = (uint64_t)((uintptr_t)gmu_hfi + i * 0x1000u) | 0x703u;
+
+	for (p = l1; p < l1 + 0x5000u; p += 64u)
 		__asm__ volatile("dc civac, %0" :: "r"(p) : "memory");
 
 	r->last_step = 700;
@@ -1177,45 +1195,84 @@ gp_gmu_iommu(volatile struct gpu_probe_result *r)
 	__asm__ volatile("dsb sy" ::: "memory");
 }
 
+static int
+gp_fw_magic(const uint8_t *p)
+{
+	return p[0] == 0xde && p[1] == 0xad && p[2] == 0xbe && p[3] == 0xef &&
+	    p[4] == 0xde && p[5] == 0xad && p[6] == 0xbe && p[7] == 0xef;
+}
+
+static uint32_t
+gp_ld32(const uint8_t *p)
+{
+	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+	    ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static void
+gp_copy(uint8_t *dst, const uint8_t *src, uint32_t n)
+{
+	while (n--)
+		*dst++ = *src++;
+}
+
 static void
 gp_gmu_boot(volatile struct gpu_probe_result *r)
 {
-	const uint32_t *fw = (const uint32_t *)gmu_fw_start;
-	const uint32_t *end = (const uint32_t *)gmu_fw_end;
+	/*
+	 * Firmware format: 16-byte file header, then blocks of
+	 *   { u32 addr; u32 size; u32 0xdeadbeef; u32 0xdeadbeef; data[size] }
+	 * The magic is stored big-endian.  The vendor's bulk writes confirm the
+	 * three TCM blocks; the 0xdcac-byte block at 0x4000 goes to GMU memory
+	 * through the SMMU, not through a register window.
+	 */
+	static const uint8_t magic[8] = {
+		0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0xbe, 0xef
+	};
+	const uint8_t *base = gmu_fw_start;
+	const uint8_t *end = gmu_fw_end;
+	const uint8_t *p = base;
 	uint32_t v;
-	unsigned i;
+	unsigned k;
 
-	/* Parse blocks: 16-byte header {addr, ?, type, size}, then size bytes. */
-	while (fw + 4 <= end) {
-		uint32_t addr = fw[0], size = fw[3];
+	while (p + 16 <= end) {
+		uint32_t addr, size;
+		unsigned i;
 
-		fw += 4;
-		if (size == 0)
+		(void)magic;
+		if (!gp_fw_magic(p + 8)) {
+			p += 4;
 			continue;
-		if (size > (uint32_t)((const uint8_t *)end - (const uint8_t *)fw))
+		}
+		addr = gp_ld32(p);
+		size = gp_ld32(p + 4);
+		p += 16;
+		if (size == 0 || (uint32_t)(end - p) < size)
 			break;
 		if (addr < 0x4000u) {			/* ITCM */
-			const uint32_t *src = fw;
-			unsigned n = size / 4u;
+			for (i = 0; i < size; i += 4u) {
+				uint32_t w;
 
+				w = gp_ld32(p + i);
+				gp_wr32(GMU_ITCM_W + addr + i, w);
+			}
 			r->last_step = 710;
-			for (i = 0; i < n; i++)
-				gp_wr32(GMU_ITCM_W + (addr + 4u * i), src[i]);
 		} else if (addr >= 0x10000000u) {	/* DTCM */
-			const uint32_t *src = fw;
-			unsigned n = size / 4u;
-			uintptr_t base = GMU_DTCM_W + (addr - 0x10004000u);
+			uintptr_t base_pa = GMU_DTCM_W +
+			    (addr - 0x10004000u);
 
+			for (i = 0; i < size; i += 4u) {
+				uint32_t w;
+
+				w = gp_ld32(p + i);
+				gp_wr32(base_pa + i, w);
+			}
 			r->last_step = 711;
-			for (i = 0; i < n; i++)
-				gp_wr32(base + 4u * i, src[i]);
-		} else {				/* GMU cache via SMMU */
+		} else {				/* GMU cache */
+			gp_copy(gmu_cache + (addr - 0x4000u), p, size);
 			r->last_step = 712;
-			for (i = 0; i < size; i++)
-				((uint8_t *)gmu_cache)[addr - 0x4000u + i] =
-				    ((const uint8_t *)fw)[i];
 		}
-		fw = (const uint32_t *)((const uint8_t *)fw + size);
+		p += size;
 	}
 	__asm__ volatile("dsb sy" ::: "memory");
 
@@ -1248,14 +1305,24 @@ gp_gmu_boot(volatile struct gpu_probe_result *r)
 		for (k = 0; k < sizeof(cfg) / sizeof(cfg[0]); k++)
 			gp_wr32(0x3d68000UL +
 			    ((uintptr_t)(cfg[k].w - 0x1a000u) << 2), cfg[k].v);
+		/* TCM retention on, GBIF halt released (gen7_gmu_register_config) */
+		gp_wr32(0x3d9e000u + 0x39u * 4u, 1u);
+		gp_wr32(0x3d00000u + 0x3c45u * 4u, 0u);
+		/* HFI queue table: our buffer at GMU_VA 0x60000000 */
+		gp_wr32(GMU_HFI_INIT - 4u, 0x60000000u);	/* QTBL_ADDR */
+		gp_wr32(GMU_HFI_INIT - 8u, 1u);			/* QTBL_INFO */
+		gp_wr32(0x3d68000UL + ((uintptr_t)(0x23b11u - 0x1a000u) << 2),
+		    0x8c8008a0u);				/* AHB_FENCE_RANGE_0 */
 		__asm__ volatile("dsb sy" ::: "memory");
 	}
 
 	r->last_step = 720;
 	r->p_kgsl_ident = gp_rd32(GMU_ITCM_W);		/* ITCM[0] echo */
+#if GP_GMUBOOT != 3
 	gp_wr32(GMU_SYSRESET, 0u);			/* release CM3 */
+#endif
 	__asm__ volatile("dsb sy" ::: "memory");
-	for (i = 0; i < 2000u; i++) {
+	for (k = 0; k < 2000u; k++) {
 		v = gp_rd32(GMU_FW_INIT);
 		if (gp_fault)
 			break;
@@ -1265,10 +1332,11 @@ gp_gmu_boot(volatile struct gpu_probe_result *r)
 	}
 	r->p_kgsl_rbbm = v;
 	r->last_step = 721;
+#if GP_GMUBOOT != 2
 	if (v & (1u << 8)) {
 		gp_wr32(GMU_HFI_INIT, 1u);
 		__asm__ volatile("dsb sy" ::: "memory");
-		for (i = 0; i < 200u; i++) {
+		for (k = 0; k < 200u; k++) {
 			v = gp_rd32(GMU_HFI_STATUS);
 			if (gp_fault || (v & 1u))
 				break;
@@ -1276,6 +1344,7 @@ gp_gmu_boot(volatile struct gpu_probe_result *r)
 		}
 		r->p_cbw_before = v;		/* HFI status */
 	}
+#endif
 	r->p_cbw_flags |= 0x2000u;
 	con_hex2("GPUS", "fwin=", r->p_kgsl_rbbm, "hfi=", r->p_cbw_before);
 }

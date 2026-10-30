@@ -652,3 +652,47 @@ byte = 0x3d68000 + (gen7_word_offset - 0x1a000) * 4
 固件块格式还没完全对上（16 字节头里 size 的位置有两种解释，两种都能"凑巧"
 走通文件），CM3 不起来的原因大概率是 cache 块没有正确落到 GMU 可见内存里。
 下一步：kprobe `kgsl_regmap_bulk_write` 拿到厂商真实的（偏移, 字数）序列。
+
+### v24：GMU 固件格式破解，CM3 真的跑起来了
+
+用 kprobe 抓 `kgsl_regmap_bulk_write` 拿到了厂商真正的固件写入（三次）：
+
+```
+off=0x1b400 cnt=0x77  w0=0x10007f80 w4=0x105     ← ITCM
+off=0x1d3e6 cnt=0xa   w0=0x0        w4=0x0       ← DTCM +0x3f98
+off=0x1d3f7 cnt=0x6   w0=0xffffffff w4=0x40000007 ← DTCM +0x3fdc
+```
+
+拿 `w0=0x10007f80, w4=0x105` 去文件里搜，块头立刻现形——**块头是
+`{u32 addr; u32 size; 0xdeadbeef; 0xdeadbeef}`（magic 按大端存）**，
+文件前面还有 16 字节的文件头：
+
+| 块 | addr | size | 文件偏移 |
+|---|---|---|---|
+| ITCM | 0x0 | 0x1dc | 0xc0 |
+| GMU cache | 0x4000 | 0xdcac | 0x2ac |
+| DTCM | 0x10007f98 | 0x28 | 0xdf68 |
+| DTCM | 0x10007fdc | 0x18 | 0xdfa0 |
+
+（之前按 `{addr, size}` 解析全是错的，所以写进去的是垃圾。）
+
+按正确格式重写解析后，`GP_GMUBOOT=3`（只加载、不放复位）真机回读：
+
+```
+ITCM[0] = 0x10007f80   ITCM[1] = 0x105     ← 与厂商写入逐字一致
+```
+
+**这证明固件已经正确落进 TCM。**
+
+### 当前的边界：一放 CM3 复位就挂机
+
+`GP_GMUBOOT=1/2`（写完固件后 `CM3_SYSRESET=0`）会让整机挂死、需要复位。
+但同样的流程在固件是空的时候不会挂 —— 说明 **CM3 确实开始执行了**，然后它
+访问了什么没映射好的东西，把 GMU 总线拖死，AP 之后碰 GMU 就挂。
+
+剩下两件事，按可信度排序：
+
+1. **GMU 的 SID5 页表**（cache 块 0x4000 与 HFI 区 0x60000000）是否正确。
+   我们按 4 KiB 页建了 CB1，但还没有独立验证过 walk 结果。
+2. **HFI 队列表**（`HFI_QTBL_ADDR`/`INFO`）不是简单清零就够的，厂商的
+   `gen7_hfi_alloc` 会在该内存里初始化队列描述符；CM3 起来第一件事就是读它。
