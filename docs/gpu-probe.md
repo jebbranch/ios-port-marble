@@ -189,3 +189,56 @@ CB 页在掉电域里；要打开它需要 GPUCC 时钟、GMU 固件和 kgsl 的
 驱动移植量级的工作，不是再加几个探针能解决的。
 
 **GPU 这条线到此为止**，除非先做 GPUCC/GMU 上电。对音频没有影响。
+
+---
+
+## 2026-10-30 v8：上面「CB 页不可用」的结论**作废**——偏移算错了
+
+### 错在哪
+
+上面所有 CB 测试都读写 `base + 0x80000`。kgsl-smmu 的 `reg` 只有
+`0x3da0000..0x3de0000`（0x40000），`0x80000` 落在 **0x3e20000**，已经在寄存器块之外，
+是死总线空间——那不是“context bank 掉电”，那就是“访问了不存在的地址”。
+整机挂死、没有 panic 屏、看门狗重启，和死总线的表现一致。
+
+### 正确的基址怎么算（来自 `arm-smmu.c`，不是猜的）
+
+```
+numpage  = 1 << (IDR1.NUMPAGENDXB + 1)      /* 每帧 GR 的页数 */
+pgshift  = IDR1.PAGESIZE ? 16 : 12
+GR0      = base + 0 * (numpage << pgshift)
+GR1      = base + 1 * (numpage << pgshift)
+CB(n)    = base + (numpage + n) << pgshift
+```
+
+| 实例 | IDR1 | NUMPAGENDXB | GR 帧大小 | CB0 |
+|---|---|---|---|---|
+| apps-smmu@15000000 | `0x6000004b` | 6 | 0x80000 | `0x15080000` ✓（音频那边的值，对得上） |
+| kgsl-smmu@3da0000 | `0x40000016` | 4 | 0x20000 | **`0x3dc0000`** |
+
+顺带核对：`2 * 32 页 * 4 KiB = 0x40000`，正好等于 DT 里的 `reg` 长度，
+`arm-smmu.c` 的 “address space size differs from mapped region” 检查也是这么算的。
+
+### v8 探针（`GP_SURVEY=1`，只读）
+
+一次开机读三组东西，全部只读：
+
+| 组 | 地址 | 目的 |
+|---|---|---|
+| GPUCC | `0x3d91108` CX_GDSCR、`0x3d9953c` GDS_HW_CTRL、`0x3d9905c` GX_GDSCR、`0x3d99504` GX domain、`0x911c/0x913c/0x9148/0x7000/0x9150` 时钟分支 | CX 域是否已经上电、谁在控制它 |
+| CB0 | `0x3dc0000` SCTLR/TTBR0/TTBR1/TCR/TCR2/MAIR0/MAIR1、GR1 的 CBAR(0)/CBA2R(0)/CBFRSYNRA(0)、CB1.SCTLR | 修正地址后 CB 页到底可不可达 |
+| KGSL | `0x3d00000` IDENT、`0x3d00840` RBBM_STATUS | GPU 引擎本身是不是活的 |
+
+结果槽位（旧结构体复用，**不需要重编内核**；语义见 `shim/shim.c` 的注释）：
+`cbar_r`=CB 基址、`sctlr_r`=CB0.SCTLR、`ttbr0/tcr/mair`=CB0 的三个寄存器、
+`wcbar`=CBAR(0)、`cba2r`/`cbfrsynra`、`kg0..kg3`=CB0.TTBR1/TCR2/MAIR1/CB1.SCTLR、
+`cbar1..3`=GPUCC CX_GDSCR/GDS_HW_CTRL/GX_GDSCR、`wsctlr`=ahb、`wsctlr_old`=cx_gmu、
+`w2cr_old`=hub_cx_int、`wsmr`=smmu vote、`w2cr`=memnoc_gfx、
+`kgsl_status/2`=RBBM_STATUS/IDENT、`op_fault`=逐条读失败的位图。
+
+### 第一次结果（2026-10-30 19:00）
+
+**启动到了 XNU**：USB ECM 设备（`ios-sweet` 0x1209:0x0001）枚举成功，
+说明 shim 里的这次探查**没有把总线打死**——在 0x3dc0000 上读 CB 不再致命。
+寄存器值要等 SWEETLOG ring 拉回来（这批镜像带 `sweetglink=0`，
+`sweetreboot` 在 glink probe 里面，所以**不会自动复位**，需要手动重启一次）。

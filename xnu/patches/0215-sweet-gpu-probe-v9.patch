@@ -1,0 +1,130 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -2461,9 +2461,77 @@
+ 	uint32_t kg3;
+ 	uint32_t pad4;
+ 	uint64_t pad5;
++	/* v9: named fields, appended so the old prints keep working. */
++	uint32_t p_cbbase;
++	uint32_t p_cb0_sctlr;
++	uint32_t p_cb0_ttbr0;
++	uint32_t p_cb0_ttbr1;
++	uint32_t p_cb0_tcr;
++	uint32_t p_cb0_tcr2;
++	uint32_t p_cb0_mair0;
++	uint32_t p_cb0_mair1;
++	uint32_t p_cb0_cbar;
++	uint32_t p_cb0_cba2r;
++	uint32_t p_cb0_cbf;
++	uint32_t p_cb1_sctlr;
++	uint32_t p_cxgdr;
++	uint32_t p_hwctrl;
++	uint32_t p_gxgdr;
++	uint32_t p_gxdom;
++	uint32_t p_clk_ahb;
++	uint32_t p_clk_cxgmu;
++	uint32_t p_clk_hubcx;
++	uint32_t p_clk_smmuvote;
++	uint32_t p_clk_memnoc;
++	uint32_t p_kgsl_ident;
++	uint32_t p_kgsl_rbbm;
++	uint32_t p_rd_fault;
++	uint32_t p_cxgdr2;
++	uint32_t p_clk_ahb2;
++	uint32_t p_clk_cxgmu2;
++	uint32_t p_clk_hubcx2;
++	uint32_t p_clk_smmuvote2;
++	uint32_t p_clk_memnoc2;
++	uint32_t p_kgsl_rbbm2;
++	uint32_t p_cb0_sctlr2;
++	uint32_t p_pwr_step;
++	uint32_t p_pwr_flags;
++	uint32_t p_cbw_before;
++	uint32_t p_cbw_after;
++	uint32_t p_cbw_flags;
++	uint64_t p_pad6;
+ };
+ 
++/*
++ * A GPU run uses sweetglink=0 so the audio path never starts, but the
++ * auto-reset lives inside the glink probe -- without this the phone would sit
++ * in iOS until somebody pressed power.  Reset only when glink is off, so an
++ * audio run still resets at its own end.
++ */
+ static void
++g_gpu_maybe_reset(void)
++{
++	int rb = 0, gl = 1;
++
++	(void)PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb));
++	(void)PE_parse_boot_argn("sweetglink", &gl, sizeof(gl));
++	if (rb && !gl) {
++		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
++		sweet_log_sync();
++		{
++			register uint64_t x0 __asm("x0") = 0x84000009ull;
++
++			__asm volatile("dsb sy" ::: "memory");
++			__asm volatile("smc #0" : "+r"(x0) ::
++			    "x1", "x2", "x3", "memory");
++		}
++		for (;;) {
++			delay(1000);
++		}
++	}
++}
++
++static void
+ g_gpu_probe(void)
+ {
+ 	int en = 0;
+@@ -2478,12 +2546,14 @@
+ 	if (v == 0) {
+ 		printf("SWEET GPU: cannot map probe page\n");
+ 		sweet_log_sync();
++		g_gpu_maybe_reset();
+ 		return;
+ 	}
+ 	r = (struct gpu_probe_result *)v;
+ 	if (r->magic != GPU_PROBE_MAGIC) {
+ 		printf("SWEET GPU: no shim result (magic %#x)\n", r->magic);
+ 		sweet_log_sync();
++		g_gpu_maybe_reset();
+ 		return;
+ 	}
+ 	printf("SWEET GPU: shim v%u scr0=%#x id0=%#x id1=%#x id2=%#x\n",
+@@ -2512,7 +2582,34 @@
+ 	printf("SWEET GPU: kgsl %#x %#x %#x %#x last=%u prev=%u magic=%#x\n",
+ 	    r->kg0, r->kg1, r->kg2, r->kg3, r->last_step, r->prev_step,
+ 	    r->prev_magic);
++	/* v9: everything the GPU probes actually need, by name. */
++	printf("SWEET GPU: v9 cbbase=%#x cb0 sctlr=%#x ttbr0=%#x ttbr1=%#x "
++	    "tcr=%#x tcr2=%#x mair0=%#x mair1=%#x\n", r->p_cbbase,
++	    r->p_cb0_sctlr, r->p_cb0_ttbr0, r->p_cb0_ttbr1, r->p_cb0_tcr,
++	    r->p_cb0_tcr2, r->p_cb0_mair0, r->p_cb0_mair1);
++	printf("SWEET GPU: v9 cb0 cbar=%#x cba2r=%#x cbf=%#x cb1 sctlr=%#x "
++	    "kgsl ident=%#x rbbm=%#x rdf=%#x\n", r->p_cb0_cbar,
++	    r->p_cb0_cba2r, r->p_cb0_cbf, r->p_cb1_sctlr, r->p_kgsl_ident,
++	    r->p_kgsl_rbbm, r->p_rd_fault);
++	printf("SWEET GPU: v9 gpucc cxgdr=%#x hwctrl=%#x gxgdr=%#x gxdom=%#x "
++	    "ahb=%#x cxgmu=%#x hubcx=%#x vote=%#x memnoc=%#x\n",
++	    r->p_cxgdr, r->p_hwctrl, r->p_gxgdr, r->p_gxdom, r->p_clk_ahb,
++	    r->p_clk_cxgmu, r->p_clk_hubcx, r->p_clk_smmuvote,
++	    r->p_clk_memnoc);
++	if (r->p_pwr_step != 0) {
++		printf("SWEET GPU: v9 after pwr step=%u fl=%#x cxgdr=%#x "
++		    "ahb=%#x cxgmu=%#x hubcx=%#x vote=%#x memnoc=%#x "
++		    "rbbm=%#x cb0sctlr=%#x\n", r->p_pwr_step, r->p_pwr_flags,
++		    r->p_cxgdr2, r->p_clk_ahb2, r->p_clk_cxgmu2,
++		    r->p_clk_hubcx2, r->p_clk_smmuvote2, r->p_clk_memnoc2,
++		    r->p_kgsl_rbbm2, r->p_cb0_sctlr2);
++	}
++	if (r->p_cbw_flags != 0) {
++		printf("SWEET GPU: v9 cbwrite before=%#x after=%#x fl=%#x\n",
++		    r->p_cbw_before, r->p_cbw_after, r->p_cbw_flags);
++	}
+ 	sweet_log_sync();
++	g_gpu_maybe_reset();
+ }
+ 
+ /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at

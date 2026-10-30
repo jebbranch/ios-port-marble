@@ -163,6 +163,7 @@ static void irq_handler(void)
 #define GPU_PROBE_MAGIC		0x47505550U	/* "GPUP" */
 #define GPU_SMMU_BASE		0x3da0000UL
 #define GPU_KGSL_BASE		0x3d00000UL
+#define GPU_GPUCC_BASE		0x3d90000UL
 #ifndef GPU_PROBE_LEVEL
 #define GPU_PROBE_LEVEL		1
 #endif
@@ -191,13 +192,20 @@ static void irq_handler(void)
 #ifndef GP_KGSL_SCAN
 #define GP_KGSL_SCAN		0	/* read four KGSL offsets */
 #endif
+#ifndef GP_SURVEY
+#define GP_SURVEY		0	/* v8: CB bank at the real offset + GPUCC */
+#endif
+#ifndef GP_PWR
+#define GP_PWR			0	/* v9: bring GPU_CC_CX up, then re-read */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
 static const char gp_level_tag[] __attribute__((used)) =
     "gpuprobe-" GP_STR(GPU_PROBE_LEVEL)
     "-c" GP_STR(GP_CBAR_BANK) "w" GP_STR(GP_CBAR_WRITE)
     "-s" GP_STR(GP_SCTLR_BANK) "w" GP_STR(GP_SCTLR_WRITE)
-    "-r" GP_STR(GP_CB_REGS) GP_STR(GP_GR1_READ) GP_STR(GP_KGSL_SCAN);
+    "-r" GP_STR(GP_CB_REGS) GP_STR(GP_GR1_READ) GP_STR(GP_KGSL_SCAN)
+    "-v" GP_STR(GP_SURVEY);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -258,7 +266,51 @@ struct gpu_probe_result {
 	uint32_t kg3;		/* 0xe4 */
 	uint32_t pad4;		/* 0xe8 */
 	uint64_t pad5;		/* 0xf0 */
-};				/* 0xf8 */
+
+	/*
+	 * v9 block (appended, so older kernels that only print up to pad5
+	 * still work).  These are the named fields the GPU probes really want;
+	 * the reused slots above stay as a fallback for an unpatched kernel.
+	 */
+	uint32_t p_cbbase;	/* 0xf8 computed context-bank base */
+	uint32_t p_cb0_sctlr;	/* 0xfc */
+	uint32_t p_cb0_ttbr0;	/* 0x100 */
+	uint32_t p_cb0_ttbr1;	/* 0x104 */
+	uint32_t p_cb0_tcr;	/* 0x108 */
+	uint32_t p_cb0_tcr2;	/* 0x10c */
+	uint32_t p_cb0_mair0;	/* 0x110 */
+	uint32_t p_cb0_mair1;	/* 0x114 */
+	uint32_t p_cb0_cbar;	/* 0x118 CBAR(0) */
+	uint32_t p_cb0_cba2r;	/* 0x11c */
+	uint32_t p_cb0_cbf;	/* 0x120 CBFRSYNRA(0) */
+	uint32_t p_cb1_sctlr;	/* 0x124 */
+	uint32_t p_cxgdr;	/* 0x128 GPU_CC_CX_GDSCR */
+	uint32_t p_hwctrl;	/* 0x12c GPU_CC CX GDS_HW_CTRL */
+	uint32_t p_gxgdr;	/* 0x130 GPU_CC_GX_GDSCR */
+	uint32_t p_gxdom;	/* 0x134 GX domain-addr register */
+	uint32_t p_clk_ahb;	/* 0x138 gpu_cc_ahb */
+	uint32_t p_clk_cxgmu;	/* 0x13c gpu_cc_cx_gmu */
+	uint32_t p_clk_hubcx;	/* 0x140 gpu_cc_hub_cx_int */
+	uint32_t p_clk_smmuvote;/* 0x144 gpu_cc_hlos1_vote_gpu_smmu */
+	uint32_t p_clk_memnoc;	/* 0x148 gpu_cc_memnoc_gfx */
+	uint32_t p_kgsl_ident;	/* 0x14c */
+	uint32_t p_kgsl_rbbm;	/* 0x150 */
+	uint32_t p_rd_fault;	/* 0x154 bitmask of failed reads */
+	uint32_t p_cxgdr2;	/* 0x158 after the power-on attempt */
+	uint32_t p_clk_ahb2;	/* 0x15c */
+	uint32_t p_clk_cxgmu2;	/* 0x160 */
+	uint32_t p_clk_hubcx2;	/* 0x164 */
+	uint32_t p_clk_smmuvote2;/* 0x168 */
+	uint32_t p_clk_memnoc2;	/* 0x16c */
+	uint32_t p_kgsl_rbbm2;	/* 0x170 */
+	uint32_t p_cb0_sctlr2;	/* 0x174 after power / after CB write */
+	uint32_t p_pwr_step;	/* 0x178 last power-on step reached */
+	uint32_t p_pwr_flags;	/* 0x17c */
+	uint32_t p_cbw_before;	/* 0x180 CB0.SCTLR before the CB write */
+	uint32_t p_cbw_after;	/* 0x184 readback */
+	uint32_t p_cbw_flags;	/* 0x188 */
+	uint64_t p_pad6;	/* 0x190 */
+};				/* 0x198 */
 
 static volatile int gp_busy;
 static volatile int gp_fault;
@@ -331,6 +383,28 @@ gp_wr32(uintptr_t a, uint32_t v)
 	gp_busy = 0;
 }
 
+/*
+ * Where the context banks live.
+ *
+ * An SMMU-500 register file is two GR frames (GR0, GR1), each
+ * 1 << (IDR1.NUMPAGENDXB + 1) pages of IDR1.PAGESIZE bytes, followed by the
+ * context banks.  Our IDR1 = 0x40000016: PAGESIZE=0 (4K) and NUMPAGENDXB=4,
+ * so GR0/GR1 are 32 pages each and CB0 = 0x3da0000 + 0x20000 = 0x3dc0000.
+ *
+ * The first GPU probe copied apps-smmu's CB offset (0x80000, correct there
+ * because NUMPAGENDXB=6) and read 0x3e20000 -- 0x40000 bytes past the end of
+ * this block, which is dead bus space.  Those boots hung; the CBs may have
+ * been fine all along.
+ */
+static uintptr_t
+gp_cb_base(uint32_t id1)
+{
+	unsigned npg = (id1 >> 28) & 7u;
+	unsigned sh = (id1 & (1u << 31)) ? 16u : 12u;
+
+	return GPU_SMMU_BASE + ((uintptr_t)(1u << (npg + 1u)) << sh);
+}
+
 static void
 gpu_probe_boot(void)
 {
@@ -348,6 +422,9 @@ gpu_probe_boot(void)
 	r->prev_magic = prev_magic;
 	r->prev_step = prev_step;
 	r->version = GPU_PROBE_LEVEL;
+#if GP_SURVEY
+	r->version = 8;		/* read-only CB + GPUCC survey */
+#endif
 	r->sid0_slot = 0xffffffffu;
 	r->wsid = 0xffffffffu;
 	r->cbar_bank = 0xffffffffu;
@@ -587,6 +664,204 @@ wdone:
 	r->mair = gp_rd32(s + 0x80038u);
 	if (gp_fault)
 		r->op_fault |= 0x8000u;
+#endif
+
+#if GP_SURVEY
+	/*
+	 * v8 read-only survey: context banks at the *computed* base plus the
+	 * GPUCC power/clock state.  Everything is a read, nothing is written.
+	 *
+	 * The result slots are reused so this runs on an unmodified XNU.  The
+	 * printed fields mean:
+	 *   cbar_r        CB base computed from IDR1 (expect 0x3dc0000)
+	 *   kg0..kg3      CB0.TTBR1, CB0.TCR2, CB0.MAIR1, CB1.SCTLR
+	 *   sctlr_r       CB0.SCTLR        ttbr0   CB0.TTBR0
+	 *   tcr / mair    CB0.TCR / CB0.MAIR0
+	 *   wcbar         CBAR(0)          cba2r / cbfrsynra  stream group 0
+	 *   cbar1..3      GPUCC CX_GDSCR, GDS_HW_CTRL, GX_GDSCR
+	 *   sctlr_w       GPUCC GX domain (0x3d99504)
+	 *   wsctlr        gpu_cc_ahb (0x911c)
+	 *   wsctlr_old    gpu_cc_cx_gmu (0x913c)
+	 *   w2cr_old      gpu_cc_hub_cx_int (0x9148)
+	 *   wsmr          gpu_cc_hlos1_vote_gpu_smmu (0x7000)
+	 *   w2cr          gpu_cc_memnoc_gfx (0x9150)
+	 *   kgsl_status   KGSL RBBM_STATUS (0x840)
+	 *   kgsl_status2  KGSL RBBM_IDENT  (0x000)
+	 *   op_fault      one bit per failed read, in access order below
+	 */
+	{
+		uintptr_t g = GPU_GPUCC_BASE;
+		uintptr_t cb = gp_cb_base(id1);
+		uint32_t f = 0;
+		unsigned n = 0;
+
+#define GPR(step, dst, addr) do {			\
+		r->last_step = (step);			\
+		(dst) = gp_rd32(addr);			\
+		if (gp_fault)				\
+			f |= 1u << n;			\
+		n++;					\
+	} while (0)
+
+		r->cbar_r = (uint32_t)cb;	/* where CB0 should be */
+		r->cbar_bank = 0;
+
+		/* GPUCC: is the CX domain already up? */
+		GPR(100, r->cbar1, g + 0x9108u);	/* CX_GDSCR */
+		GPR(101, r->cbar2, g + 0x953cu);	/* GDS_HW_CTRL */
+		GPR(102, r->cbar3, g + 0x905cu);	/* GX_GDSCR */
+		GPR(103, r->sctlr_w, g + 0x9504u);	/* GX domain addr */
+		GPR(104, r->wsctlr, g + 0x911cu);	/* gpu_cc_ahb */
+		GPR(105, r->wsctlr_old, g + 0x913cu);	/* gpu_cc_cx_gmu */
+		GPR(106, r->w2cr_old, g + 0x9148u);	/* gpu_cc_hub_cx_int */
+		GPR(107, r->wsmr, g + 0x7000u);		/* smmu clock vote */
+		GPR(108, r->w2cr, g + 0x9150u);		/* gpu_cc_memnoc_gfx */
+
+		/* Context bank 0 at the page the SMMU says it is. */
+		GPR(110, r->sctlr_r, cb + 0x00u);	/* SCTLR */
+		GPR(111, r->ttbr0, cb + 0x20u);		/* TTBR0 */
+		GPR(112, r->tcr, cb + 0x30u);		/* TCR */
+		GPR(113, r->mair, cb + 0x38u);		/* MAIR0 */
+		GPR(114, r->wcbar, s + 0x1000u);	/* CBAR(0) */
+		GPR(115, r->cba2r, s + 0x1800u);	/* CBA2R(0) */
+		GPR(116, r->cbfrsynra, s + 0x1400u);	/* CBFRSYNRA(0) */
+		GPR(117, r->kg0, cb + 0x28u);		/* TTBR1 */
+		GPR(118, r->kg1, cb + 0x10u);		/* TCR2 */
+		GPR(119, r->kg2, cb + 0x3cu);		/* MAIR1 */
+		GPR(120, r->kg3, cb + 0x1000u);		/* CB1.SCTLR */
+
+		/* Is the GPU engine itself alive behind the SMMU? */
+		GPR(125, r->kgsl_status2, GPU_KGSL_BASE + 0x000u);
+		GPR(126, r->kgsl_status, GPU_KGSL_BASE + 0x840u);
+
+		r->op_fault = f;
+		r->kfault = (f >> 20) & 3u;	/* KGSL IDENT / RBBM_STATUS */
+
+		/* Named copies for kernels that know the v9 layout. */
+		r->p_cbbase = (uint32_t)cb;
+		r->p_cb0_sctlr = r->sctlr_r;
+		r->p_cb0_ttbr0 = r->ttbr0;
+		r->p_cb0_ttbr1 = r->kg0;
+		r->p_cb0_tcr = r->tcr;
+		r->p_cb0_tcr2 = r->kg1;
+		r->p_cb0_mair0 = r->mair;
+		r->p_cb0_mair1 = r->kg2;
+		r->p_cb0_cbar = r->wcbar;
+		r->p_cb0_cba2r = r->cba2r;
+		r->p_cb0_cbf = r->cbfrsynra;
+		r->p_cb1_sctlr = r->kg3;
+		r->p_cxgdr = r->cbar1;
+		r->p_hwctrl = r->cbar2;
+		r->p_gxgdr = r->cbar3;
+		r->p_gxdom = r->sctlr_w;
+		r->p_clk_ahb = r->wsctlr;
+		r->p_clk_cxgmu = r->wsctlr_old;
+		r->p_clk_hubcx = r->w2cr_old;
+		r->p_clk_smmuvote = r->wsmr;
+		r->p_clk_memnoc = r->w2cr;
+		r->p_kgsl_ident = r->kgsl_status2;
+		r->p_kgsl_rbbm = r->kgsl_status;
+		r->p_rd_fault = f;
+#undef GPR
+	}
+#endif
+
+#if GP_PWR
+	/*
+	 * Bring GPU_CC_CX up the way the vendor gdsc-regulator driver does:
+	 * GDSCR.PWR_ON is bit 31, HW_CONTROL is bit 1, SW_COLLAPSE is bit 0
+	 * (1 = collapsed).  Under HW control the AP cannot simply clear
+	 * SW_COLLAPSE; the driver first takes the switch back by clearing
+	 * HW_CONTROL, which is what we do here as well.
+	 *
+	 * Then ungate the four branches the SMMU and the GMU need.  Each
+	 * branch's enable register carries bit 31 = "halted" once enabled.
+	 */
+	{
+		uintptr_t g = GPU_GPUCC_BASE;
+		uintptr_t cb = gp_cb_base(id1);
+		uint32_t v;
+		int ok = 1;
+
+		if (id1 == 0xffffffffu) {	/* SMMU never read: CB address unknown */
+			cb = 0;
+			r->p_pwr_flags |= 0x8000u;
+		}
+
+		r->p_pwr_step = 1;
+		v = gp_rd32(g + 0x9108u);
+		if (gp_fault) {
+			r->p_pwr_flags |= 1u;	/* GPUCC itself not reachable */
+			ok = 0;
+		}
+		if (ok && !(v & (1u << 31))) {	/* CX is collapsed */
+			uint32_t w = v & ~(1u << 0);
+
+			if (v & (1u << 1)) {
+				w &= ~(1u << 1);
+				r->p_pwr_flags |= 0x100u;  /* took it from HW */
+			}
+			r->p_pwr_step = 2;
+			gp_wr32(g + 0x9108u, w);
+			if (gp_fault) {
+				r->p_pwr_flags |= 2u;
+				ok = 0;
+			}
+			r->p_pwr_step = 3;
+			for (i = 0; ok && i < 1500u; i++) {
+				v = gp_rd32(g + 0x9108u);
+				if (gp_fault) {
+					r->p_pwr_flags |= 4u;
+					ok = 0;
+				} else if (v & (1u << 31)) {
+					break;
+				}
+				delay_ms(1);
+			}
+			if (ok && !(v & (1u << 31)))
+				r->p_pwr_flags |= 8u;	/* never came up */
+			else if (ok)
+				r->p_pwr_flags |= 0x200u; /* powered */
+		} else if (ok) {
+			r->p_pwr_flags |= 0x400u;	/* was already on */
+		}
+
+		/* Ungate: smmu vote, ahb, hub_cx_int, cx_gmu. */
+		{
+			static const uint32_t offs[4] = {
+				0x7000u, 0x911cu, 0x9148u, 0x913cu
+			};
+
+			for (i = 0; ok && i < 4u; i++) {
+				r->p_pwr_step = 10u + i;
+				v = gp_rd32(g + offs[i]);
+				if (gp_fault) {
+					r->p_pwr_flags |= 0x1000u << i;
+					continue;
+				}
+				if (!(v & 1u)) {
+					gp_wr32(g + offs[i], v | 1u);
+					if (gp_fault)
+						r->p_pwr_flags |= 0x1000u << i;
+				}
+			}
+		}
+
+		r->p_pwr_step = 20;
+		r->p_cxgdr2 = gp_rd32(g + 0x9108u);
+		r->p_clk_ahb2 = gp_rd32(g + 0x911cu);
+		r->p_clk_cxgmu2 = gp_rd32(g + 0x913cu);
+		r->p_clk_hubcx2 = gp_rd32(g + 0x9148u);
+		r->p_clk_smmuvote2 = gp_rd32(g + 0x7000u);
+		r->p_clk_memnoc2 = gp_rd32(g + 0x9150u);
+		r->p_kgsl_rbbm2 = gp_rd32(GPU_KGSL_BASE + 0x840u);
+		r->last_step = 30;
+		if (cb)
+			r->p_cb0_sctlr2 = gp_rd32(cb + 0x00u);
+		r->last_step = 31;
+		con_hex2("GPU", "cx=", r->p_cxgdr2, "rbbm=", r->p_kgsl_rbbm2);
+		con_hex2("GPU", "cb0=", r->p_cb0_sctlr2, "fl=", r->p_pwr_flags);
+	}
 #endif
 
 	if (GPU_PROBE_LEVEL >= 3) {
