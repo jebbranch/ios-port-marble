@@ -237,6 +237,12 @@ static void irq_handler(void)
 #ifndef GP_RSCC
 #define GP_RSCC			0	/* v21: vendor PDC + RSCC ucode load */
 #endif
+#ifndef GP_GMUBOOT
+#define GP_GMUBOOT		0	/* v22: load GMU firmware and start the CM3 */
+#endif
+#ifndef GP_TCM
+#define GP_TCM			0	/* v23: are the ITCM/DTCM windows writable? */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
 static const char gp_level_tag[] __attribute__((used)) =
@@ -249,7 +255,7 @@ static const char gp_level_tag[] __attribute__((used)) =
     "d" GP_STR(GP_CMDB) "r" GP_STR(GP_RAIL)
     "k" GP_STR(GP_CLK) "m" GP_STR(GP_GMU) "s" GP_STR(GP_CLK_SEL)
     "b" GP_STR(GP_BR) "g" GP_STR(GP_GCC) "o" GP_STR(GP_VOTE)
-    "c" GP_STR(GP_RSCC);
+    "c" GP_STR(GP_RSCC) "u" GP_STR(GP_GMUBOOT) "t2" GP_STR(GP_TCM);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -924,19 +930,29 @@ gp_gmu_probe(volatile struct gpu_probe_result *r)
 	con_hex2("GPUS", "cxvote=", r->p_cbw_before, "sysrst=", r->p_cb0_sctlr);
 #endif
 #if GP_GMU == 2
-	/* Real gen7 offsets (gen7_reg.h), relative to the gmu reg base. */
+	/*
+	 * gmu_core_regwrite() goes through device->regmap, i.e. the kgsl
+	 * register resource at 0x3d00000 -- NOT the gmu node (0x3d68000).
+	 * gen7 offsets are word-relative to that base.
+	 */
 	r->last_step = 310;
-	r->p_cb0_sctlr = gp_rd32(0x3d68000u + 0x1f800u);	/* CM3_SYSRESET */
+	/*
+	 * kgsl's regmap puts the gmu resource at word offset 0x1a000, so a
+	 * gen7 offset O maps to 0x3d68000 + (O - 0x1a000) * 4.
+	 */
+	r->p_cb0_sctlr = gp_rd32(0x3d7e000u);	/* CM3_SYSRESET   0x1f800 */
 	r->last_step = 311;
-	r->p_cb0_ttbr0 = gp_rd32(0x3d68000u + 0x1f81cu);	/* FW_INIT_RESULT */
+	r->p_cb0_ttbr0 = gp_rd32(0x3d7e070u);	/* FW_INIT_RESULT 0x1f81c */
 	r->last_step = 312;
-	r->p_cb0_ttbr1 = gp_rd32(0x3d68000u + 0x1f980u);	/* HFI_CTRL_STATUS */
+	r->p_cb0_ttbr1 = gp_rd32(0x3d7e600u);	/* HFI_CTRL_STATUS 0x1f980 */
 	r->last_step = 313;
-	r->p_cb0_tcr = gp_rd32(0x3d68000u + 0x1f984u);		/* HFI ctrl word */
+	r->p_cb0_tcr = gp_rd32(0x3d7e610u);	/* HFI ctrl word 0x1f984 */
 	r->last_step = 314;
-	r->p_cb0_tcr2 = gp_rd32(0x3d68000u + 0x1b400u);		/* ITCM[0] */
+	r->p_cb0_tcr2 = gp_rd32(0x3d6d000u);	/* ITCM[0] 0x1b400 */
 	r->last_step = 315;
-	r->p_cb0_mair0 = gp_rd32(0x3d68000u + 0x1c400u);	/* DTCM[0] */
+	r->p_cb0_mair0 = gp_rd32(0x3d71000u);	/* DTCM[0] 0x1c400 */
+	r->last_step = 316;
+	r->p_cb0_mair1 = gp_rd32(0x3d00840u);	/* RBBM_STATUS */
 	con_hex2("GPUS", "sysrst=", r->p_cb0_sctlr, "fwin=", r->p_cb0_ttbr0);
 #endif
 	r->last_step = 302;
@@ -1097,6 +1113,198 @@ gp_rscc_load(volatile struct gpu_probe_result *r)
 }
 #endif
 
+#if GP_GMUBOOT
+/* GMU register addresses: kgsl base 0x3d00000, gmu region starts at word
+ * 0x1a000, so byte = 0x3d68000 + (word - 0x1a000) * 4. */
+#define GMU_ITCM_W	0x3d6d000UL	/* 0x1b400 */
+#define GMU_DTCM_W	0x3d71000UL	/* 0x1c400 */
+#define GMU_SYSRESET	0x3d7e000UL	/* 0x1f800 */
+#define GMU_FW_INIT	0x3d7e070UL	/* 0x1f81c */
+#define GMU_HFI_STATUS	0x3d7e600UL	/* 0x1f980 */
+#define GMU_HFI_INIT	0x3d7e618UL	/* 0x1f986 */
+
+extern const uint8_t gmu_fw_start[], gmu_fw_end[];
+
+/* GMU cache block lands here (64 KiB, page aligned, identity mapped). */
+static uint8_t gmu_cache[0x10000] __attribute__((aligned(4096)));
+static uint64_t gmu_l1[512] __attribute__((aligned(4096)));
+static uint64_t gmu_l2[512] __attribute__((aligned(4096)));
+static uint64_t gmu_l3[512] __attribute__((aligned(4096)));
+
+/*
+ * Map GMU VA 0x4000..0x14000 (the firmware's cache block) through context
+ * bank 1 for stream 5.  VA 0..0x4000 and 0x14000.. are deliberately left
+ * unmapped: the GMU fetches its reset vector from internal ITCM, which is
+ * not behind this SMMU.
+ */
+static void
+gp_gmu_iommu(volatile struct gpu_probe_result *r)
+{
+	uintptr_t s = GPU_SMMU_BASE;
+	uintptr_t cb = GPU_SMMU_BASE + 0x21000u;	/* CB1 */
+	uintptr_t l1 = (uintptr_t)gmu_l1;
+	uintptr_t l2 = (uintptr_t)gmu_l2;
+	uintptr_t l3 = (uintptr_t)gmu_l3;
+	uintptr_t buf = (uintptr_t)gmu_cache;
+	uintptr_t p;
+	unsigned i;
+
+	for (i = 0; i < 512u; i++) {
+		gmu_l1[i] = 0;
+		gmu_l2[i] = 0;
+		gmu_l3[i] = 0;
+	}
+	gmu_l1[0] = (uint64_t)l2 | 3u;		/* L1[0] -> L2 table */
+	gmu_l2[0] = (uint64_t)l3 | 3u;		/* L2[0] -> L3 table */
+	for (i = 4; i < 20u; i++)		/* VA 0x4000..0x14000 */
+		gmu_l3[i] = (uint64_t)(buf + (i - 4u) * 0x1000u) | 0x703u;
+	for (p = l1; p < l1 + 0x3000u; p += 64u)
+		__asm__ volatile("dc civac, %0" :: "r"(p) : "memory");
+
+	r->last_step = 700;
+	gp_wr32(cb + 0x00u, 0u);		/* disable CB1 */
+	gp_wr32(s + 0x1004u, 0x1f000u);		/* CBAR(1) */
+	gp_wr32(s + 0x1804u, 1u);		/* CBA2R(1) */
+	gp_wr32(cb + 0x20u, (uint32_t)l1);
+	gp_wr32(cb + 0x24u, (uint32_t)((uint64_t)l1 >> 32));
+	gp_wr32(cb + 0x10u, 0u);		/* TCR2 */
+	gp_wr32(cb + 0x30u, 0x3520u);		/* TCR */
+	gp_wr32(cb + 0x38u, 0xffu);		/* MAIR0 */
+	gp_wr32(cb + 0x00u, 0x1u);		/* enable */
+	r->last_step = 701;
+	gp_wr32(s + 0x804u, 0x80000005u);	/* SMR(1) = SID 5 */
+	gp_wr32(s + 0xc04u, 0x1u);		/* S2CR(1) = TRANS, CB1 */
+	__asm__ volatile("dsb sy" ::: "memory");
+}
+
+static void
+gp_gmu_boot(volatile struct gpu_probe_result *r)
+{
+	const uint32_t *fw = (const uint32_t *)gmu_fw_start;
+	const uint32_t *end = (const uint32_t *)gmu_fw_end;
+	uint32_t v;
+	unsigned i;
+
+	/* Parse blocks: 16-byte header {addr, ?, type, size}, then size bytes. */
+	while (fw + 4 <= end) {
+		uint32_t addr = fw[0], size = fw[3];
+
+		fw += 4;
+		if (size == 0)
+			continue;
+		if (size > (uint32_t)((const uint8_t *)end - (const uint8_t *)fw))
+			break;
+		if (addr < 0x4000u) {			/* ITCM */
+			const uint32_t *src = fw;
+			unsigned n = size / 4u;
+
+			r->last_step = 710;
+			for (i = 0; i < n; i++)
+				gp_wr32(GMU_ITCM_W + (addr + 4u * i), src[i]);
+		} else if (addr >= 0x10000000u) {	/* DTCM */
+			const uint32_t *src = fw;
+			unsigned n = size / 4u;
+			uintptr_t base = GMU_DTCM_W + (addr - 0x10004000u);
+
+			r->last_step = 711;
+			for (i = 0; i < n; i++)
+				gp_wr32(base + 4u * i, src[i]);
+		} else {				/* GMU cache via SMMU */
+			r->last_step = 712;
+			for (i = 0; i < size; i++)
+				((uint8_t *)gmu_cache)[addr - 0x4000u + i] =
+				    ((const uint8_t *)fw)[i];
+		}
+		fw = (const uint32_t *)((const uint8_t *)fw + size);
+	}
+	__asm__ volatile("dsb sy" ::: "memory");
+
+	gp_gmu_iommu(r);
+
+	/* Readbacks: did the TCM windows actually take the firmware? */
+	r->p_cb0_sctlr = gp_rd32(GMU_ITCM_W);
+	r->p_cb0_ttbr0 = gp_rd32(GMU_ITCM_W + 4u);
+	r->p_cb0_ttbr1 = gp_rd32(GMU_DTCM_W + (0x10007f98u - 0x10004000u));
+
+	/*
+	 * Register configuration the vendor applies before releasing the CM3,
+	 * in the exact order captured from kgsl_regmap_write.
+	 */
+	{
+		static const struct { uint32_t w, v; } cfg[] = {
+			{ 0x1f8f1u, 0x1u }, { 0x1f8f0u, 0x1u },
+			{ 0x1f81cu, 0x0u }, { 0x1f801u, 0x2u },
+			{ 0x1f985u, 0x60006000u }, { 0x1f984u, 0x1u },
+			{ 0x1f82du, 0x4052u },
+			{ 0x1f9ceu, 0x0u }, { 0x1f9cfu, 0x7030200u },
+			{ 0x1f9cdu, 0x60002003u },
+			{ 0x1f40fu, 0x1u }, { 0x1f400u, 0x1u },
+			{ 0x1f401u, 0x1u },
+			{ 0x1f991u, 0xffffffffu }, { 0x1f993u, 0xffff7ff9u },
+		};
+		unsigned k;
+
+		r->last_step = 715;
+		for (k = 0; k < sizeof(cfg) / sizeof(cfg[0]); k++)
+			gp_wr32(0x3d68000UL +
+			    ((uintptr_t)(cfg[k].w - 0x1a000u) << 2), cfg[k].v);
+		__asm__ volatile("dsb sy" ::: "memory");
+	}
+
+	r->last_step = 720;
+	r->p_kgsl_ident = gp_rd32(GMU_ITCM_W);		/* ITCM[0] echo */
+	gp_wr32(GMU_SYSRESET, 0u);			/* release CM3 */
+	__asm__ volatile("dsb sy" ::: "memory");
+	for (i = 0; i < 2000u; i++) {
+		v = gp_rd32(GMU_FW_INIT);
+		if (gp_fault)
+			break;
+		if (v & (1u << 8))
+			break;
+		delay_ms(1);
+	}
+	r->p_kgsl_rbbm = v;
+	r->last_step = 721;
+	if (v & (1u << 8)) {
+		gp_wr32(GMU_HFI_INIT, 1u);
+		__asm__ volatile("dsb sy" ::: "memory");
+		for (i = 0; i < 200u; i++) {
+			v = gp_rd32(GMU_HFI_STATUS);
+			if (gp_fault || (v & 1u))
+				break;
+			delay_ms(1);
+		}
+		r->p_cbw_before = v;		/* HFI status */
+	}
+	r->p_cbw_flags |= 0x2000u;
+	con_hex2("GPUS", "fwin=", r->p_kgsl_rbbm, "hfi=", r->p_cbw_before);
+}
+#endif
+
+#if GP_TCM
+/* Minimal test: write a pattern into TCM word 0 and read it back. */
+static void
+gp_tcm_test(volatile struct gpu_probe_result *r)
+{
+	uint32_t a0 = gp_rd32(0x3d6d000u);
+	uint32_t b0 = gp_rd32(0x3d71000u);
+	uint32_t a1, b1;
+
+	r->p_cb0_sctlr = a0;	/* ITCM[0] before */
+	r->p_cb0_ttbr0 = b0;	/* DTCM[0] before */
+	r->last_step = 800;
+	gp_wr32(0x3d6d000u, 0xdeadbeefu);
+	gp_wr32(0x3d71000u, 0xcafebabeu);
+	__asm__ volatile("dsb sy" ::: "memory");
+	r->last_step = 801;
+	a1 = gp_rd32(0x3d6d000u);
+	b1 = gp_rd32(0x3d71000u);
+	r->p_cb0_ttbr1 = a1;	/* ITCM[0] after */
+	r->p_cb0_tcr = b1;	/* DTCM[0] after */
+	con_hex2("GPUS", "itcm=", a1, "dtcm=", b1);
+}
+#endif
+
 /* v11: stage-1 tables, identity mapped (the shim is VA==PA). */
 static uint64_t gp_cbw_l1[512] __attribute__((aligned(4096)));
 static uint64_t gp_cbw_l2[512] __attribute__((aligned(4096)));
@@ -1174,6 +1382,12 @@ gpu_probe_boot(void)
 #endif
 #if GP_RSCC
 	gp_rscc_load(r);
+#endif
+#if GP_GMUBOOT
+	gp_gmu_boot(r);
+#endif
+#if GP_TCM
+	gp_tcm_test(r);
 #endif
 #if GP_GX
 	gp_power_gx(r);

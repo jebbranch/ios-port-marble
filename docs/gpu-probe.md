@@ -603,3 +603,52 @@ gpu_cc_gx_gfx3d_clk en=0 rate=0
 * gdsc enable、`gen7_gmu_device_start`
 
 这条路线这个仓库已经用过（音频阶段用 kprobe 抓过厂商报文），可行。
+
+### v22/v23：GMU 终于可访问了（地址换算的锅）
+
+`gmu_core_regwrite()` 走的是 **kgsl 的 regmap**（基址 `0x3d00000`，按 **dword** 计），
+不是 GMU 节点自己的 `0x3d68000`。kgsl regmap 把 gmu 资源放在 word `0x1a000`，
+所以：
+
+```
+byte = 0x3d68000 + (gen7_word_offset - 0x1a000) * 4
+```
+
+| 寄存器 | gen7 偏移 | 真实地址 | 读回 |
+|---|---|---|---|
+| CM3_SYSRESET | 0x1f800 | `0x3d7e000` | **0x1（复位中）** |
+| FW_INIT_RESULT | 0x1f81c | `0x3d7e070` | 0 |
+| HFI_CTRL_STATUS | 0x1f980 | `0x3d7e600` | 0 |
+| CM3_ITCM_START | 0x1b400 | `0x3d6d000` | 可写 |
+| CM3_DTCM_START | 0x1c400 | `0x3d71000` | 可写 |
+
+（之前读 `0x3d87800` 得到 `0xdeafbead`、读 `0x3d1f800` 直接挂总线，都是地址算错。）
+
+`GP_TCM=1` 用写模式验证：ITCM[0] 写 `0xdeadbeef`、DTCM[0] 写 `0xcafebabe`，
+回读完全一致 ⇒ **两个 TCM 窗口都能写**。
+
+### 厂商 GMU 写序列（kprobe 抓到的真值）
+
+在 Android 上用 kprobe 挂 `kgsl_regmap_write`（`gmu_core_regwrite` 被内联了），
+一次开机抓到 167 963 条写；GMU 区的序列存在
+[`traces/gmu-wake-writes.txt`](traces/gmu-wake-writes.txt)：
+
+```
+0x1f8f1=1  0x1f8f0=1  0x1f81c=0  0x1f801=2
+0x1f985=0x60006000  0x1f984=1  0x1f82d=0x4052
+0x1f9ce=0  0x1f9cf=0x7030200  0x1f9cd=0x60002003
+0x1f40f=1  0x1f400=1  0x1f401=1
+0x1f991=0xffffffff  0x1f993=0xffff7ff9
+0x1f800=0          ← CM3 出复位
+0x1f986=1          ← HFI_CTRL_INIT
+```
+
+### 当前状态：固件写进 TCM 了，CM3 还没报 init
+
+`GP_GMUBOOT=1`：内嵌 `gmu_gen70000.bin`、写 ITCM/DTCM（回读 ITCM[0]=0x4000 ✓）、
+建 SID 5 / CB1 页表映射 GMU cache 区、回放上面的配置写、释放 `SYSRESET=0`、
+轮询 `FW_INIT_RESULT` —— **bit8 仍然是 0**。
+
+固件块格式还没完全对上（16 字节头里 size 的位置有两种解释，两种都能"凑巧"
+走通文件），CM3 不起来的原因大概率是 cache 块没有正确落到 GMU 可见内存里。
+下一步：kprobe `kgsl_regmap_bulk_write` 拿到厂商真实的（偏移, 字数）序列。

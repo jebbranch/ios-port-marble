@@ -35,7 +35,9 @@ CFLAGS="-O2 -ffreestanding -nostdlib -fno-pic -fno-jump-tables \
 -DGP_BR=${GP_BR:-0} \
 -DGP_GCC=${GP_GCC:-0} \
 -DGP_VOTE=${GP_VOTE:-0} \
--DGP_RSCC=${GP_RSCC:-0}"
+-DGP_RSCC=${GP_RSCC:-0} \
+-DGP_GMUBOOT=${GP_GMUBOOT:-0} \
+-DGP_TCM=${GP_TCM:-0}"
 STRIDE=4320
 OUT="out-xnu"
 PAYLOAD="${1:-../xnu/out/marble.payload}"
@@ -103,7 +105,7 @@ PYPCM
   fi
 fi
 
-for f in start.S shim.c console.c mmu.c fdt.c loader.c splash.S pcm.S; do
+for f in start.S shim.c console.c mmu.c fdt.c loader.c splash.S pcm.S gmu_fw.S; do
   $CC $CFLAGS -DFB_STRIDE=$STRIDE -DPCM_REGION=$PCM_BYTES -c "$f" -o "$OUT/${f%.*}.o"
 done
 
@@ -117,7 +119,8 @@ fi
 
 $CC $CFLAGS -fuse-ld=lld -static -T shim.ld -Wl,--build-id=none -Wl,-N \
   "$OUT/start.o" "$OUT/shim.o" "$OUT/console.o" "$OUT/mmu.o" \
-  "$OUT/fdt.o" "$OUT/loader.o" "$OUT/splash.o" "$OUT/pcm.o" -o "$OUT/shim.elf"
+  "$OUT/fdt.o" "$OUT/loader.o" "$OUT/splash.o" "$OUT/pcm.o" \
+  "$OUT/gmu_fw.o" -o "$OUT/shim.elf"
 
 llvm-objcopy -O binary "$OUT/shim.elf" "$OUT/Image"
 SIZE_HEX="$(llvm-nm "$OUT/shim.elf" | awk '$3=="_end"{print $1}')"
