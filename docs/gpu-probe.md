@@ -242,3 +242,38 @@ CB(n)    = base + (numpage + n) << pgshift
 说明 shim 里的这次探查**没有把总线打死**——在 0x3dc0000 上读 CB 不再致命。
 寄存器值要等 SWEETLOG ring 拉回来（这批镜像带 `sweetglink=0`，
 `sweetreboot` 在 glink probe 里面，所以**不会自动复位**，需要手动重启一次）。
+
+### v8 真机读数（2026-10-30 19:00 启动，19:15 从 TWRP 拉回）
+
+`sweettime=1793357985` 与镜像一致，`last_step=126`（普查跑完了最后一条），
+`op_fault=0` —— **19 条访问没有一个同步中止**。
+
+```
+shim v8 scr0=0x2f0406 id0=0x4c017e18 id1=0x40000016 id2=0x5511
+nsmr=24 ncb=22 valid=0                       ← 开机时 GPU 一条 stream 都没配
+cbbase=0x3dc0000                             ← 与 NUMPAGENDXB=4 推算一致
+GPUCC  CX_GDSCR = 0x22f001   (PWR_ON=0, HW_CONTROL=0, SW_COLLAPSE=1)
+       GX_GDSCR = 0x22f001   (同样：关着，软件可控)
+       GDS_HW_CTRL(0x3d9953c) = 0x5ff4
+       GX domain (0x3d99504) = 0x3c0001   (GMEM_CLAMP_IO=1)
+       ahb(0x911c)=0            cx_gmu(0x913c)=0x80002221
+       hub_cx_int(0x9148)=0x80000001       smmu vote(0x7000)=0x80000000
+       memnoc(0x9150)=0x80004220
+CB0.SCTLR=0 TTBR0=0 TTBR1=0 TCR=0 TCR2=0 MAIR0=0 MAIR1=0
+CBAR(0)=0 CBA2R(0)=0 CBFRSYNRA(0)=0x6dfd CB1.SCTLR=0
+KGSL RBBM_IDENT=0 RBBM_STATUS=0
+```
+
+解读：
+
+1. **CB 页（0x3dc0000）可读，不中止**——之前“CB 页一碰就挂”完全是 0x80000 那个错误偏移。
+2. 读回全 0，不是“寄存器被清空”，而是 **GPU_CC_CX 整个域是关的**
+   （`CX_GDSCR.PWR_ON=0`、`SW_COLLAPSE=1`、`GMEM_CLAMP_IO=1`）。CX 域里的
+   SMMU context bank 和 KGSL 寄存器在断电时读回 0、且不报错，这正好解释了 v8 的读数。
+3. 域外的东西活着：SMMU 全局寄存器（AHB 时钟域）读数正常，SMR/S2CR 也能写。
+4. **CX 是软件可控的**（`HW_CONTROL=0`），所以下一步可以直接清 `SW_COLLAPSE`
+   把它上电，不需要 RPMh/AOP 投票。
+
+⇒ 下一步（v9）：`GP_PWR=1` 清 `SW_COLLAPSE`、轮询 `PWR_ON`，再读 CB0 / KGSL，
+看 CB 页和 GPU 引擎是否随之上电。同时打开 `cpus=8`（用户确认稳定），
+免得单核把界面拖死。

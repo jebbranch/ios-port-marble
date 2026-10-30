@@ -790,6 +790,7 @@ wdone:
 
 		r->p_pwr_step = 1;
 		v = gp_rd32(g + 0x9108u);
+		con_hex("GPUS", 1);	/* read CX_GDSCR */
 		if (gp_fault) {
 			r->p_pwr_flags |= 1u;	/* GPUCC itself not reachable */
 			ok = 0;
@@ -825,6 +826,7 @@ wdone:
 		} else if (ok) {
 			r->p_pwr_flags |= 0x400u;	/* was already on */
 		}
+		con_hex2("GPUS", "cx=", v, "fl=", r->p_pwr_flags);
 
 		/* Ungate: smmu vote, ahb, hub_cx_int, cx_gmu. */
 		{
@@ -848,6 +850,7 @@ wdone:
 		}
 
 		r->p_pwr_step = 20;
+		con_hex("GPUS", 3);	/* clocks done, reading back */
 		r->p_cxgdr2 = gp_rd32(g + 0x9108u);
 		r->p_clk_ahb2 = gp_rd32(g + 0x911cu);
 		r->p_clk_cxgmu2 = gp_rd32(g + 0x913cu);
@@ -859,8 +862,21 @@ wdone:
 		if (cb)
 			r->p_cb0_sctlr2 = gp_rd32(cb + 0x00u);
 		r->last_step = 31;
+		/*
+		 * Fallback packing for a kernel that predates the v9 fields:
+		 *   fault(w2cr_f)=cxgdr2  restore(w2cr_r)=rbbm2
+		 *   trans(w2cr_t)=cb0_sctlr2  cbar_old(wcbar_old)=pwr_flags
+		 *   cb w(cbar_w)=pwr_step  cb bank(cbar_bank)=1  (marker)
+		 */
+		r->w2cr_f = r->p_cxgdr2;
+		r->w2cr_r = r->p_kgsl_rbbm2;
+		r->w2cr_t = r->p_cb0_sctlr2;
+		r->wcbar_old = r->p_pwr_flags;
+		r->cbar_w = r->p_pwr_step;
+		r->cbar_bank = 1;
 		con_hex2("GPU", "cx=", r->p_cxgdr2, "rbbm=", r->p_kgsl_rbbm2);
 		con_hex2("GPU", "cb0=", r->p_cb0_sctlr2, "fl=", r->p_pwr_flags);
+		con_hex("GPUS", 4);	/* CB0 read back */
 	}
 #endif
 
