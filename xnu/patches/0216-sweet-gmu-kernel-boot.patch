@@ -519,12 +519,14 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5389,6 +5882,10 @@
+@@ -5387,8 +5880,12 @@
+ 	int enabled = 0;
+ 	int rc;
  
++	/* SPMI rail probe first: g_gpu_probe resets the SoC when it is done. */
++	g_rail_probe();
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
-+	/* SPMI rail probe; gated by sweetrail=1. */
-+	g_rail_probe();
 +	/* Kernel-side GMU bring-up; gated by sweetgmuboot=1. */
 +	g_gmu_boot();
  	/* Independent too: gated by sweetsmp=1. */
