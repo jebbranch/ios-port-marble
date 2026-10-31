@@ -263,6 +263,32 @@ SERIAL=2aa26095 ./scripts/pull_logs.sh run1
 | 内核 panic 花屏 | 拍照记录 pc/lr/far + 寄存器；重启进 TWRP 拉上一轮日志 |
 | GitHub 下载很慢 | 设置 `MARBLE_PROXY=http://127.0.0.1:7890` |
 
+## 参与项目：欢迎一起来折腾
+
+这是一个仍在进行中的研究项目，一个人踩不完所有的坑。**非常欢迎新朋友**：
+
+- 手里有同款机器（Redmi Note 12 Turbo / marble / SM7475）的朋友：帮忙实机复现、
+  抓日志、读寄存器、验证补丁；
+- 做 XNU / IOKit / 驱动移植的同学：欢迎提交补丁和代码评审；
+- 有 Qualcomm 平台或 PMIC/RPMh/SMMU 经验的人：如果发现文档里有错、或者我们正在
+  走的路你早就走通过/走死过，请一定告诉我们。
+
+**开 Issue**：请贴现象、`logs/ring-*.txt`、启动参数，以及镜像标识（`sweeettime`），
+这样同一轮实验可以复现。范围不限于 bug——"这条路我试过，结论是 X" 同样有价值。
+
+**发 PR**：改 `xnu/patches/`（不要改构建产物）、脚本、文档都欢迎。一个 PR 尽量
+只做一件事；失败的尝试也请顺手写进 `docs/`，下一个人才不会重走。
+
+**请不要提交**：Apple / Qualcomm / 小米的二进制固件、IPSW、HFS 用户态镜像，
+以及任何设备私密数据（这些文件仓库一律不收）。
+
+上手顺序：**[docs/START-HERE.md](docs/START-HERE.md)** → `docs/handoff.md` →
+对应子系统的文档。尤其先看 **[docs/smmu-dead-ends.md](docs/smmu-dead-ends.md)**
+和 **[docs/gpu-probe.md](docs/gpu-probe.md)**，里面已经写死了大量"别再重走"的坑，
+能省下不少时间。
+
+Issues and pull requests in English are welcome too.
+
 ## 许可与声明
 
 - 本仓库的补丁、shim 与脚本按仓库 LICENSE 发布。
