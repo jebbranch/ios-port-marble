@@ -867,3 +867,22 @@ HFI 队列仍为 0（SMMU 无 fault）。
 剩下没复刻的差异：厂商那次上电里还有 **3 次 `regulator_enable`**
 （其中一个几乎肯定是 GX/vdd 轨道），以及 GCC `0x81018` 这个我们从未碰过的门。
 下一步优先验证：**先把 GX GDSC 打开再做时钟序列**。
+
+## 2026-10-31：CX 的 `PWR_ON=1` 是 ABL 遗留的假象
+
+把 CX GDSCR 按厂商的做法先 collapse（`0xf822f801`）再上电（`0x228800`）后：
+
+```
+cx gdscr=0x228801    ← PWR_ON=0、SW_COLLAPSE=1：上电失败
+gmu=0x80000000       ← GMU RCC ROOT_OFF
+fw loaded, itcm0=0   ← GMU 寄存器块整体不可访问
+cb1=0
+```
+
+**这说明之前一切“上电成功”的读数都来自 ABL 留下的域状态**：GDSC 的
+`PWR_ON` 位是继承值，我们自己的 RPMh 投票（`lcx/lmx/mxc`，命令都返回 0）
+并没有真正把轨道拉起来。一旦真的把域断掉，就再也回不来。
+
+⇒ 后续所有“`gpu_cc_ahb` 不 latch / GMU 无响应”的现象都可以统一解释为
+**平台电源没有真正就绪**，而不是寄存器序列的问题。下一步必须先解决
+RPMh 投票的真实生效（抓 `rpmh_write` 的 state 参数与完整 cmd 数组）。

@@ -148,14 +148,14 @@
 +		base |= (1u << 21) | (1u << 17);
 +
 +		/*
-+		 * The vendor collapses CX once (0xf822f801) and only then powers
-+		 * it (0x228800): a full off/on cycle resets the domain's state
-+		 * machine.  We used to power it from the ABL state.
++		 * Do NOT collapse the domain first: a real off/on cycle does
++		 * not come back (PWR_ON stays 0), which proves the CX rail is
++		 * only in the state ABL left it in -- our RPMh votes are not
++		 * actually raising it.  Power straight from that inherited
++		 * state until the rail voting is fixed.
 +		 */
-+		gm_wr(gc, 0x9108, (base | 1u) | (1u << 31));
-+		g_wait(3);
 +		gm_wr(gc, 0x9108, base);
-+		g_wait(3);
++		g_wait(2);
 +	}
 +	printf("SWEET GMU: cx gdscr=%#x\n", gm_rd(gc, 0x9108));
 +	sweet_log_sync();
