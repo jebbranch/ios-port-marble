@@ -1193,6 +1193,17 @@ gp_gmu_iommu(volatile struct gpu_probe_result *r)
 	gp_wr32(s + 0x804u, 0x80000005u);	/* SMR(1) = SID 5 */
 	gp_wr32(s + 0xc04u, 0x1u);		/* S2CR(1) = TRANS, CB1 */
 	__asm__ volatile("dsb sy" ::: "memory");
+
+#if GP_GMUBOOT == 4
+	/* Readback of the whole SID-5 wiring, nothing else runs. */
+	r->p_cb0_sctlr = gp_rd32(cb + 0x00u);	/* CB1.SCTLR */
+	r->p_cb0_ttbr0 = gp_rd32(cb + 0x20u);	/* TTBR0 */
+	r->p_cb0_ttbr1 = gp_rd32(cb + 0x30u);	/* TCR */
+	r->p_cb0_tcr = gp_rd32(s + 0x804u);	/* SMR(1) */
+	r->p_cb0_tcr2 = gp_rd32(s + 0xc04u);	/* S2CR(1) */
+	r->p_cb0_mair0 = gp_rd32(s + 0x1004u);	/* CBAR(1) */
+	r->p_cb0_mair1 = gp_rd32(s + 0x1804u);	/* CBA2R(1) */
+#endif
 }
 
 static int
@@ -1214,6 +1225,42 @@ gp_copy(uint8_t *dst, const uint8_t *src, uint32_t n)
 {
 	while (n--)
 		*dst++ = *src++;
+}
+
+/*
+ * HFI queue table (adreno_hfi.h / init_queues): a 24-byte table header, three
+ * 48-byte queue headers, then 4 KiB per queue starting at ALIGN(168,16)=176.
+ * The CM3 reads this table as soon as it starts.
+ */
+static void
+gp_hfi_init(void)
+{
+	static const uint32_t qtype[3] = { 0x0A00u, 0x0A01u, 0x2802u };
+	uint32_t *t = (uint32_t *)gmu_hfi;
+	unsigned i;
+
+	t[0] = 0;		/* version */
+	t[1] = 42;		/* table size in dwords */
+	t[2] = 6;		/* qhdr0 offset */
+	t[3] = 12;		/* qhdr size in dwords */
+	t[4] = 3;		/* num_q */
+	t[5] = 3;		/* num_active_q */
+
+	for (i = 0; i < 3u; i++) {
+		uint32_t *h = &t[6u + i * 12u];
+
+		h[0] = 1;				/* enabled */
+		h[1] = 0x60000000u + 176u + i * 4096u;	/* GMU VA */
+		h[2] = qtype[i];
+		h[3] = 1024u;				/* dwords */
+		h[4] = 0;
+		h[10] = 0;				/* read index */
+		h[11] = 0;				/* write index */
+	}
+	__asm__ volatile("dsb sy" ::: "memory");
+	for (i = 0; i < 16u; i++)
+		__asm__ volatile("dc civac, %0" ::
+		    "r"((uintptr_t)gmu_hfi + i * 0x1000u) : "memory");
 }
 
 static void
@@ -1309,6 +1356,7 @@ gp_gmu_boot(volatile struct gpu_probe_result *r)
 		gp_wr32(0x3d9e000u + 0x39u * 4u, 1u);
 		gp_wr32(0x3d00000u + 0x3c45u * 4u, 0u);
 		/* HFI queue table: our buffer at GMU_VA 0x60000000 */
+		gp_hfi_init();
 		gp_wr32(GMU_HFI_INIT - 4u, 0x60000000u);	/* QTBL_ADDR */
 		gp_wr32(GMU_HFI_INIT - 8u, 1u);			/* QTBL_INFO */
 		gp_wr32(0x3d68000UL + ((uintptr_t)(0x23b11u - 0x1a000u) << 2),
@@ -1318,7 +1366,7 @@ gp_gmu_boot(volatile struct gpu_probe_result *r)
 
 	r->last_step = 720;
 	r->p_kgsl_ident = gp_rd32(GMU_ITCM_W);		/* ITCM[0] echo */
-#if GP_GMUBOOT != 3
+#if GP_GMUBOOT == 1
 	gp_wr32(GMU_SYSRESET, 0u);			/* release CM3 */
 #endif
 	__asm__ volatile("dsb sy" ::: "memory");
