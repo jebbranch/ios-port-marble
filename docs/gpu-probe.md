@@ -828,3 +828,42 @@ C 600 ms 起只读 DRAM 的 HFI 队列并写日志/复位），探针线程不�
 2. **牺牲一个核**：把放复位的写绑定到非启动核，主核随后读 GPUCC 里的
    `GX_GDSCR`（GMU 起来后的第一件事就是开 GX）——只要 `PWR_ON` 变 1，
    就证明 CM3 在跑、而且能驱动 GPU，即使我们读不到 GMU 自己的寄存器。
+
+## 厂商 GPU 上电全过程（kprobe 抓取，2026-10-31）
+
+在 Android 上用 kprobe 挂 `regmap_update_bits_base` / `regulator_enable` /
+`rpmh_write`，抓到一次完整开机里 GPU 首次上电的全过程：
+
+```
+8.477431 rpmh lcx.lvl(0x30030)=7
+8.477628 rpmh lmx.lvl(0x30040)=5
+8.504411 regulator_enable
+8.504423 CX_GDSCR 写 0x228800      ← CLK_DIS_WAIT=8 + RETAIN_FF
+8.504445/449 regulator_enable ×2
+8.504454 gmu RCG 0x9318/0x931c = HW_CLK_CTRL|div1|tcxo
+8.504464 cx_gmu(0x913c)=1
+8.504466 hub RCG 0x93ec/0x93f0 = HW_CLK_CTRL|div1|tcxo
+8.504475 hub_cx_int(0x9148)=1
+8.504477 smmu vote(0x7000)=1
+8.504480 GCC memnoc(0x81010)=1
+8.504482 GCC 0x81018=1
+8.504493 **gpu_cc_ahb(0x911c)=1**    ← 厂商能写进去
+8.505483 gpu_cc_ahb=0               ← 1 ms 后自己关掉
+8.525516 rpmh mxc.lvl(0x300a0)=4
+8.527575 rpmh mxc.lvl(0x300a0)=6
+```
+
+**两个重要修正**：
+
+1. `mxc.lvl` 在 cmd-db 里有**两个条目**（`0x300a0` 和 `0x30120`）。我们之前一直投
+   `0x30120`，所以 RPMh 超时（rc=-5）；厂商用的是 **`0x300a0`**。
+2. 厂商给 `CX_GDSCR` 写的是 `0x228800`（`CLK_DIS_WAIT=8` + `RETAIN_FF=1`），
+   我们之前只清 `SW_COLLAPSE`。
+
+这些都已经在内核侧复刻（`cx gdscr=0xf8228800`、`hub cfg=0x100001`、
+shim 投 `lcx=7/lmx=5/mxc=6`），但 **`gpu_cc_ahb` 仍然不 latch**、GX 仍不上电、
+HFI 队列仍为 0（SMMU 无 fault）。
+
+剩下没复刻的差异：厂商那次上电里还有 **3 次 `regulator_enable`**
+（其中一个几乎肯定是 GX/vdd 轨道），以及 GCC `0x81018` 这个我们从未碰过的门。
+下一步优先验证：**先把 GX GDSC 打开再做时钟序列**。
