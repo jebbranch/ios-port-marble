@@ -231,6 +231,9 @@ static void irq_handler(void)
 #ifndef GP_GCC
 #define GP_GCC			0	/* v17: GCC gate that feeds the GPUCC hub RCG */
 #endif
+#ifndef GP_GCC2
+#define GP_GCC2			0	/* v30: gcc_gpu_memnoc_gfx + gcc_gpu_snoc_dvm_gfx */
+#endif
 #ifndef GP_VOTE
 #define GP_VOTE			0	/* v18: scan the HLOS1 vote page at 0x7000 */
 #endif
@@ -260,7 +263,7 @@ static const char gp_level_tag[] __attribute__((used)) =
     "w" GP_STR(GP_CBW) "t" GP_STR(GP_CBT)
     "d" GP_STR(GP_CMDB) "r" GP_STR(GP_RAIL)
     "k" GP_STR(GP_CLK) "m" GP_STR(GP_GMU) "s" GP_STR(GP_CLK_SEL)
-    "b" GP_STR(GP_BR) "g" GP_STR(GP_GCC) "o" GP_STR(GP_VOTE)
+    "b" GP_STR(GP_BR) "g" GP_STR(GP_GCC) "g2" GP_STR(GP_GCC2) "o" GP_STR(GP_VOTE)
     "c" GP_STR(GP_RSCC) "u" GP_STR(GP_GMUBOOT) "t2" GP_STR(GP_TCM)
     "st" GP_STR(GP_STAGE) "sr" GP_STR(GP_SMPREL);
 
@@ -821,6 +824,28 @@ gp_clk_setup(volatile struct gpu_probe_result *r)
 		__asm__ volatile("dsb sy" ::: "memory");
 		delay_ms(2);
 	}
+
+#if GP_GCC2
+	/*
+	 * The two GCC branches the vendor enables right before gpu_cc_ahb:
+	 * gcc_gpu_memnoc_gfx_clk (0x81010) and gcc_gpu_snoc_dvm_gfx_clk
+	 * (0x81018), bit 0 each.  They clock the GPU's path to SNOC/memnoc;
+	 * without them the AP loses the GPU AHB once the CM3 takes over.
+	 */
+	{
+		static const uint32_t goff[2] = { 0x181010u, 0x181018u };
+
+		for (i = 0; i < 2u; i++) {
+			uint32_t v = gp_rd32(goff[i]);
+
+			if (!gp_fault && !(v & 1u)) {
+				gp_wr32(goff[i], v | 1u);
+			}
+		}
+		__asm__ volatile("dsb sy" ::: "memory");
+		delay_ms(2);
+	}
+#endif
 
 	for (i = 0; i < 2u; i++) {
 		uintptr_t c = GPU_GPUCC_BASE + rcg[i].cmd;
