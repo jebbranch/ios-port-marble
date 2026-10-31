@@ -41,7 +41,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2634,340 @@
+@@ -2610,6 +2634,346 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -324,10 +324,16 @@
 +			 */
 +			printf("SWEET GMU: release delegated to shim cpu\n");
 +			sweet_log_sync();
++			uint32_t r0, w0, r1, w1;
++
 +			g_wait(6000);
 +			v = gm_rd(gc, 0x905cu);
-+			printf("SWEET GMU: gx gdscr=%#x pwr_on=%u\n", v,
-+			    (v >> 31) & 1u);
++			r0 = *(volatile uint32_t *)(hfi + (6u + 10u) * 4u);
++			w0 = *(volatile uint32_t *)(hfi + (6u + 11u) * 4u);
++			r1 = *(volatile uint32_t *)(hfi + (18u + 10u) * 4u);
++			w1 = *(volatile uint32_t *)(hfi + (18u + 11u) * 4u);
++			printf("SWEET GMU: gx gdscr=%#x pwr_on=%u cmd r/w=%u/%u "
++			    "msg r/w=%u/%u\n", v, (v >> 31) & 1u, r0, w0, r1, w1);
 +			sweet_log_sync();
 +			goto gmu_done;
 +		}
@@ -382,7 +388,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5747,8 @@
+@@ -5389,6 +5753,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
