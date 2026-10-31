@@ -25,12 +25,13 @@
  }
  
  static void
-@@ -2513,8 +2531,14 @@
+@@ -2512,9 +2530,15 @@
+ g_gpu_maybe_reset(void)
  {
  	int rb = 0, gl = 1;
- 
-+	int gm = 0;
 +
++	int gm = 0;
+ 
  	(void)PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb));
  	(void)PE_parse_boot_argn("sweetglink", &gl, sizeof(gl));
 +	(void)PE_parse_boot_argn("sweetgmuboot", &gm, sizeof(gm));
@@ -40,7 +41,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2634,370 @@
+@@ -2610,8 +2634,409 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -78,8 +79,8 @@
 +
 +	__asm__ volatile("dsb sy" ::: "memory");
 +	return v;
-+}
-+
+ }
+ 
 +static void
 +gm_wr(vm_offset_t b, uint32_t o, uint32_t v)
 +{
@@ -153,6 +154,42 @@
 +	sweet_log_sync();
 +
 +	/*
++	 * 1b. GX power, before the clocks.  The vendor's power-on enables
++	 * three regulators here (its gdsc-regulator path), and its GX switch
++	 * only closes once the mxc rail has been voted -- which the shim does.
++	 * Sequence mirrors gdsc-regulator: BLK_ARES pulse, GMEM_RESET pulse,
++	 * release GMEM_CLAMP_IO, then clear SW_COLLAPSE and poll PWR_ON.
++	 */
++	{
++		static const uint32_t srst[3] = { 0x9058u, 0x9358u, 0x958cu };
++		uint32_t gx = 0x905cu, dom = 0x9504u;
++
++		v = gm_rd(gc, gx);
++		if (!(v & (1u << 31))) {
++			if (v & 2u) {
++				gm_wr(gc, gx, v & ~2u);
++			}
++			for (i = 0; i < 3u; i++) {
++				gm_wr(gc, srst[i], gm_rd(gc, srst[i]) | 1u);
++			}
++			g_wait(1);
++			for (i = 0; i < 3u; i++) {
++				gm_wr(gc, srst[i], gm_rd(gc, srst[i]) & ~1u);
++			}
++			v = gm_rd(gc, dom);
++			gm_wr(gc, dom, v | (1u << 4));	/* GMEM_RESET */
++			g_wait(1);
++			gm_wr(gc, dom, (v & ~(1u << 4)) & ~1u);	/* clamp off */
++			v = gm_rd(gc, gx);
++			gm_wr(gc, gx, v & ~1u);		/* SW_COLLAPSE off */
++			g_wait(3);
++		}
++		printf("SWEET GMU: gx gdscr=%#x dom=%#x\n", gm_rd(gc, gx),
++		    gm_rd(gc, dom));
++		sweet_log_sync();
++	}
++
++	/*
 +	 * 2. clocks, exactly the sequence the vendor kernel performs (captured
 +	 * with kprobes on regmap_update_bits_base):
 +	 *   hub RCG: CMD.ROOT_EN=1, CFG = HW_CLK_CTRL|div=1|src=tcxo,
@@ -178,6 +215,7 @@
 +		gm_wr(gc, 0x7000u, gm_rd(gc, 0x7000u) | 1u);	/* smmu vote */
 +		if (gg) {
 +			gm_wr(gg, 0x81010u, gm_rd(gg, 0x81010u) | 1u);
++			gm_wr(gg, 0x81018u, gm_rd(gg, 0x81018u) | 1u);
 +		}
 +		gm_wr(gc, 0x9148u, gm_rd(gc, 0x9148u) | 1u);	/* hub_cx_int */
 +		gm_wr(gc, 0x913cu, gm_rd(gc, 0x913cu) | 1u);	/* cx_gmu */
@@ -408,10 +446,12 @@
 +			}
 +		}
 +	}
- }
- 
++}
++
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5777,8 @@
+  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
+  * Read-only probe: model, stream-match entries, and any existing mapping
+@@ -5389,6 +5814,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
