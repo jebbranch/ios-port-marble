@@ -1,11 +1,9 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -223,6 +223,24 @@
- 		return 0;
- 	}
+@@ -225,6 +225,24 @@
  	return g_win_map(w, pa, size);
-+}
-+
+ }
+ 
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -22,9 +20,11 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
- }
- 
++}
++
  static void
+ g_win_free(vm_offset_t win, vm_size_t size)
+ {
 @@ -2512,9 +2530,15 @@
  g_gpu_maybe_reset(void)
  {
@@ -41,7 +41,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,8 +2634,409 @@
+@@ -2610,6 +2634,416 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -79,8 +79,8 @@
 +
 +	__asm__ volatile("dsb sy" ::: "memory");
 +	return v;
- }
- 
++}
++
 +static void
 +gm_wr(vm_offset_t b, uint32_t o, uint32_t v)
 +{
@@ -395,6 +395,15 @@
 +			printf("SWEET GMU: smmu gfsr=%#x fsynr0=%#x fsynr1=%#x "
 +			    "fsynr2=%#x\n", gm_rd(sm, 0x48u), gm_rd(sm, 0x50u),
 +			    gm_rd(sm, 0x54u), gm_rd(sm, 0x58u));
++			{
++				vm_offset_t ao = g_map_win(0x3d40000ull, 0x1000u);
++
++				if (ao) {
++					printf("SWEET GMU: ao %#x %#x %#x %#x\n",
++					    gm_rd(ao, 0x0u), gm_rd(ao, 0x4u),
++					    gm_rd(ao, 0x8u), gm_rd(ao, 0x10u));
++				}
++			}
 +			sweet_log_sync();
 +			goto gmu_done;
 +		}
@@ -446,12 +455,10 @@
 +			}
 +		}
 +	}
-+}
-+
+ }
+ 
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
-  * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5389,6 +5814,8 @@
+@@ -5389,6 +5823,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
