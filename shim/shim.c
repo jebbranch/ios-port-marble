@@ -2520,6 +2520,8 @@ gp_gmu_hfi_init_from_secondary(void)
 
 void secondary_main(uint64_t idx)
 {
+	/* A parked helper must never take an IRQ into the EL1 vector. */
+	__asm__ volatile("msr daifset, #0xf" ::: "memory");
 #if GP_SMPREL
 	if (idx == 7u) {
 		gp_gmu_release_from_secondary();
