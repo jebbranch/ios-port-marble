@@ -8,10 +8,12 @@
  extern int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
      unsigned len);
  extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
-@@ -225,6 +226,24 @@
+@@ -223,6 +224,24 @@
+ 		return 0;
+ 	}
  	return g_win_map(w, pa, size);
- }
- 
++}
++
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -28,17 +30,16 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
-+}
-+
+ }
+ 
  static void
- g_win_free(vm_offset_t win, vm_size_t size)
- {
-@@ -2513,8 +2532,14 @@
+@@ -2512,9 +2531,15 @@
+ g_gpu_maybe_reset(void)
  {
  	int rb = 0, gl = 1;
- 
-+	int gm = 0;
 +
++	int gm = 0;
+ 
  	(void)PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb));
  	(void)PE_parse_boot_argn("sweetglink", &gl, sizeof(gl));
 +	(void)PE_parse_boot_argn("sweetgmuboot", &gm, sizeof(gm));
@@ -48,7 +49,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,611 @@
+@@ -2610,6 +2635,621 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -578,6 +579,16 @@
 +	}
 +	printf("SWEET GMU: releasing cm3 (posted window)\n");
 +	sweet_log_sync();
++	/*
++	 * Vendor order: gpu_cc_ahb is enabled immediately *before* the
++	 * release, not seconds earlier.  It self-gates when idle, so doing
++	 * it with the clocks and then staging firmware leaves it closed by
++	 * the time the CM3 starts.
++	 */
++	printf("SWEET GMU: ahb pre-release=%#x\n", gm_rd(gc, 0x911cu));
++	gm_wr(gc, 0x911cu, gm_rd(gc, 0x911cu) | 1u);
++	printf("SWEET GMU: ahb armed=%#x\n", gm_rd(gc, 0x911cu));
++	sweet_log_sync();
 +	gm_wr(gm, GMU_OFF(0x1f800u), 0u);
 +	/*
 +	 * Do not touch the GMU window after the release: once the CM3 owns
@@ -660,7 +671,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +6017,14 @@
+@@ -5387,8 +6027,14 @@
  	int enabled = 0;
  	int rc;
  
