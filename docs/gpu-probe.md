@@ -1048,3 +1048,32 @@ GPUCC（GX）、AO 块（0x3d40000）和 DDR 里的 HFI 队列，用来区分"�
   与 GMU 无关。原因待查；暂不改这条线。
 - 内核在写之前读 GPUCC/GMU 做"快照"：CX 塌陷时会把核挂死。要么先上电再读，
   要么用 shim 的 fault-safe 读法。
+
+### 放复位：写完成了，读 GPUCC 才卡
+
+内核 `f57d2a5`（放复位后不再读 GMU 窗口）真机结果：
+
+```
+SWEET GMU: pre-boot cfg done
+SWEET GMU: releasing cm3 (posted window)
+SWEET GMU: release written, gmu read skipped   ← 这一行打印出来了
+（此后读 GPUCC GX_GDSCR 时卡住，没有下一行）
+```
+
+两个结论：
+
+1. `CM3_SYSRESET=0` 的 posted 写**确实完成**了，卡的不是存储，而是之后对
+   GPU 寄存器的**读**；
+2. CM3 起来之后，连 **GPUCC（不只是 GMU 窗口）** 的读都会把这个核钉死——
+   说明 AHB 被 CM3 接管。反过来说，这是"CM3 正在执行"迄今最强的证据
+   （与 v27 的 200 ms 副作用实验一致）。
+
+因此放复位之后的唯一可用观测面是 **DDR（HFI 队列）** 和 **AO 块（0x3d40000）**。
+已提交 `ad6f403`：放复位后先读 HFI 队列的读/写索引与 AO，再决定是否收尾。
+（`1e16985` 与 `ad6f403` 已在 macos-15 runner 上排队构建；本地网络中断，尚未取回。）
+
+### 另一个否证
+
+`GP_GCC=1`（GCC 0x162000 的 GPLL0 div/src 门）加上电：`ahb` 仍然是 0，
+其余读数与不加完全一样。也就是说 vendor trace 里那条 `gpu_cc_ahb=1`
+不是 AP 能否读 GMU 的前提（厂商自己的也在 1 ms 后自清）。
