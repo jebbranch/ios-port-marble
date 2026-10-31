@@ -16,7 +16,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2616,310 @@
+@@ -2610,6 +2616,308 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -279,27 +279,25 @@
 +		gm_wr(kg, 0x3c45u * 4u, 0u);		/* GBIF halt off */
 +	}
 +
-+	/* 7. release the CM3 and wait for the firmware */
++	/*
++	 * 7. Release the CM3.  From here on never touch a GMU register: once
++	 * the CM3 runs, the AP's access to the block stalls (the AHB is the
++	 * GMU's now).  The HFI queues live in our own DRAM, so poll those.
++	 */
 +	gm_wr(gm, GMU_OFF(0x1f800u), 0u);
-+	for (k = 0; k < 2000u; k++) {
-+		v = gm_rd(gm, GMU_OFF(0x1f81cu));
-+		if (v & (1u << 8)) {
-+			break;
-+		}
-+		g_wait(1);
-+	}
-+	printf("SWEET GMU: cm3 fw_init=%#x after %u ms\n", v, k);
-+	sweet_log_sync();
-+	if (v & (1u << 8)) {
-+		gm_wr(gm, GMU_OFF(0x1f986u), 1u);
-+		for (k = 0; k < 200u; k++) {
-+			v = gm_rd(gm, GMU_OFF(0x1f980u));
-+			if (v & 1u) {
++	{
++		uint32_t rr = 0, rw = 0;
++
++		for (k = 0; k < 3000u; k++) {
++			rr = gm_rd(hfi, (18u + 10u) * 4u);	/* msg rd idx */
++			rw = gm_rd(hfi, (18u + 11u) * 4u);	/* msg wr idx */
++			if (rw != 0) {
 +				break;
 +			}
 +			g_wait(1);
 +		}
-+		printf("SWEET GMU: hfi status=%#x after %u ms\n", v, k);
++		printf("SWEET GMU: released; hfi msg r/w=%u/%u after %u ms\n",
++		    rr, rw, k);
 +		sweet_log_sync();
 +	}
 +
@@ -327,7 +325,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5699,8 @@
+@@ -5389,6 +5697,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
