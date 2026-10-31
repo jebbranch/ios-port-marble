@@ -16,7 +16,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2616,298 @@
+@@ -2610,6 +2616,310 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -175,9 +175,9 @@
 +				    gm_fw_ld32((const uint8_t *)(p + i)));
 +			}
 +		} else {
-+			for (i = 0; i < bsize; i++) {
-+				*(uint8_t *)(cache + (addr - 0x4000u) + i) =
-+				    ((const uint8_t *)p)[i];
++			for (i = 0; i + 4u <= bsize; i += 4u) {
++				gm_wr(cache, (addr - 0x4000u) + i,
++				    gm_fw_ld32((const uint8_t *)(p + i)));
 +			}
 +		}
 +		p += bsize;
@@ -189,40 +189,52 @@
 +	/* 4. HFI queue table (adreno_hfi.h init_queues) */
 +	{
 +		static const uint32_t qt[3] = { 0x0a00u, 0x0a01u, 0x2802u };
-+		uint32_t *t = (uint32_t *)hfi;
 +
-+		t[0] = 0; t[1] = 42; t[2] = 6; t[3] = 12; t[4] = 3; t[5] = 3;
++		/* Device memory: 32-bit stores only, no NEON striding. */
++		gm_wr(hfi, 0u, 0u);
++		gm_wr(hfi, 4u, 42u);
++		gm_wr(hfi, 8u, 6u);
++		gm_wr(hfi, 12u, 12u);
++		gm_wr(hfi, 16u, 3u);
++		gm_wr(hfi, 20u, 3u);
 +		for (i = 0; i < 3u; i++) {
-+			uint32_t *qh = &t[6u + i * 12u];
++			uint32_t o = (6u + i * 12u) * 4u;
 +
-+			qh[0] = 1;
-+			qh[1] = (uint32_t)GMU_HFI_PA + 176u + i * 4096u;
-+			qh[2] = qt[i];
-+			qh[3] = 1024u;
++			gm_wr(hfi, o + 0u, 1u);
++			gm_wr(hfi, o + 4u,
++			    (uint32_t)GMU_HFI_PA + 176u + i * 4096u);
++			gm_wr(hfi, o + 8u, qt[i]);
++			gm_wr(hfi, o + 12u, 1024u);
 +		}
 +	}
 +
 +	/* 5. SID-5 context bank 1: cache at 0x4000, hfi at 0x60000000 */
 +	{
-+		uint64_t *l1 = (uint64_t *)tbl;
-+		uint64_t *l2 = (uint64_t *)(tbl + 0x1000);
-+		uint64_t *l3 = (uint64_t *)(tbl + 0x2000);
-+		uint64_t *h2 = (uint64_t *)(tbl + 0x3000);
-+		uint64_t *h3 = (uint64_t *)(tbl + 0x4000);
++		uint32_t tpa = (uint32_t)GMU_TBL_PA;
 +		vm_offset_t cb = sm + 0x21000u;	/* CB1 */
 +
-+		for (i = 0; i < 512u; i++) {
-+			l1[i] = 0; l2[i] = 0; l3[i] = 0; h2[i] = 0; h3[i] = 0;
++		/* Tables live in Device memory too: 32-bit stores only. */
++		for (i = 0; i < 512u * 5u; i++) {
++			gm_wr(tbl, i * 4u, 0u);
 +		}
-+		l1[0] = (uint64_t)(GMU_TBL_PA + 0x1000u) | 3u;
-+		l2[0] = (uint64_t)(GMU_TBL_PA + 0x2000u) | 3u;
-+		for (i = 4; i < 20u; i++) {
-+			l3[i] = (GMU_CACHE_PA + (i - 4u) * 0x1000u) | 0x703u;
++		gm_wr(tbl, 0x0000u, (tpa + 0x1000u) | 3u);	/* L1[0] */
++		gm_wr(tbl, 0x0004u, 0u);
++		gm_wr(tbl, 0x1000u, (tpa + 0x2000u) | 3u);	/* L2[0] */
++		gm_wr(tbl, 0x1004u, 0u);
++		for (i = 4; i < 20u; i++) {			/* L3: cache */
++			gm_wr(tbl, 0x2000u + i * 8u,
++			    ((uint32_t)GMU_CACHE_PA + (i - 4u) * 0x1000u) |
++			    0x703u);
++			gm_wr(tbl, 0x2004u + i * 8u, 0u);
 +		}
-+		l1[1] = (uint64_t)(GMU_TBL_PA + 0x3000u) | 3u;
-+		h2[0] = (uint64_t)(GMU_TBL_PA + 0x4000u) | 3u;
-+		for (i = 0; i < 16u; i++) {
-+			h3[i] = (GMU_HFI_PA + i * 0x1000u) | 0x703u;
++		gm_wr(tbl, 0x0008u, (tpa + 0x3000u) | 3u);	/* L1[1] */
++		gm_wr(tbl, 0x000cu, 0u);
++		gm_wr(tbl, 0x3000u, (tpa + 0x4000u) | 3u);	/* H2[0] */
++		gm_wr(tbl, 0x3004u, 0u);
++		for (i = 0; i < 16u; i++) {			/* H3: hfi */
++			gm_wr(tbl, 0x4000u + i * 8u,
++			    ((uint32_t)GMU_HFI_PA + i * 0x1000u) | 0x703u);
++			gm_wr(tbl, 0x4004u + i * 8u, 0u);
 +		}
 +		__asm__ volatile("dsb sy" ::: "memory");
 +
@@ -315,7 +327,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5687,8 @@
+@@ -5389,6 +5699,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
