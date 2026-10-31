@@ -906,3 +906,21 @@ kernel: cx gdscr=0x228801   ← 掉电→上电周期后 PWR_ON 仍为 0
 ⇒ GPU 硬件启动剩下的所有路径都收敛到同一个前提：**在 XNU 里建立真实的
 电源管理路径**（RPMh/regulator/interconnect 的 active 侧投票与 PMIC 配置），
 而不是继续在 GPUCC 寄存器上打转。这已经不是探针能解决的问题，是驱动移植。
+
+### 纠正：`state=2` 是 ACTIVE，不是 WAKE
+
+`include/soc/qcom/tcs.h` 的顺序是 `SLEEP=0, WAKE=1, ACTIVE=2`，所以 kprobe 里
+厂商所有 GPU 轨道投票的 `st=0x2` 就是 **ACTIVE_ONLY**——和我们原来的投票一致。
+（之前误判成 WAKE 组，已回退。）
+
+同一窗口里厂商还会发 **BCM 总线带宽投票**（`0x50000/0x50004` 的
+`0x6xxxxxxx` 载荷，来自 `icc_set_bw`）；这部分我们从未做过。
+
+到这里，AP 侧寄存器与 RPMh 投票序列已经和厂商完全对齐，但：
+- 真做一次 CX 掉电→上电，PWR_ON 仍然回不来；
+- `gpu_cc_ahb` 不 latch；
+- GMU 无 AO 活动、HFI 无消息、SMMU 无 fault。
+
+⇒ **剩下的差距是平台电源域本身**（ARC active 电平/BUS 带宽/或许还有 AOP 侧
+的 GPU 电源状态），不是寄存器序列。继续推进需要的是电源管理移植，
+而不是再加探针。

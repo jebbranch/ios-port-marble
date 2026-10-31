@@ -702,12 +702,11 @@ gp_rh_vote(uint32_t addr, uint32_t level)
 		return -1;
 
 	/*
-	 * The vendor's GPU rail votes all target the WAKE TCS group
-	 * (rpmh_write state=2); ACTIVE-only votes complete but leave the
-	 * rail where it was.  Groups are 2 TCS each: 0-1 ACTIVE, 2-3 SLEEP,
-	 * 4-5 WAKE.
+	 * ACTIVE TCS group.  tcs.h orders the enum SLEEP=0, WAKE=1,
+	 * ACTIVE=2, so the vendor's "state=2" is ACTIVE and 0-1 is right
+	 * (groups are 2 TCS each: 0-1 ACTIVE, 2-3 SLEEP, 4-5 WAKE).
 	 */
-	for (i = 4; i < 6u; i++) {
+	for (i = 0; i < 2u; i++) {
 		uint32_t s = RH_TCS + i * RH_TCS_STRIDE;
 
 		if (gp_rd32(s + RH_STATUS) != 0 &&
