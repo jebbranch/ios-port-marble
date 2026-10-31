@@ -8,12 +8,10 @@
  extern int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
      unsigned len);
  extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
-@@ -223,6 +224,24 @@
- 		return 0;
- 	}
+@@ -225,6 +226,24 @@
  	return g_win_map(w, pa, size);
-+}
-+
+ }
+ 
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -30,9 +28,11 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
- }
- 
++}
++
  static void
+ g_win_free(vm_offset_t win, vm_size_t size)
+ {
 @@ -2512,9 +2531,15 @@
  g_gpu_maybe_reset(void)
  {
@@ -49,7 +49,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,527 @@
+@@ -2610,6 +2635,543 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -86,6 +86,7 @@
 +	printf("SWEET SNAP: cx_gdscr=%#x cfg=%#x gx_gdscr=%#x gx_cfg=%#x\n",
 +	    gm_rd(gc, 0x9108u), gm_rd(gc, 0x910cu), gm_rd(gc, 0x905cu),
 +	    gm_rd(gc, 0x9060u));
++	sweet_log_sync();
 +	printf("SWEET SNAP: ahb=%#x cxgmu=%#x hub=%#x smmuv=%#x "
 +	    "memnoc=%#x bcr=%#x\n", gm_rd(gc, 0x911cu), gm_rd(gc, 0x913cu),
 +	    gm_rd(gc, 0x9148u), gm_rd(gc, 0x7000u), gm_rd(gc, 0x9150u),
@@ -93,11 +94,15 @@
 +	printf("SWEET SNAP: gmu_rcg=%#x/%#x hub_rcg=%#x/%#x hub_div=%#x\n",
 +	    gm_rd(gc, 0x9318u), gm_rd(gc, 0x931cu), gm_rd(gc, 0x93ecu),
 +	    gm_rd(gc, 0x93f0u), gm_rd(gc, 0x9430u));
++	sweet_log_sync();
 +	printf("SWEET SNAP: rbbm_ident=%#x rbbm_status=%#x\n",
 +	    gm_rd(kg, 0x0u), gm_rd(kg, 0x840u));
++	sweet_log_sync();
 +	printf("SWEET SNAP: smmu id0=%#x id1=%#x s2cr0=%#x s2cr1=%#x "
 +	    "s2cr5=%#x\n", gm_rd(sm, 0x0u), gm_rd(sm, 0x4u),
 +	    gm_rd(sm, 0xc00u), gm_rd(sm, 0xc04u), gm_rd(sm, 0xc14u));
++	sweet_log_sync();
++	printf("SWEET SNAP: gmu (last group)\n");
 +	printf("SWEET SNAP: cm3_reset=%#x fw_init=%#x hfi_cs=%#x hfi_ci=%#x "
 +	    "itcm0=%#x dtcm0=%#x\n", gm_rd(gm, 0x16000u), gm_rd(gm, 0x16070u),
 +	    gm_rd(gm, 0x16600u), gm_rd(gm, 0x16618u), gm_rd(gm, 0x5000u),
@@ -120,23 +125,34 @@
 +static void
 +g_rail_probe(void)
 +{
-+	int en = 0;
++	int en = 0, mode;
 +	unsigned sid, base, seen = 0;
 +
 +	(void)PE_parse_boot_argn("sweetrail", &en, sizeof(en));
 +	if (!en) {
 +		return;
 +	}
++	mode = en;	/* 1 = the two suspected rails only, 2 = full sweep */
 +	if (sweet_spmi_init() != 0) {
 +		printf("SWEET RAIL: spmi init failed\n");
 +		sweet_log_sync();
 +		return;
 +	}
++	printf("SWEET RAIL: start mode=%d\n", mode);
++	sweet_log_sync();
 +	for (sid = 0; sid <= 3u; sid++) {
++		if (mode < 2 && sid != 1u && sid != 2u) {
++			continue;
++		}
++		printf("SWEET RAIL: sid%u scanning\n", sid);
++		sweet_log_sync();
 +		for (base = 0x1400u; base <= 0x1f00u; base += 0x100u) {
 +			uint8_t vo = 0xff, md = 0xff, eb = 0xff, v2 = 0xff;
 +			int r0, r1, r2, r3;
 +
++			if (mode < 2 && base != 0x1900u && base != 0x1800u) {
++				continue;
++			}
 +			r0 = sweet_spmi_read_any(sid, base + 0x40u, &vo);
 +			r1 = sweet_spmi_read_any(sid, base + 0x45u, &md);
 +			r2 = sweet_spmi_read_any(sid, base + 0x46u, &eb);
@@ -577,7 +593,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +5933,14 @@
+@@ -5387,8 +5949,14 @@
  	int enabled = 0;
  	int rc;
  
