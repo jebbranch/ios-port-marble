@@ -8,10 +8,12 @@
  extern int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
      unsigned len);
  extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
-@@ -225,6 +226,24 @@
+@@ -223,6 +224,24 @@
+ 		return 0;
+ 	}
  	return g_win_map(w, pa, size);
- }
- 
++}
++
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -28,11 +30,9 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
-+}
-+
+ }
+ 
  static void
- g_win_free(vm_offset_t win, vm_size_t size)
- {
 @@ -2513,8 +2532,14 @@
  {
  	int rb = 0, gl = 1;
@@ -48,20 +48,18 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,475 @@
- 	}
- 	sweet_log_sync();
+@@ -2612,6 +2637,472 @@
  	g_gpu_maybe_reset();
-+}
-+
+ }
+ 
 +/*
 + * ---- SPMI rail probe (sweetrail=1) ----
 + *
-+ * PM8350C is SPMI SID 2 (DT qcom,pm8350c@2).  Its SMPS blocks sit at
-+ * 0x1400 + (n-1)*0x100, so S6 (the GPU CX rail, rpmh-regulator-cxlvl) is
-+ * at 0x1900 and pm8350 S5 (gfx) at SID 1 0x1800.  Read a window of each
-+ * and let the values speak: a live rail shows a setpoint, a dead one
-+ * does not.
++ * The GPU rails are PM8350C S6 (CX, expected SID 2 base 0x1900) and PM8350
++ * S5 (gfx, SID 1 base 0x1800), but a wrong SID or block base looks exactly
++ * like a dead rail.  So sweep every PMIC/block and print only the blocks
++ * that answer: a live SMPS has a 0..7 mode at +0x45 and EN bit 7 at +0x46,
++ * with the voltage setpoint at +0x40.
 + */
 +extern int sweet_spmi_init(void);
 +extern int sweet_spmi_read_any(unsigned sid, unsigned addr, uint8_t *out);
@@ -70,9 +68,7 @@
 +g_rail_probe(void)
 +{
 +	int en = 0;
-+	unsigned base[2] = { 0x1900u, 0x1800u };	/* c6 / g5 */
-+	unsigned sid[2] = { 2u, 1u };
-+	unsigned b, o;
++	unsigned sid, base, seen = 0;
 +
 +	(void)PE_parse_boot_argn("sweetrail", &en, sizeof(en));
 +	if (!en) {
@@ -83,28 +79,27 @@
 +		sweet_log_sync();
 +		return;
 +	}
-+	for (b = 0; b < 2u; b++) {
-+		uint32_t lo = 0, hi = 0;
++	for (sid = 0; sid <= 3u; sid++) {
++		for (base = 0x1400u; base <= 0x1f00u; base += 0x100u) {
++			uint8_t vo = 0xff, md = 0xff, eb = 0xff, v2 = 0xff;
++			int r0, r1, r2, r3;
 +
-+		printf("SWEET RAIL: sid%u base=%#x:", sid[b], base[b]);
-+		for (o = 0x40u; o <= 0x5fu; o++) {
-+			uint8_t v = 0xff;
-+
-+			if (sweet_spmi_read_any(sid[b], base[b] + o, &v) == 0) {
-+				printf(" %02x=%02x", o, v);
-+				if (o == 0x46u) {
-+					lo = v;
-+				}
-+				if (o == 0x47u) {
-+					hi = v;
-+				}
++			r0 = sweet_spmi_read_any(sid, base + 0x40u, &vo);
++			r1 = sweet_spmi_read_any(sid, base + 0x45u, &md);
++			r2 = sweet_spmi_read_any(sid, base + 0x46u, &eb);
++			r3 = sweet_spmi_read_any(sid, base + 0x47u, &v2);
++			if (r0 && r1 && r2) {
++				continue;	/* nothing backs this block */
 +			}
++			++seen;
++			printf("SWEET RAIL: sid%u b%04x vo=%02x md=%02x "
++			    "en=%02x v2=%02x r=%d%d%d%d\n",
++			    sid, base, vo, md, eb, v2, r0, r1, r2, r3);
++			sweet_log_sync();
 +		}
-+		printf("\n");
-+		sweet_log_sync();
-+		(void)lo;
-+		(void)hi;
 +	}
++	printf("SWEET RAIL: done blocks=%u\n", seen);
++	sweet_log_sync();
 +}
 +
 +/*
@@ -521,10 +516,12 @@
 +			}
 +		}
 +	}
- }
- 
++}
++
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +5881,12 @@
+  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
+  * Read-only probe: model, stream-match entries, and any existing mapping
+@@ -5387,8 +5878,12 @@
  	int enabled = 0;
  	int rc;
  
