@@ -701,7 +701,13 @@ gp_rh_vote(uint32_t addr, uint32_t level)
 	if (gp_fault || !ncpt || ncpt > 16u)
 		return -1;
 
-	for (i = 0; i < 2u; i++) {
+	/*
+	 * The vendor's GPU rail votes all target the WAKE TCS group
+	 * (rpmh_write state=2); ACTIVE-only votes complete but leave the
+	 * rail where it was.  Groups are 2 TCS each: 0-1 ACTIVE, 2-3 SLEEP,
+	 * 4-5 WAKE.
+	 */
+	for (i = 4; i < 6u; i++) {
 		uint32_t s = RH_TCS + i * RH_TCS_STRIDE;
 
 		if (gp_rd32(s + RH_STATUS) != 0 &&
@@ -2402,19 +2408,20 @@ static void __attribute__((noreturn)) gold_main(uint64_t dtb)
  * secondary CPU and leave the boot CPU free for XNU.
  */
 static void
-gp_spin_until(uint64_t ticks)
+gp_spin_ms(uint64_t ms)
 {
 	uint64_t f = rsr("cntfrq_el0"), t0 = rsr("cntpct_el0"), t;
+	uint64_t ticks = f / 1000u * ms;
 
 	do {
 		t = rsr("cntpct_el0");
-	} while (t - t0 < f * ticks);
+	} while (t - t0 < ticks);
 }
 
 static void
 gp_gmu_release_from_secondary(void)
 {
-	gp_spin_until(3u);		/* let XNU get going */
+	gp_spin_ms(300u);		/* XNU is far enough along */
 	wr32(0x3d7e000UL, 0u);		/* CM3_SYSRESET = 0 */
 	for (;;) {
 		__asm__ volatile("wfe");
@@ -2457,7 +2464,7 @@ gp_gmu_rscc_late(void)
 static void
 gp_gmu_hfi_init_from_secondary(void)
 {
-	gp_spin_until(5u);
+	gp_spin_ms(600u);		/* 300 ms after the release, as the vendor does */
 	gp_gmu_rscc_late();
 	wr32(0x3d7e618UL, 1u);		/* GEN7_GMU_HFI_CTRL_INIT */
 	for (;;) {

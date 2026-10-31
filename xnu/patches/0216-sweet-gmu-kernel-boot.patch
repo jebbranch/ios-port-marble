@@ -41,7 +41,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,8 +2634,425 @@
+@@ -2610,6 +2634,424 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -79,8 +79,8 @@
 +
 +	__asm__ volatile("dsb sy" ::: "memory");
 +	return v;
- }
- 
++}
++
 +static void
 +gm_wr(vm_offset_t b, uint32_t o, uint32_t v)
 +{
@@ -148,14 +148,15 @@
 +		base |= (1u << 21) | (1u << 17);
 +
 +		/*
-+		 * Do NOT collapse the domain first: a real off/on cycle does
-+		 * not come back (PWR_ON stays 0), which proves the CX rail is
-+		 * only in the state ABL left it in -- our RPMh votes are not
-+		 * actually raising it.  Power straight from that inherited
-+		 * state until the rail voting is fixed.
++		 * Full off/on cycle, as the vendor does: collapse, then power.
++		 * With the rail votes now in the WAKE TCS group this should
++		 * come back with PWR_ON=1; if it does not, the rail really is
++		 * not being raised.
 +		 */
++		gm_wr(gc, 0x9108, (base | 1u) | (1u << 31));
++		g_wait(3);
 +		gm_wr(gc, 0x9108, base);
-+		g_wait(2);
++		g_wait(3);
 +	}
 +	printf("SWEET GMU: cx gdscr=%#x\n", gm_rd(gc, 0x9108));
 +	sweet_log_sync();
@@ -462,12 +463,10 @@
 +			}
 +		}
 +	}
-+}
-+
+ }
+ 
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
-  * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5389,6 +5830,8 @@
+@@ -5389,6 +5831,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
