@@ -949,3 +949,49 @@ CX 域电源 ──┬── GPUCC 时钟/门控（ahb 不 latch）
 **结论**：下一步不是继续调 GPUCC 寄存器，而是把 `sweet_rpmh` 补成完整实现
 （solver/batch/ARC 语义），并用一个可观测资源验证 ARC 投票真的生效；
 在此之前，"GPU 硬件启动"无法达成。
+
+## 2026-10-31 晚：基线快照首跑（挂死）+ CI 失效
+
+按 GPT 给的顺序，第一次跑的是**纯基线**：`sweetgsnap=1 sweetrail=1`，
+不投票、不 collapse、不进 GMU boot（shim 侧 `GP_SURVEY=0`）。结果：
+
+```
+fastboot boot → OK
+10 分钟内：UDP console 0 字节、adb 不出现、fastboot 不在
+```
+
+即**卡在 console 起来之前**。两个新加的早期步骤都可能负责：
+
+1. `g_gpu_snapshot()` 在任何 GPU 写入之前读 GPUCC/KGSL/SMMU/GMU——
+   如果这一 boot ABL 没把 CX 留在 on，读 GPUCC/GMU 就会挂总线；
+2. `g_rail_probe()` 的全片扫描（4 SID × 12 个 SMPS 块 × 4 次读，
+   最长 192 次 SPMI 事务，每次超时 1 s），足以把启动拖成假死。
+
+两者都没写进 ring 之前无从区分（旧快照只在函数末尾 sync 一次）。
+
+### 已做的改动（内核 96ccb67，但没构建成功，见下）
+
+- 快照在 GPUCC / KGSL / SMMU / GMU 四组之间各加一次 `sweet_log_sync()`，
+  并先打印 `SWEET SNAP: gmu (last group)`，卡在哪组一眼可见；
+- 轨道探测分档：`sweetrail=1` 只读两颗疑似轨道（SID2 `0x1900`、SID1 `0x1800`），
+  `sweetrail=2` 才全片扫；并打印 `SWEET RAIL: start mode=` / `sid%u scanning`；
+- CI 的"补丁必须生效"检查加了 `SWEET SNAP: cx_gdscr` 与
+  `SWEET RAIL: done blocks` 两个标记。
+
+### ★ 两个待解的状态问题
+
+1. **设备卡死中**（无 adb / 无 fastboot），需要物理长按电源重启后
+   用 `scripts/pull_logs.sh` 拉 ring，看最后一条带 sync 的输出。
+2. **GitHub Actions 从 2026-10-31 14:04Z 起每个 run 启动约 1 秒即被 cancelled**
+   （push、workflow_dispatch、rerun 全部一样；`cancel-in-progress` 已改成
+   false，无效）。仓库是公开的，但 **macOS runner 计费不免费**，最可能是
+   账号 Actions 额度/支出上限，需要在 GitHub 账号的 Billing 页面确认。
+   在此之前内核侧改动无法产出新镜像。
+
+### 绕过 CI 的现成材料
+
+- `221fd74` 的内核（含 `sweetgsnap` + 全片扫描 + shim 标记读回）已下载并在
+  本地打过 CNTP_CTL 补丁，可直接打镜像；
+- `0223a85` 的内核（含全片扫描、无快照）也保留着。
+- 因此设备回来后**不需要新内核**就能二分：先 `sweetgsnap=1`（不扫轨道）
+  看快照是否安全；再决定是否需要分档内核。
