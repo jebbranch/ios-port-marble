@@ -1,5 +1,14 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
+@@ -39,7 +39,7 @@
+ extern ppnum_t pmap_find_phys(pmap_t pmap, addr64_t va);
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ extern int sweet_spmi_init(void);
+-extern int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
++extern int sweet_spmi_read_any(unsigned sid, unsigned addr, uint8_t *out);
+ extern int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
+     unsigned len);
+ extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
 @@ -225,6 +225,24 @@
  	return g_win_map(w, pa, size);
  }
@@ -25,13 +34,12 @@
  static void
  g_win_free(vm_offset_t win, vm_size_t size)
  {
-@@ -2512,9 +2530,15 @@
- g_gpu_maybe_reset(void)
+@@ -2513,8 +2531,14 @@
  {
  	int rb = 0, gl = 1;
-+
-+	int gm = 0;
  
++	int gm = 0;
++
  	(void)PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb));
  	(void)PE_parse_boot_argn("sweetglink", &gl, sizeof(gl));
 +	(void)PE_parse_boot_argn("sweetgmuboot", &gm, sizeof(gm));
@@ -57,7 +65,7 @@
 + * does not.
 + */
 +extern int sweet_spmi_init(void);
-+extern int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
++extern int sweet_spmi_read_any(unsigned sid, unsigned addr, uint8_t *out);
 +
 +static void
 +g_rail_probe(void)
@@ -83,7 +91,7 @@
 +		for (o = 0x40u; o <= 0x5fu; o++) {
 +			uint8_t v = 0xff;
 +
-+			if (sweet_spmi_read(sid[b], base[b] + o, &v) == 0) {
++			if (sweet_spmi_read_any(sid[b], base[b] + o, &v) == 0) {
 +				printf(" %02x=%02x", o, v);
 +				if (o == 0x46u) {
 +					lo = v;
@@ -98,8 +106,8 @@
 +		(void)lo;
 +		(void)hi;
 +	}
-+}
-+
+ }
+ 
 +/*
 + * ---- kernel-side GMU bring-up (sweetgmuboot=1) ----
 + *
@@ -146,8 +154,8 @@
 +{
 +	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
 +	    ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
- }
- 
++}
++
 +static void
 +g_gmu_boot(void)
 +{
