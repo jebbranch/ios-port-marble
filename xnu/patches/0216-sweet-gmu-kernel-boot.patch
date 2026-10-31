@@ -48,12 +48,10 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,597 @@
- 	}
- 	sweet_log_sync();
+@@ -2612,6 +2637,598 @@
  	g_gpu_maybe_reset();
-+}
-+
+ }
+ 
 +/*
 + * ---- GPU state snapshot (sweetgsnap=1) ----
 + *
@@ -597,10 +595,11 @@
 +		 * after the release is what wedges the core.  Only DDR (HFI
 +		 * queues) and the AO block stay reachable from here.
 +		 */
-+		printf("SWEET GMU: after rel hfi=%#x/%#x/%#x\n",
-+		    *(volatile uint32_t *)(hfi + 0u),
-+		    *(volatile uint32_t *)(hfi + 4u),
-+		    *(volatile uint32_t *)(hfi + 8u));
++		printf("SWEET GMU: after rel hfi rd/wr=%u/%u msg=%u/%u\n",
++		    *(volatile uint32_t *)(hfi + 0x40u),
++		    *(volatile uint32_t *)(hfi + 0x44u),
++		    *(volatile uint32_t *)(hfi + 0x70u),
++		    *(volatile uint32_t *)(hfi + 0x74u));
 +		if (ao) {
 +			printf("SWEET GMU: ao=%#x %#x %#x\n", gm_rd(ao, 0x0u),
 +			    gm_rd(ao, 0x4u), gm_rd(ao, 0x8u));
@@ -643,10 +642,12 @@
 +			}
 +		}
 +	}
- }
- 
++}
++
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +6003,14 @@
+  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
+  * Read-only probe: model, stream-match entries, and any existing mapping
+@@ -5387,8 +6004,14 @@
  	int enabled = 0;
  	int rc;
  
