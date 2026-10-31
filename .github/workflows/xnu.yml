@@ -26,8 +26,10 @@ on:
 
 
 concurrency:
+  # Serialise builds instead of cancelling: with cancel-in-progress the
+  # dispatch/push runs kept killing each other within a second of starting.
   group: xnu-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   DXB_REPO: https://github.com/blacktop/darwin-xnu-build
