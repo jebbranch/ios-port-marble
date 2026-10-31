@@ -1077,3 +1077,38 @@ SWEET GMU: release written, gmu read skipped   ← 这一行打印出来了
 `GP_GCC=1`（GCC 0x162000 的 GPLL0 div/src 门）加上电：`ahb` 仍然是 0，
 其余读数与不加完全一样。也就是说 vendor trace 里那条 `gpu_cc_ahb=1`
 不是 AP 能否读 GMU 的前提（厂商自己的也在 1 ms 后自清）。
+
+## 2026-11-01：放复位之后的可观测性全部断掉
+
+带 `GP_STAGE=1` 的内核 `d0ef98b`（在放复位前一刻写 `gpu_cc_ahb=1`，
+并在放复位后逐条 sync 地读 HFI/AO/SMMU）：
+
+```
+SWEET GMU: ahb pre-release=0
+SWEET GMU: ahb armed=0            ← 写 bit0 根本不 latch（厂商那次能读到 1）
+SWEET GMU: release written, gmu read skipped
+（再无任何输出；HFI/AO/SMMU 三条 print 一条都没出来）
+```
+
+补充事实：
+
+- `release written` 有时出现、有时不出现（posted 写偶发不返回），说明
+  `CM3_SYSRESET=0` 这次 Device 写的完成时机不稳定；
+- `gpu_cc_ahb`(0x911c) 的 bit0 在任何时刻写都不 latch，尝试位置包括
+  时钟配置后、放复位前一刻；`GP_GCC2`（GCC `gcc_gpu_memnoc_gfx` 0x81010 /
+  `gcc_gpu_snoc_dvm_gfx` 0x81018）与 `GP_RSCC`（RSC/PDC 微码）都不改变这一点；
+- `GP_SMPREL=1` 的委托放复位仍然让 XNU 起不来；已排除 `CPUS=6`（单独用
+  `CPUS=6` 正常启动）和中断未屏蔽（已加 `msr daifset, #0xf`）两个原因。
+
+当前判断：CM3 放复位之后 AP 侧对 GPU 整个 AHB 的访问（GPUCC、GMU、SMMU、
+甚至随后的 DDR 读路径上的 print 都没出来）不再可用，而厂商的 AP 在同一时刻
+仍能轮询 `FW_INIT`。差异已经收敛到"AP 的 GPU 总线/互连投票"这一处——
+`gpu_cc_ahb` 能写是厂商侧唯一对我们不成立的前置条件。
+
+下一步（按优先级）：
+
+1. 找到 `gpu_cc_ahb` 真正的使能路径：驱动里它是 `clk_branch2_ops` 的普通
+   enable，但本机 bit0 写不进；怀疑存在 vote 寄存器（HLOS1/QMIP）或它的
+   父级 `hub_ahb_div` 需要先跑起来；
+2. 修好 `GP_SMPREL`（牺牲核放复位 + 现场观测），否则放复位后没有任何观测面；
+3. 在 1/2 任一成立之前，不再重复"放复位后读寄存器"的实验。
