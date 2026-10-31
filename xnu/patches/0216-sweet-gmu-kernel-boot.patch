@@ -49,7 +49,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,525 @@
+@@ -2610,6 +2635,527 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -62,6 +62,8 @@
 + * write.  Every later experiment is compared against these ABL-handover
 + * values; without it a changed bit cannot be attributed to a step we took.
 + */
++static uint32_t gm_rd(vm_offset_t b, uint32_t o);
++
 +static void
 +g_gpu_snapshot(void)
 +{
@@ -575,7 +577,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +5931,14 @@
+@@ -5387,8 +5933,14 @@
  	int enabled = 0;
  	int rc;
  
