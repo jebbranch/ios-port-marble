@@ -924,3 +924,28 @@ kernel: cx gdscr=0x228801   ← 掉电→上电周期后 PWR_ON 仍为 0
 ⇒ **剩下的差距是平台电源域本身**（ARC active 电平/BUS 带宽/或许还有 AOP 侧
 的 GPU 电源状态），不是寄存器序列。继续推进需要的是电源管理移植，
 而不是再加探针。
+
+## GPU 硬件启动：还差什么（2026-10-31 盘点）
+
+AP 侧能对齐的已经全部对齐（见上），仍然做不到的只有一件事：
+**CX 域无法真正上电/重新上电**。它是整条链的根：
+
+```
+CX 域电源 ──┬── GPUCC 时钟/门控（ahb 不 latch）
+            ├── kgsl-smmu（全局寄存器可读，CB 页在 CX 域）
+            └── GMU（CM3 无 AO 活动、HFI 无消息）
+```
+
+要跨过这个根，剩下的是**平台电源管理**，具体清单：
+
+| 组件 | 厂商实现 | 我们的现状 |
+|---|---|---|
+| RPMh ARC 电平投票 | `drivers/soc/qcom/rpmh.c` + `rpmh-regulator.c`，带 solver/cache/batch | `sweet_rpmh.c` 只实现了 LDO 的 VREG 三连，ARC 电平投票命令完成但不生效 |
+| 互连/总线带宽 | `icc_set_bw` → BCM 投票（trace 里 `0x50000/0x50004`） | 完全没有 |
+| PMIC 轨道 | PM8350C S2/S5/S6 由 ARC 驱动 | 未接管 |
+| GPU PAS（ZAP） | `adreno_zap.c` → SCM `pas_init_image/mem_setup/auth_and_reset`（PAS_GPU） | 未做（ADSP 的 PAS 基建可复用） |
+| GMU/CP 固件协议 | `adreno_gen7_gmu.c` / `adreno_a6xx_hwsched.c` | 固件加载已通，HFI/CP 未开始 |
+
+**结论**：下一步不是继续调 GPUCC 寄存器，而是把 `sweet_rpmh` 补成完整实现
+（solver/batch/ARC 语义），并用一个可观测资源验证 ARC 投票真的生效；
+在此之前，"GPU 硬件启动"无法达成。
