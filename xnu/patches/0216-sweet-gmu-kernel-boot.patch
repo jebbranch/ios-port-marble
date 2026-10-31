@@ -16,7 +16,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2616,308 @@
+@@ -2610,6 +2616,312 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -278,12 +278,16 @@
 +		gm_wr(gc, 0xe000u + 0x39u * 4u, 1u);	/* TCM retention */
 +		gm_wr(kg, 0x3c45u * 4u, 0u);		/* GBIF halt off */
 +	}
++	printf("SWEET GMU: pre-boot cfg done\n");
++	sweet_log_sync();
 +
 +	/*
 +	 * 7. Release the CM3.  From here on never touch a GMU register: once
 +	 * the CM3 runs, the AP's access to the block stalls (the AHB is the
 +	 * GMU's now).  The HFI queues live in our own DRAM, so poll those.
 +	 */
++	printf("SWEET GMU: releasing cm3\n");
++	sweet_log_sync();
 +	gm_wr(gm, GMU_OFF(0x1f800u), 0u);
 +	{
 +		uint32_t rr = 0, rw = 0;
@@ -325,7 +329,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5697,8 @@
+@@ -5389,6 +5701,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
