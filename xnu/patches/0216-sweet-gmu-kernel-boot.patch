@@ -1,9 +1,11 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -225,6 +225,24 @@
+@@ -223,6 +223,24 @@
+ 		return 0;
+ 	}
  	return g_win_map(w, pa, size);
- }
- 
++}
++
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -20,11 +22,9 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
-+}
-+
+ }
+ 
  static void
- g_win_free(vm_offset_t win, vm_size_t size)
- {
 @@ -2513,8 +2531,14 @@
  {
  	int rb = 0, gl = 1;
@@ -40,7 +40,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,8 +2634,351 @@
+@@ -2610,8 +2634,361 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -79,7 +79,7 @@
 +	__asm__ volatile("dsb sy" ::: "memory");
 +	return v;
  }
-+
+ 
 +static void
 +gm_wr(vm_offset_t b, uint32_t o, uint32_t v)
 +{
@@ -131,7 +131,7 @@
 +	size = *(volatile uint32_t *)(hdr + 0xf04);
 +	printf("SWEET GMU: staged fw %u bytes\n", size);
 +	sweet_log_sync();
- 
++
 +	/* 1. CX power */
 +	v = gm_rd(gc, 0x9108);
 +	if (!(v & (1u << 31))) {
@@ -141,30 +141,40 @@
 +	printf("SWEET GMU: cx gdscr=%#x\n", gm_rd(gc, 0x9108));
 +	sweet_log_sync();
 +
-+	/* 2. clocks: hub/gmu RCGs, hub_aon, branches */
++	/*
++	 * 2. clocks, exactly the sequence the vendor kernel performs (captured
++	 * with kprobes on regmap_update_bits_base):
++	 *   hub RCG: CMD.ROOT_EN=1, CFG = HW_CLK_CTRL|div=1|src=tcxo,
++	 *            CMD.UPDATE=1, CMD.ROOT_EN=0
++	 *   smmu vote, GCC memnoc, then gpu_cc_ahb = 1
++	 * The HF_CLK_CTRL bit and the divider are what we were missing: a
++	 * branch cannot latch while its parent RCG is not running that way.
++	 */
 +	{
-+		static const uint32_t rcg_cmd[2] = { 0x93ecu, 0x9318u };
-+		static const uint32_t rcg_cfg[2] = { 0x93f0u, 0x931cu };
-+		static const uint32_t br[6] = {
-+			0x93e8u, 0x911cu, 0x9148u, 0x913cu, 0x9144u, 0x9150u
-+		};
++		static const uint32_t rcg[2] = { 0x93ecu, 0x9318u };
++		uintptr_t gg = g_map_win(0x100000ull, 0x100000u);
 +
 +		for (i = 0; i < 2u; i++) {
-+			v = gm_rd(gc, rcg_cfg[i]);
-+			v &= ~0x700u;
-+			gm_wr(gc, rcg_cfg[i], v);
-+			v = gm_rd(gc, rcg_cmd[i]);
-+			gm_wr(gc, rcg_cmd[i], v | 0x3u);
++			uint32_t c = rcg[i], f = c + 4u;
++
++			gm_wr(gc, c, gm_rd(gc, c) | 0x2u);	/* ROOT_EN */
++			gm_wr(gc, f, (gm_rd(gc, f) & ~0x10371fu) |
++			    0x100001u);				/* HW_CLK_CTRL|div 1 */
++			gm_wr(gc, c, (gm_rd(gc, c) & ~1u) | 1u); /* UPDATE */
++			gm_wr(gc, c, gm_rd(gc, c) & ~2u);	/* ROOT_EN off */
 +		}
-+		for (i = 0; i < 6u; i++) {
-+			v = gm_rd(gc, br[i]);
-+			if (!(v & 1u)) {
-+				gm_wr(gc, br[i], v | 1u);
-+			}
++		gm_wr(gc, 0x93e8u, gm_rd(gc, 0x93e8u) | 1u);	/* hub_aon */
++		gm_wr(gc, 0x7000u, gm_rd(gc, 0x7000u) | 1u);	/* smmu vote */
++		if (gg) {
++			gm_wr(gg, 0x81010u, gm_rd(gg, 0x81010u) | 1u);
 +		}
-+		printf("SWEET GMU: clocks hub=%#x ahb=%#x gmu=%#x\n",
-+		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x911cu),
-+		    gm_rd(gc, 0x913cu));
++		gm_wr(gc, 0x9148u, gm_rd(gc, 0x9148u) | 1u);	/* hub_cx_int */
++		gm_wr(gc, 0x913cu, gm_rd(gc, 0x913cu) | 1u);	/* cx_gmu */
++		gm_wr(gc, 0x9144u, gm_rd(gc, 0x9144u) | 1u);	/* cxo */
++		gm_wr(gc, 0x911cu, gm_rd(gc, 0x911cu) | 1u);	/* gpu_cc_ahb */
++		printf("SWEET GMU: hub cmd=%#x cfg=%#x ahb=%#x gmu=%#x\n",
++		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x93f0u), gm_rd(gc, 0x911cu),
++		    gm_rd(gc, 0x9318u));
 +		sweet_log_sync();
 +	}
 +
@@ -392,7 +402,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5389,6 +5756,8 @@
+@@ -5389,6 +5766,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
