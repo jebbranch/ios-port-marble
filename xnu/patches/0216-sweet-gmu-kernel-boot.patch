@@ -326,7 +326,7 @@
 +			sweet_log_sync();
 +			uint32_t r0, w0, r1, w1;
 +
-+			g_wait(6000);
++			g_wait(10000);
 +			v = gm_rd(gc, 0x905cu);
 +			r0 = *(volatile uint32_t *)(hfi + (6u + 10u) * 4u);
 +			w0 = *(volatile uint32_t *)(hfi + (6u + 11u) * 4u);

@@ -1645,8 +1645,9 @@ gpu_probe_boot(void)
 	gp_stage_gmu(r);
 #endif
 #if GP_SMPREL
-	con_hex2("SMREL", "cpu7=", (uint32_t)cpu_mpidr(7),
-	    "ret=", (uint32_t)smc(PSCI_CPU_ON, cpu_mpidr(7),
+	con_hex2("SMREL", "c6=", (uint32_t)smc(PSCI_CPU_ON, cpu_mpidr(6),
+	    (uintptr_t)secondary_entry, 6), "c7=",
+	    (uint32_t)smc(PSCI_CPU_ON, cpu_mpidr(7),
 	    (uintptr_t)secondary_entry, 7));
 #endif
 
@@ -2337,14 +2338,31 @@ static void __attribute__((noreturn)) gold_main(uint64_t dtb)
  * secondary CPU and leave the boot CPU free for XNU.
  */
 static void
-gp_gmu_release_from_secondary(void)
+gp_spin_until(uint64_t ticks)
 {
 	uint64_t f = rsr("cntfrq_el0"), t0 = rsr("cntpct_el0"), t;
 
 	do {
 		t = rsr("cntpct_el0");
-	} while (t - t0 < f * 4u);
+	} while (t - t0 < f * ticks);
+}
+
+static void
+gp_gmu_release_from_secondary(void)
+{
+	gp_spin_until(3u);		/* let XNU get going */
 	wr32(0x3d7e000UL, 0u);		/* CM3_SYSRESET = 0 */
+	for (;;) {
+		__asm__ volatile("wfe");
+	}
+}
+
+/* Second sacrificial CPU: kick HFI once the CM3 has had time to boot. */
+static void
+gp_gmu_hfi_init_from_secondary(void)
+{
+	gp_spin_until(5u);
+	wr32(0x3d7e618UL, 1u);		/* GEN7_GMU_HFI_CTRL_INIT */
 	for (;;) {
 		__asm__ volatile("wfe");
 	}
@@ -2356,6 +2374,9 @@ void secondary_main(uint64_t idx)
 #if GP_SMPREL
 	if (idx == 7u) {
 		gp_gmu_release_from_secondary();
+	}
+	if (idx == 6u) {
+		gp_gmu_hfi_init_from_secondary();
 	}
 #endif
 	if (gold_dtb)
