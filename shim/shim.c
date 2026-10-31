@@ -246,6 +246,9 @@ static void irq_handler(void)
 #ifndef GP_STAGE
 #define GP_STAGE		0	/* v28: stage GMU fw + buffers for XNU */
 #endif
+#ifndef GP_SMPREL
+#define GP_SMPREL		0	/* v29: release CM3 from a secondary CPU */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
 static const char gp_level_tag[] __attribute__((used)) =
@@ -259,7 +262,7 @@ static const char gp_level_tag[] __attribute__((used)) =
     "k" GP_STR(GP_CLK) "m" GP_STR(GP_GMU) "s" GP_STR(GP_CLK_SEL)
     "b" GP_STR(GP_BR) "g" GP_STR(GP_GCC) "o" GP_STR(GP_VOTE)
     "c" GP_STR(GP_RSCC) "u" GP_STR(GP_GMUBOOT) "t2" GP_STR(GP_TCM)
-    "st" GP_STR(GP_STAGE);
+    "st" GP_STR(GP_STAGE) "sr" GP_STR(GP_SMPREL);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -1631,13 +1634,20 @@ gpu_probe_boot(void)
 #if GP_TCM
 	gp_tcm_test(r);
 #endif
-#if GP_STAGE
-	gp_stage_gmu(r);
-#endif
 #if GP_GX
 	gp_power_gx(r);
 #endif
 	con_hex("GPUS", 5);
+#endif
+
+#if GP_STAGE
+	/* Runs regardless of GP_EARLY: the kernel does the hardware work. */
+	gp_stage_gmu(r);
+#endif
+#if GP_SMPREL
+	con_hex2("SMREL", "cpu7=", (uint32_t)cpu_mpidr(7),
+	    "ret=", (uint32_t)smc(PSCI_CPU_ON, cpu_mpidr(7),
+	    (uintptr_t)secondary_entry, 7));
 #endif
 
 	id0 = r->id0;
@@ -2321,8 +2331,33 @@ static void __attribute__((noreturn)) gold_main(uint64_t dtb)
 	reset(20);
 }
 
+#if GP_SMPREL
+/*
+ * Releasing the CM3 stalls the core that does it forever, so do it from a
+ * secondary CPU and leave the boot CPU free for XNU.
+ */
+static void
+gp_gmu_release_from_secondary(void)
+{
+	uint64_t f = rsr("cntfrq_el0"), t0 = rsr("cntpct_el0"), t;
+
+	do {
+		t = rsr("cntpct_el0");
+	} while (t - t0 < f * 4u);
+	wr32(0x3d7e000UL, 0u);		/* CM3_SYSRESET = 0 */
+	for (;;) {
+		__asm__ volatile("wfe");
+	}
+}
+#endif
+
 void secondary_main(uint64_t idx)
 {
+#if GP_SMPREL
+	if (idx == 7u) {
+		gp_gmu_release_from_secondary();
+	}
+#endif
 	if (gold_dtb)
 		gold_main(gold_dtb);
 	sec_mpidr[idx] = rsr("mpidr_el1") | (1ULL << 63);

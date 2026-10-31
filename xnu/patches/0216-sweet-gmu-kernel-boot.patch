@@ -1,9 +1,11 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -225,6 +225,24 @@
+@@ -223,6 +223,24 @@
+ 		return 0;
+ 	}
  	return g_win_map(w, pa, size);
- }
- 
++}
++
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -20,11 +22,9 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
-+}
-+
+ }
+ 
  static void
- g_win_free(vm_offset_t win, vm_size_t size)
- {
 @@ -2512,9 +2530,15 @@
  g_gpu_maybe_reset(void)
  {
@@ -41,7 +41,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2634,318 @@
+@@ -2610,6 +2634,340 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -311,6 +311,27 @@
 +	 * the CM3 runs, the AP's access to the block stalls (the AHB is the
 +	 * GMU's now).  The HFI queues live in our own DRAM, so poll those.
 +	 */
++	{
++		int rel = 0;
++
++		(void)PE_parse_boot_argn("sweetgmurel", &rel, sizeof(rel));
++		if (rel) {
++			/*
++			 * The shim's secondary CPU releases the CM3 (the core
++			 * that does it is lost).  GPUCC stays reachable, so
++			 * watch GX_GDSCR: the GMU powers GX as soon as its
++			 * firmware runs.
++			 */
++			printf("SWEET GMU: release delegated to shim cpu\n");
++			sweet_log_sync();
++			g_wait(6000);
++			v = gm_rd(gc, 0x905cu);
++			printf("SWEET GMU: gx gdscr=%#x pwr_on=%u\n", v,
++			    (v >> 31) & 1u);
++			sweet_log_sync();
++			goto gmu_done;
++		}
++	}
 +	printf("SWEET GMU: releasing cm3 (posted window)\n");
 +	sweet_log_sync();
 +	gm_wr(gm, GMU_OFF(0x1f800u), 0u);
@@ -336,6 +357,7 @@
 +		sweet_log_sync();
 +	}
 +
++gmu_done:
 +	/* Done: reset so the ring can be pulled from Android/TWRP. */
 +	{
 +		int rb = 0, gl = 1;
@@ -360,7 +382,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5725,8 @@
+@@ -5389,6 +5747,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
