@@ -1384,7 +1384,33 @@ gp_gmu_boot(volatile struct gpu_probe_result *r)
 #if GP_GMUBOOT == 1
 	gp_wr32(GMU_SYSRESET, 0u);			/* release CM3 */
 #endif
+#if GP_GMUBOOT == 9
+	/* Toggle the CM3 reset with no time to execute, then hand off. */
+	gp_wr32(GMU_SYSRESET, 0u);
+	__asm__ volatile("dsb sy" ::: "memory");
+	gp_wr32(GMU_SYSRESET, 1u);
+	__asm__ volatile("dsb sy" ::: "memory");
+#endif
+#if GP_GMUBOOT == 8
+	/* Release the CM3, let it run, then put it back in reset. */
+	gp_wr32(GMU_SYSRESET, 0u);
+	__asm__ volatile("dsb sy" ::: "memory");
+	delay_ms(200);
+	gp_wr32(GMU_SYSRESET, 1u);
+	__asm__ volatile("dsb sy" ::: "memory");
+	delay_ms(10);
+#endif
 #if GP_GMUBOOT == 7
+	/*
+	 * Mask the GMU's two SPIs (DT irqs 0x130/0x131) and make them
+	 * edge-triggered before handing off: a level-asserted GMU interrupt
+	 * would otherwise storm XNU's GIC during early boot.
+	 */
+	gp_wr32(GICD_BASE + 0x180u + 9u * 4u, (1u << 16) | (1u << 17));
+	gp_wr32(GICD_BASE + 0x280u + 9u * 4u, (1u << 16) | (1u << 17));
+	gp_wr32(GICD_BASE + 0xc44u, (gp_rd32(GICD_BASE + 0xc44u) &
+	    0xfffffff0u) | 0xau);		/* IRQ 304/305 -> edge */
+	__asm__ volatile("dsb sy" ::: "memory");
 	/* Release the CM3 and hand off to XNU without touching anything else. */
 	gp_wr32(GMU_SYSRESET, 0u);
 	__asm__ volatile("dsb sy" ::: "memory");
