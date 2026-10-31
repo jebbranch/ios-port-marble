@@ -995,3 +995,56 @@ fastboot boot → OK
 - `0223a85` 的内核（含全片扫描、无快照）也保留着。
 - 因此设备回来后**不需要新内核**就能二分：先 `sweetgsnap=1`（不扫轨道）
   看快照是否安全；再决定是否需要分档内核。
+
+## 2026-10-31 晚：★ CX/GX 从塌陷状态真的上电了（含时钟），GMU 寄存器与 TCM 也活了
+
+`GP_SURVEY=1 GP_PWR=1 GP_RAIL=1` 一次引导（shim 读、shim 写、内核只打印
+shim 结果页——内核不碰 GPUCC，避免它没有 fault 恢复能力的问题）：
+
+```
+上电前  cxgdr=0x22f001   ← PWR_ON=0, SW_COLLAPSE=1, ahb=0, cxgmu=0x80002221,
+                           hubcx=0x80000001, vote=0x80000000, memnoc=0x80004220
+上电后  cxgdr=0xf822f000 ← PWR_ON=1, SW_COLLAPSE=0, RETAIN_FF=1,
+                           EN_REST_WAIT=2, EN_FEW_WAIT=2, CLK_DIS_WAIT=0xf
+        cxgmu=0x2221     ← bit0=1（使能）, bit31=0（不再 halted）
+        hubcx=0x1 / vote=0x1
+        ahb=0            ← 仍然是 0（厂商 trace 里也是写 1 后 1 ms 自清）
+        fl=0x200200      ← 0x200 = powered
+```
+
+**两个被推翻的旧结论**：
+
+1. **ABL 交接时 CX 是塌陷的**（`PWR_ON=0`），不是"继承 on"。过去看到的
+   `PWR_ON=1` 都发生在 shim 自己上电之后。
+2. **CX 能从塌陷状态回来**——只要不再做那次 collapse。之前"回不来"完全
+   是我们自己先写入 `SW_COLLAPSE=1` 造成的；厂商 trace 从不 collapse。
+
+同一轮把 `GP_STAGE=1` 打开后，内核侧 GMU 启动拿到了首批"活着"的读数：
+
+```
+SWEET GMU: staged fw 57272 bytes
+SWEET GMU: cx gdscr=0xf8228800
+SWEET GMU: gx gdscr=0x6822f000 dom=0x3c0000   ← GX 也上电了
+SWEET GMU: hub cmd=0 cfg=0x100001 ahb=0 gmu=0
+SWEET GMU: fw loaded, itcm0=0x10007f80        ← TCM 里是真实固件字（以前是 0）
+SWEET GMU: smmu smr1=0x80000005 s2cr1=0x1 cb1=0x1
+SWEET GMU: pre-boot cfg done
+SWEET GMU: releasing cm3 (posted window)
+```
+
+对照：电源没打通时 GMU 读回 `0x80000000`、`itcm0=0`。现在是真实值 ⇒
+**CX 电源是之前一切"GMU 无响应 / ahb 不 latch / CM3 无 AO 活动"的总根**。
+
+### 剩余卡点：放复位之后的读
+
+`CM3_SYSRESET=0` 写入之后，下一行 `FW_INIT_RESULT` 读会把这个核钉死
+（用户态仍在其它核上跑）。已改成放复位后**完全不读 GMU 窗口**，只读
+GPUCC（GX）、AO 块（0x3d40000）和 DDR 里的 HFI 队列，用来区分"写没完成"
+和"CM3 已经把 AHB 拿走"。
+
+### 已确证不能用的做法
+
+- `GP_SMPREL=1`（shim 牺牲核放复位）+ `CPUS=6`：XNU 根本不起（ring 不更新），
+  与 GMU 无关。原因待查；暂不改这条线。
+- 内核在写之前读 GPUCC/GMU 做"快照"：CX 塌陷时会把核挂死。要么先上电再读，
+  要么用 shim 的 fault-safe 读法。
