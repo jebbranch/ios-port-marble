@@ -48,7 +48,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,8 +2635,594 @@
+@@ -2610,6 +2635,597 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -190,8 +190,8 @@
 +	}
 +	printf("SWEET RAIL: done blocks=%u\n", seen);
 +	sweet_log_sync();
- }
- 
++}
++
 +/*
 + * ---- kernel-side GMU bring-up (sweetgmuboot=1) ----
 + *
@@ -592,8 +592,13 @@
 +		vm_offset_t ao = g_map_win_wimg(0x3d40000ull, 0x1000u,
 +		    VM_WIMG_IO);
 +
-+		printf("SWEET GMU: after rel gx=%#x hfi=%#x/%#x\n",
-+		    gm_rd(gc, 0x905cu),
++		/*
++		 * GPUCC is behind the GMU's AHB once the CM3 runs: reading it
++		 * after the release is what wedges the core.  Only DDR (HFI
++		 * queues) and the AO block stay reachable from here.
++		 */
++		printf("SWEET GMU: after rel hfi=%#x/%#x/%#x\n",
++		    *(volatile uint32_t *)(hfi + 0u),
 +		    *(volatile uint32_t *)(hfi + 4u),
 +		    *(volatile uint32_t *)(hfi + 8u));
 +		if (ao) {
@@ -638,12 +643,10 @@
 +			}
 +		}
 +	}
-+}
-+
+ }
+ 
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
-  * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5387,8 +5998,14 @@
+@@ -5387,8 +6003,14 @@
  	int enabled = 0;
  	int rc;
  
