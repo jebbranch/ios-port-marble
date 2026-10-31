@@ -149,7 +149,9 @@ jobs:
                    "MG closed-loop key" \
                    "SWEET MG: cache removed" \
                    "SWEET HAPTICS: AppleHapticsSupportCallan" \
-                   "SWEET HAPTICS: AppleSPUHaptics"; do
+                   "SWEET HAPTICS: AppleSPUHaptics" \
+                   "SWEET SNAP: cx_gdscr" \
+                   "SWEET RAIL: done blocks"; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"
               exit 1
