@@ -8,10 +8,12 @@
  extern int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
      unsigned len);
  extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
-@@ -225,6 +226,24 @@
+@@ -223,6 +224,24 @@
+ 		return 0;
+ 	}
  	return g_win_map(w, pa, size);
- }
- 
++}
++
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -28,11 +30,9 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
-+}
-+
+ }
+ 
  static void
- g_win_free(vm_offset_t win, vm_size_t size)
- {
 @@ -2513,8 +2532,14 @@
  {
  	int rb = 0, gl = 1;
@@ -48,7 +48,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,577 @@
+@@ -2610,8 +2635,594 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -190,8 +190,8 @@
 +	}
 +	printf("SWEET RAIL: done blocks=%u\n", seen);
 +	sweet_log_sync();
-+}
-+
+ }
+ 
 +/*
 + * ---- kernel-side GMU bring-up (sweetgmuboot=1) ----
 + *
@@ -579,16 +579,31 @@
 +	printf("SWEET GMU: releasing cm3 (posted window)\n");
 +	sweet_log_sync();
 +	gm_wr(gm, GMU_OFF(0x1f800u), 0u);
-+	for (k = 0; k < 2000u; k++) {
-+		v = gm_rd(gm, GMU_OFF(0x1f81cu));
-+		if (v & (1u << 8)) {
-+			break;
-+		}
-+		g_wait(1);
-+	}
-+	printf("SWEET GMU: fw_init=%#x after %u ms\n", v, k);
++	/*
++	 * Do not touch the GMU window after the release: once the CM3 owns
++	 * the AHB, an AP read there is what wedges this core.  Everything we
++	 * still want (GPUCC, the AO block, the HFI queues in DDR) lives
++	 * outside that window.
++	 */
++	printf("SWEET GMU: release written, gmu read skipped\n");
 +	sweet_log_sync();
-+	if (v & (1u << 8)) {
++	g_wait(300);
++	{
++		vm_offset_t ao = g_map_win_wimg(0x3d40000ull, 0x1000u,
++		    VM_WIMG_IO);
++
++		printf("SWEET GMU: after rel gx=%#x hfi=%#x/%#x\n",
++		    gm_rd(gc, 0x905cu),
++		    *(volatile uint32_t *)(hfi + 4u),
++		    *(volatile uint32_t *)(hfi + 8u));
++		if (ao) {
++			printf("SWEET GMU: ao=%#x %#x %#x\n", gm_rd(ao, 0x0u),
++			    gm_rd(ao, 0x4u), gm_rd(ao, 0x8u));
++		}
++		sweet_log_sync();
++	}
++	v = 0;
++	if (0) {
 +		gm_wr(gm, GMU_OFF(0x1f986u), 1u);
 +		for (k = 0; k < 200u; k++) {
 +			v = gm_rd(gm, GMU_OFF(0x1f980u));
@@ -623,10 +638,12 @@
 +			}
 +		}
 +	}
- }
- 
++}
++
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +5983,14 @@
+  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
+  * Read-only probe: model, stream-match entries, and any existing mapping
+@@ -5387,8 +5998,14 @@
  	int enabled = 0;
  	int rc;
  
