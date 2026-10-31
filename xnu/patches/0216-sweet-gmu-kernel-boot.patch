@@ -16,7 +16,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,8 +2616,323 @@
+@@ -2610,6 +2616,342 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -61,13 +61,31 @@
 +{
 +	*(volatile uint32_t *)(b + o) = v;
 +	__asm__ volatile("dsb sy" ::: "memory");
- }
- 
++}
++
 +static uint32_t
 +gm_fw_ld32(const uint8_t *p)
 +{
 +	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
 +	    ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
++}
++
++/*
++ * The write that releases the CM3 never completes: the GMU takes the AHB
++ * over as soon as it lands, and Device-nGnRnE ordering then blocks every
++ * later access from that thread.  Post it from a throwaway thread and park
++ * there forever, so the probe thread can keep running.
++ */
++static void
++g_gmu_release_thread(void *arg, wait_result_t wr)
++{
++	vm_offset_t gm = (vm_offset_t)arg;
++
++	(void)wr;
++	*(volatile uint32_t *)(gm + GMU_OFF(0x1f800u)) = 0u;
++	for (;;) {
++		__asm__ volatile("wfe");
++	}
 +}
 +
 +static void
@@ -288,29 +306,32 @@
 +	 */
 +	printf("SWEET GMU: releasing cm3\n");
 +	sweet_log_sync();
-+	/*
-+	 * The GMU takes the AHB over as soon as this write lands, so its
-+	 * completion never comes back and any dsb after it hangs the core.
-+	 * Post the store, spin on the counter (no memory references), then
-+	 * look at the HFI queues which live in our own DRAM.
-+	 */
-+	*(volatile uint32_t *)(gm + GMU_OFF(0x1f800u)) = 0u;
-+	__asm__ volatile("isb" ::: "memory");
 +	{
-+		uint64_t t0, t1, freq = 0;
++		thread_t th;
 +
-+		__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(freq));
-+		__asm__ volatile("mrs %0, cntpct_el0" : "=r"(t0));
-+		do {
-+			__asm__ volatile("mrs %0, cntpct_el0" : "=r"(t1));
-+		} while (t1 - t0 < freq / 20u);
++		if (kernel_thread_start((thread_continue_t)g_gmu_release_thread,
++		    (void *)gm, &th) != KERN_SUCCESS) {
++			printf("SWEET GMU: release thread failed\n");
++			sweet_log_sync();
++		} else {
++			thread_deallocate(th);
++		}
 +	}
++	g_wait(200);
 +	{
 +		uint32_t rr, rw;
++		int n;
 +
-+		rr = *(volatile uint32_t *)(hfi + (18u + 10u) * 4u);
-+		rw = *(volatile uint32_t *)(hfi + (18u + 11u) * 4u);
-+		printf("SWEET GMU: released; hfi msg r/w=%u/%u\n", rr, rw);
++		for (n = 0; n < 30; n++) {
++			rr = *(volatile uint32_t *)(hfi + (18u + 10u) * 4u);
++			rw = *(volatile uint32_t *)(hfi + (18u + 11u) * 4u);
++			if (rw != 0) {
++				break;
++			}
++			g_wait(100);
++		}
++		printf("SWEET GMU: released; hfi msg r/w=%u/%u after %d ms\n",
++		    rr, rw, n * 100);
 +		sweet_log_sync();
 +	}
 +
@@ -335,12 +356,10 @@
 +			}
 +		}
 +	}
-+}
-+
+ }
+ 
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
-  * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5389,6 +5710,8 @@
+@@ -5389,6 +5731,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
