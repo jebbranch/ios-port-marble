@@ -1,6 +1,31 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -2512,9 +2512,15 @@
+@@ -225,6 +225,24 @@
+ 	return g_win_map(w, pa, size);
+ }
+ 
++/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
++static vm_offset_t
++g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
++{
++	uint64_t base = pa & ~(uint64_t)G_PFN_MASK;
++	uint32_t off = (uint32_t)(pa - base);
++	vm_size_t span = (off + size + G_PFN_MASK) & ~G_PFN_MASK;
++	vm_offset_t w = g_win_alloc(span);
++
++	if (w == 0) {
++		return 0;
++	}
++	pmap_remove(kernel_pmap, w, w + span);
++	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
++	    VM_PROT_READ | VM_PROT_WRITE, wimg);
++	return w + off;
++}
++
+ static void
+ g_win_free(vm_offset_t win, vm_size_t size)
+ {
+@@ -2512,9 +2530,15 @@
  g_gpu_maybe_reset(void)
  {
  	int rb = 0, gl = 1;
@@ -16,7 +41,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,8 +2616,387 @@
+@@ -2610,6 +2634,318 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -68,73 +93,6 @@
 +{
 +	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
 +	    ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
- }
- 
-+/*
-+ * The write that releases the CM3 never completes: the GMU takes the AHB
-+ * over as soon as it lands, and Device-nGnRnE ordering then blocks every
-+ * later access from that thread.  Post it from a throwaway thread and park
-+ * there forever, so the probe thread can keep running.
-+ */
-+static void
-+g_gmu_release_thread(void *arg, wait_result_t wr)
-+{
-+	vm_offset_t gm = (vm_offset_t)arg;
-+
-+	(void)wr;
-+	*(volatile uint32_t *)(gm + GMU_OFF(0x1f800u)) = 0u;
-+	for (;;) {
-+		__asm__ volatile("wfe");
-+	}
-+}
-+
-+/* Writes land even when their completion never comes back. */
-+static void
-+g_gmu_hfi_init_thread(void *arg, wait_result_t wr)
-+{
-+	vm_offset_t gm = (vm_offset_t)arg;
-+
-+	(void)wr;
-+	delay(300000);
-+	*(volatile uint32_t *)(gm + GMU_OFF(0x1f986u)) = 1u;
-+	for (;;) {
-+		__asm__ volatile("wfe");
-+	}
-+}
-+
-+/* Watcher: only touches DRAM, so it survives the GMU owning the AHB. */
-+static void
-+g_gmu_watch_thread(void *arg, wait_result_t wr)
-+{
-+	vm_offset_t hfi = (vm_offset_t)arg;
-+	uint32_t rr = 0, rw = 0, cmdw = 0, cmdr = 0;
-+	int i;
-+
-+	(void)wr;
-+	delay(600000);
-+	for (i = 0; i < 50; i++) {
-+		rr = *(volatile uint32_t *)(hfi + (18u + 10u) * 4u);
-+		rw = *(volatile uint32_t *)(hfi + (18u + 11u) * 4u);
-+		cmdr = *(volatile uint32_t *)(hfi + (6u + 10u) * 4u);
-+		cmdw = *(volatile uint32_t *)(hfi + (6u + 11u) * 4u);
-+		if (rw != 0 || cmdw != 0) {
-+			break;
-+		}
-+		delay(100000);
-+	}
-+	printf("SWEET GMU: watch msg r/w=%u/%u cmd r/w=%u/%u after %d ms\n",
-+	    rr, rw, cmdr, cmdw, 600 + i * 100);
-+	sweet_log_sync();
-+	{
-+		register uint64_t x0 __asm("x0") = 0x84000009ull;
-+
-+		__asm volatile("dsb sy" ::: "memory");
-+		__asm volatile("smc #0" : "+r"(x0) ::
-+		    "x1", "x2", "x3", "memory");
-+	}
-+	for (;;) {
-+		__asm__ volatile("wfe");
-+	}
 +}
 +
 +static void
@@ -153,7 +111,7 @@
 +	}
 +	hdr = g_map_win(GMU_HDR_PA, 0x1000);
 +	gc = g_map_win(GPUCC_PA, 0x10000);
-+	gm = g_map_win(GMUREG_PA, 0x40000);
++	gm = g_map_win_wimg(GMUREG_PA, 0x40000, VM_WIMG_POSTED);
 +	sm = g_map_win(KGSMMU_PA, 0x40000);
 +	kg = g_map_win(KGSL_PA, 0x40000);
 +	fwp = g_map_win(GMU_FW_PA, 0x10000);
@@ -353,30 +311,30 @@
 +	 * the CM3 runs, the AP's access to the block stalls (the AHB is the
 +	 * GMU's now).  The HFI queues live in our own DRAM, so poll those.
 +	 */
-+	printf("SWEET GMU: releasing cm3\n");
++	printf("SWEET GMU: releasing cm3 (posted window)\n");
 +	sweet_log_sync();
-+	{
-+		thread_t th;
-+
-+		if (kernel_thread_start((thread_continue_t)g_gmu_watch_thread,
-+		    (void *)hfi, &th) == KERN_SUCCESS) {
-+			thread_deallocate(th);
++	gm_wr(gm, GMU_OFF(0x1f800u), 0u);
++	for (k = 0; k < 2000u; k++) {
++		v = gm_rd(gm, GMU_OFF(0x1f81cu));
++		if (v & (1u << 8)) {
++			break;
 +		}
-+		if (kernel_thread_start((thread_continue_t)g_gmu_hfi_init_thread,
-+		    (void *)gm, &th) == KERN_SUCCESS) {
-+			thread_deallocate(th);
-+		}
-+		if (kernel_thread_start((thread_continue_t)g_gmu_release_thread,
-+		    (void *)gm, &th) == KERN_SUCCESS) {
-+			thread_deallocate(th);
-+		} else {
-+			printf("SWEET GMU: release thread failed\n");
-+			sweet_log_sync();
-+		}
++		g_wait(1);
 +	}
-+	g_wait(1000);
-+	printf("SWEET GMU: probe thread still alive after release\n");
++	printf("SWEET GMU: fw_init=%#x after %u ms\n", v, k);
 +	sweet_log_sync();
++	if (v & (1u << 8)) {
++		gm_wr(gm, GMU_OFF(0x1f986u), 1u);
++		for (k = 0; k < 200u; k++) {
++			v = gm_rd(gm, GMU_OFF(0x1f980u));
++			if (v & 1u) {
++				break;
++			}
++			g_wait(1);
++		}
++		printf("SWEET GMU: hfi status=%#x after %u ms\n", v, k);
++		sweet_log_sync();
++	}
 +
 +	/* Done: reset so the ring can be pulled from Android/TWRP. */
 +	{
@@ -399,12 +357,10 @@
 +			}
 +		}
 +	}
-+}
-+
+ }
+ 
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
-  * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5389,6 +5774,8 @@
+@@ -5389,6 +5725,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
