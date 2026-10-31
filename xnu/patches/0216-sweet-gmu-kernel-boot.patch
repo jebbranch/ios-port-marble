@@ -40,7 +40,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,8 +2634,361 @@
+@@ -2610,6 +2634,370 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -78,8 +78,8 @@
 +
 +	__asm__ volatile("dsb sy" ::: "memory");
 +	return v;
- }
- 
++}
++
 +static void
 +gm_wr(vm_offset_t b, uint32_t o, uint32_t v)
 +{
@@ -132,10 +132,21 @@
 +	printf("SWEET GMU: staged fw %u bytes\n", size);
 +	sweet_log_sync();
 +
-+	/* 1. CX power */
++	/*
++	 * 1. CX power.  Match the value the vendor writes (0x228800): besides
++	 * clearing SW_COLLAPSE it sets CLK_DIS_WAIT=8 and RETAIN_FF_ENABLE
++	 * (bit 11).  Without retention the CX-domain flops -- including the
++	 * branch enables we write next -- do not survive.
++	 */
 +	v = gm_rd(gc, 0x9108);
-+	if (!(v & (1u << 31))) {
-+		gm_wr(gc, 0x9108, v & ~1u);
++	{
++		uint32_t w = v & ~1u;		/* SW_COLLAPSE off */
++
++		w &= ~0xf000u;
++		w |= 0x8000u;			/* CLK_DIS_WAIT = 8 */
++		w |= 1u << 11;			/* RETAIN_FF_ENABLE */
++		w |= (1u << 21) | (1u << 17);
++		gm_wr(gc, 0x9108, w);
 +		g_wait(2);
 +	}
 +	printf("SWEET GMU: cx gdscr=%#x\n", gm_rd(gc, 0x9108));
@@ -397,12 +408,10 @@
 +			}
 +		}
 +	}
-+}
-+
+ }
+ 
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
-  * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5389,6 +5766,8 @@
+@@ -5389,6 +5777,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();

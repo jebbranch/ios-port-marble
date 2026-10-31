@@ -1546,6 +1546,20 @@ gp_stage_gmu(volatile struct gpu_probe_result *r)
 	for (i = 0; i < size; i += 64)
 		__asm__ volatile("dc civac, %0" :: "r"((uintptr_t)(fw + i)) : "memory");
 	r->p_cbw_flags |= 0x4000u;
+#if GP_RAIL
+	/*
+	 * The vendor raises the GPU rails (RPMh ARC levels) before it touches
+	 * GPUCC; the kernel path cannot vote, so do it here.
+	 */
+	/* Exactly the votes the vendor's GPU power-on performs. */
+	r->p_cbw_before = (uint32_t)gp_rh_vote(0x30030u, 7u);	/* lcx.lvl */
+	delay_ms(5);
+	r->p_cbw_after = (uint32_t)gp_rh_vote(0x30040u, 5u);	/* lmx.lvl */
+	delay_ms(5);
+	r->wcbar_old = (uint32_t)gp_rh_vote(0x300a0u, 6u);	/* mxc.lvl */
+	delay_ms(5);
+	r->p_cbw_flags |= 0x8000u;
+#endif
 	con_hex2("GPUS", "staged=", size, "at=", 0xa2e10000u);
 }
 #endif
@@ -1870,6 +1884,11 @@ wdone:
 		uintptr_t db = 0x80860000UL;	/* aop_cmd_db_region */
 		uint32_t magic = gp_rd32(db + 4u);
 		uint32_t found[4] = { 0, 0, 0, 0 };
+		uint32_t found_name[4] = { 0, 0, 0, 0 };
+		uint32_t found_addr[4] = { 0, 0, 0, 0 };
+		static const uint32_t want3[4] = {
+			0x30030u, 0x30040u, 0x300a0u, 0x30050u
+		};
 		unsigned h, j, walked = 0, n = 0;
 
 		r->w2cr_f = magic;
@@ -1893,6 +1912,19 @@ wdone:
 					if (gp_fault)
 						goto cmdb_done;
 					walked++;
+#if GP_CMDB == 3
+					{
+						uint32_t ea = gp_rd32(e + 16u);
+						unsigned w;
+
+						for (w = 0; w < 4u; w++) {
+							if (ea == want3[w]) {
+								found_name[w] = k0;
+								found_addr[w] = ea;
+							}
+						}
+					}
+#endif
 #if GP_CMDB == 2
 					/*
 					 * Look for clock-like RPMh resources: names are at
@@ -1942,6 +1974,38 @@ cmdb_done:
 		 * cbregs-n= mxc.lvl   fault= magic   restore= walked */
 #if GP_CMDB == 2
 		r->p_cb0_cba2r = n;	/* matches */
+#endif
+#if GP_CMDB == 3
+		/* Name the RPMh resources the vendor votes for the GPU. */
+		{
+			static const uint32_t want[4] = {
+				0x30030u, 0x30040u, 0x300a0u, 0x30050u
+			};
+			unsigned w;
+
+			for (w = 0; w < 4u; w++) {
+				if (found_addr[w] != want[w])
+					continue;
+				switch (w) {
+				case 0:
+					r->p_cb0_sctlr = found_name[w];
+					r->p_cb0_ttbr0 = want[w];
+					break;
+				case 1:
+					r->p_cb0_ttbr1 = found_name[w];
+					r->p_cb0_tcr = want[w];
+					break;
+				case 2:
+					r->p_cb0_tcr2 = found_name[w];
+					r->p_cb0_mair0 = want[w];
+					break;
+				default:
+					r->p_cb0_mair1 = found_name[w];
+					r->p_cb0_cbar = want[w];
+					break;
+				}
+			}
+		}
 #endif
 		r->wsid = found[0];
 		r->wcbar_old = found[1];
@@ -2357,11 +2421,44 @@ gp_gmu_release_from_secondary(void)
 	}
 }
 
-/* Second sacrificial CPU: kick HFI once the CM3 has had time to boot. */
+/*
+ * Second sacrificial CPU: after the CM3 has started, do what the vendor
+ * does next -- load the PDC/RSCC microcode, then kick HFI.  Neither block
+ * is touched by the CM3's AHB takeover, so these writes can still land.
+ */
+static void
+gp_gmu_rscc_late(void)
+{
+	uintptr_t rs = 0x3d50000UL, pd = 0xb290000UL;
+	static const uint32_t seq[5] = {
+		0xeaaae5a0u, 0xe1a1ebabu, 0xa2e0a581u, 0xecac82e2u, 0x0020edadu
+	};
+	unsigned i;
+
+	wr32(pd + 0x4520u, 0u);
+	wr32(pd + 0x4500u, 0x80000001u);
+	wr32(rs + 0x10u, 1u << 24);
+	wr32(rs + 0x2cu, 1u);
+	wr32(rs + 0x38u, 0u);
+	wr32(rs + 0x34u, 0u);
+	wr32(rs + 0x40u, 0u);
+	wr32(rs + 0x3cu, 0u);
+	wr32(rs + 0x48u, 0x80000000u);
+	wr32(rs + 0x44u, 0u);
+	wr32(rs + 0x400u, 0u);
+	wr32(rs + 0x20u, 0x4520u);
+	wr32(rs + 0x24u, 0x4510u);
+	wr32(rs + 0x28u, 0x4514u);
+	for (i = 0; i < 5u; i++)
+		wr32(rs + 0x600u + 4u * i, seq[i]);
+	__asm__ volatile("dsb sy" ::: "memory");
+}
+
 static void
 gp_gmu_hfi_init_from_secondary(void)
 {
 	gp_spin_until(5u);
+	gp_gmu_rscc_late();
 	wr32(0x3d7e618UL, 1u);		/* GEN7_GMU_HFI_CTRL_INIT */
 	for (;;) {
 		__asm__ volatile("wfe");
