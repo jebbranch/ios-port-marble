@@ -1,9 +1,13 @@
 #!/bin/bash
-# One boot of the GPU v9 probe: read-only survey + optional GPU_CC_CX power-on.
+# One boot of the GPU v9 probe: read-only survey by default.
 #
 #   ./scripts/gpu_pwr.sh build          # images/gpu-pwr.img (+ .sweettime)
 #   ./scripts/gpu_pwr.sh run            # boot it, listen on USB, pull the ring
-#   ./scripts/gpu_pwr.sh run nosurvey   # boot with GP_SURVEY=0 GP_PWR=1
+#   ./scripts/gpu_pwr.sh build "GP_SURVEY=0 GP_PWR=1"
+#                                       # the old collapse/power-on experiment
+#
+# GP_PWR is deliberately NOT a default: collapsing CX_GDSCR puts the domain in
+# a state the vendor trace never enters, and it has never come back from it.
 #
 # Why the UDP listener: the kernel streams its console to 192.168.7.1:5140 over
 # the USB ECM link (sweetusblog).  Listening **before** fastboot boot captures
@@ -26,7 +30,7 @@ LABEL="${2:-pwr}"
 ADT="${D22AP_ADT:-$ROOT/../xnu/research/ipsw-x/d22ap.adt}"
 
 build() {
-	local extra="${1:-GP_SURVEY=1 GP_PWR=1}"
+	local extra="${1:-GP_SURVEY=1}"
 	# shellcheck disable=SC2086
 	env D22AP_ADT="$ADT" CPUS="${CPUS:-8}" GPU_PROBE_LEVEL=1 $extra \
 		./scripts/mkimage.sh sweetgpu=1 sweetglink=0 ${EXTRA_ARGS:-} \
@@ -98,7 +102,7 @@ run() {
 }
 
 case "${1:-}" in
-build) build "${2:-GP_SURVEY=1 GP_PWR=1}" ;;
+build) build "${2:-GP_SURVEY=1}" ;;
 run) run ;;
 *) sed -n '2,18p' "$0"; exit 2 ;;
 esac

@@ -33,12 +33,13 @@
  }
  
  static void
-@@ -2513,8 +2532,14 @@
+@@ -2512,9 +2531,15 @@
+ g_gpu_maybe_reset(void)
  {
  	int rb = 0, gl = 1;
- 
-+	int gm = 0;
 +
++	int gm = 0;
+ 
  	(void)PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb));
  	(void)PE_parse_boot_argn("sweetglink", &gl, sizeof(gl));
 +	(void)PE_parse_boot_argn("sweetgmuboot", &gm, sizeof(gm));
@@ -48,10 +49,60 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2612,6 +2637,472 @@
+@@ -2610,6 +2635,525 @@
+ 	}
+ 	sweet_log_sync();
  	g_gpu_maybe_reset();
- }
- 
++}
++
++/*
++ * ---- GPU state snapshot (sweetgsnap=1) ----
++ *
++ * Read-only dump of everything we are about to touch, taken before any GPU
++ * write.  Every later experiment is compared against these ABL-handover
++ * values; without it a changed bit cannot be attributed to a step we took.
++ */
++static void
++g_gpu_snapshot(void)
++{
++	int en = 0;
++	vm_offset_t gc, kg, sm, gm;
++
++	(void)PE_parse_boot_argn("sweetgsnap", &en, sizeof(en));
++	if (!en) {
++		return;
++	}
++	gc = g_map_win(0x3d90000ull, 0x10000u);
++	kg = g_map_win(0x3d00000ull, 0x40000u);
++	sm = g_map_win(0x3da0000ull, 0x20000u);
++	gm = g_map_win(0x3d68000ull, 0x10000u);
++	if (!gc || !kg || !sm || !gm) {
++		printf("SWEET SNAP: window alloc failed\n");
++		sweet_log_sync();
++		return;
++	}
++	printf("SWEET SNAP: cx_gdscr=%#x cfg=%#x gx_gdscr=%#x gx_cfg=%#x\n",
++	    gm_rd(gc, 0x9108u), gm_rd(gc, 0x910cu), gm_rd(gc, 0x905cu),
++	    gm_rd(gc, 0x9060u));
++	printf("SWEET SNAP: ahb=%#x cxgmu=%#x hub=%#x smmuv=%#x "
++	    "memnoc=%#x bcr=%#x\n", gm_rd(gc, 0x911cu), gm_rd(gc, 0x913cu),
++	    gm_rd(gc, 0x9148u), gm_rd(gc, 0x7000u), gm_rd(gc, 0x9150u),
++	    gm_rd(gc, 0x9314u));
++	printf("SWEET SNAP: gmu_rcg=%#x/%#x hub_rcg=%#x/%#x hub_div=%#x\n",
++	    gm_rd(gc, 0x9318u), gm_rd(gc, 0x931cu), gm_rd(gc, 0x93ecu),
++	    gm_rd(gc, 0x93f0u), gm_rd(gc, 0x9430u));
++	printf("SWEET SNAP: rbbm_ident=%#x rbbm_status=%#x\n",
++	    gm_rd(kg, 0x0u), gm_rd(kg, 0x840u));
++	printf("SWEET SNAP: smmu id0=%#x id1=%#x s2cr0=%#x s2cr1=%#x "
++	    "s2cr5=%#x\n", gm_rd(sm, 0x0u), gm_rd(sm, 0x4u),
++	    gm_rd(sm, 0xc00u), gm_rd(sm, 0xc04u), gm_rd(sm, 0xc14u));
++	printf("SWEET SNAP: cm3_reset=%#x fw_init=%#x hfi_cs=%#x hfi_ci=%#x "
++	    "itcm0=%#x dtcm0=%#x\n", gm_rd(gm, 0x16000u), gm_rd(gm, 0x16070u),
++	    gm_rd(gm, 0x16600u), gm_rd(gm, 0x16618u), gm_rd(gm, 0x5000u),
++	    gm_rd(gm, 0x9000u));
++	sweet_log_sync();
++}
++
 +/*
 + * ---- SPMI rail probe (sweetrail=1) ----
 + *
@@ -446,6 +497,11 @@
 +			uint32_t r0, w0, r1, w1;
 +
 +			g_wait(10000);
++			printf("SWEET GMU: shim marks pre=%#x post=%#x beat=%u\n",
++			    *(volatile uint32_t *)(hdr + 0xf08),
++			    *(volatile uint32_t *)(hdr + 0xf0c),
++			    *(volatile uint32_t *)(hdr + 0xf10));
++			sweet_log_sync();
 +			v = gm_rd(gc, 0x905cu);
 +			r0 = *(volatile uint32_t *)(hfi + (6u + 10u) * 4u);
 +			w0 = *(volatile uint32_t *)(hfi + (6u + 11u) * 4u);
@@ -516,16 +572,16 @@
 +			}
 +		}
 +	}
-+}
-+
+ }
+ 
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
-  * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5387,8 +5878,12 @@
+@@ -5387,8 +5931,14 @@
  	int enabled = 0;
  	int rc;
  
-+	/* SPMI rail probe first: g_gpu_probe resets the SoC when it is done. */
++	/* Snapshot first: everything after this may write. */
++	g_gpu_snapshot();
++	/* SPMI rail probe next: g_gpu_probe resets the SoC when it is done. */
 +	g_rail_probe();
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();

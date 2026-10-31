@@ -2420,10 +2420,20 @@ gp_spin_ms(uint64_t ms)
 static void
 gp_gmu_release_from_secondary(void)
 {
+	uint32_t n;
+
 	gp_spin_ms(300u);		/* XNU is far enough along */
+	/*
+	 * Markers in our own DDR (not behind the GMU AHB): if the release
+	 * store never completes, 0xff0c stays clear and the beat stops at 0.
+	 * A beating counter also proves this core was not taken down.
+	 */
+	wr32(0xa2e0ff08UL, 0xdead0001u);
 	wr32(0x3d7e000UL, 0u);		/* CM3_SYSRESET = 0 */
-	for (;;) {
-		__asm__ volatile("wfe");
+	wr32(0xa2e0ff0cUL, 0xdead0002u);
+	for (n = 1;; n++) {
+		wr32(0xa2e0ff10UL, n);
+		gp_spin_ms(1u);
 	}
 }
 
