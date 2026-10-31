@@ -56,8 +56,8 @@
 + * and let the values speak: a live rail shows a setpoint, a dead one
 + * does not.
 + */
-+extern "C" int sweet_spmi_init(void);
-+extern "C" int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
++extern int sweet_spmi_init(void);
++extern int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
 +
 +static void
 +g_rail_probe(void)
