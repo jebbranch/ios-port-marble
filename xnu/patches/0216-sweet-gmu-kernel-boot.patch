@@ -41,7 +41,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2634,416 @@
+@@ -2610,8 +2634,425 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -79,8 +79,8 @@
 +
 +	__asm__ volatile("dsb sy" ::: "memory");
 +	return v;
-+}
-+
+ }
+ 
 +static void
 +gm_wr(vm_offset_t b, uint32_t o, uint32_t v)
 +{
@@ -141,14 +141,21 @@
 +	 */
 +	v = gm_rd(gc, 0x9108);
 +	{
-+		uint32_t w = v & ~1u;		/* SW_COLLAPSE off */
++		uint32_t base = v & ~0xf000u;
 +
-+		w &= ~0xf000u;
-+		w |= 0x8000u;			/* CLK_DIS_WAIT = 8 */
-+		w |= 1u << 11;			/* RETAIN_FF_ENABLE */
-+		w |= (1u << 21) | (1u << 17);
-+		gm_wr(gc, 0x9108, w);
-+		g_wait(2);
++		base |= 0x8000u;		/* CLK_DIS_WAIT = 8 */
++		base |= 1u << 11;		/* RETAIN_FF_ENABLE */
++		base |= (1u << 21) | (1u << 17);
++
++		/*
++		 * The vendor collapses CX once (0xf822f801) and only then powers
++		 * it (0x228800): a full off/on cycle resets the domain's state
++		 * machine.  We used to power it from the ABL state.
++		 */
++		gm_wr(gc, 0x9108, (base | 1u) | (1u << 31));
++		g_wait(3);
++		gm_wr(gc, 0x9108, base);
++		g_wait(3);
 +	}
 +	printf("SWEET GMU: cx gdscr=%#x\n", gm_rd(gc, 0x9108));
 +	sweet_log_sync();
@@ -455,10 +462,12 @@
 +			}
 +		}
 +	}
- }
- 
++}
++
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5823,8 @@
+  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
+  * Read-only probe: model, stream-match entries, and any existing mapping
+@@ -5389,6 +5830,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
