@@ -8,10 +8,12 @@
  extern int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
      unsigned len);
  extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
-@@ -225,6 +226,24 @@
+@@ -223,6 +224,24 @@
+ 		return 0;
+ 	}
  	return g_win_map(w, pa, size);
- }
- 
++}
++
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -28,11 +30,9 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
-+}
-+
+ }
+ 
  static void
- g_win_free(vm_offset_t win, vm_size_t size)
- {
 @@ -2512,9 +2531,15 @@
  g_gpu_maybe_reset(void)
  {
@@ -49,7 +49,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,543 @@
+@@ -2610,6 +2635,565 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -74,12 +74,30 @@
 +	if (!en) {
 +		return;
 +	}
-+	gc = g_map_win(0x3d90000ull, 0x10000u);
-+	kg = g_map_win(0x3d00000ull, 0x40000u);
++	printf("SWEET SNAP: start level=%d\n", en);
++	sweet_log_sync();
 +	sm = g_map_win(0x3da0000ull, 0x20000u);
-+	gm = g_map_win(0x3d68000ull, 0x10000u);
-+	if (!gc || !kg || !sm || !gm) {
-+		printf("SWEET SNAP: window alloc failed\n");
++	if (!sm) {
++		printf("SWEET SNAP: smmu window alloc failed\n");
++		sweet_log_sync();
++		return;
++	}
++	printf("SWEET SNAP: smmu id0=%#x id1=%#x s2cr0=%#x s2cr1=%#x "
++	    "s2cr5=%#x\n", gm_rd(sm, 0x0u), gm_rd(sm, 0x4u),
++	    gm_rd(sm, 0xc00u), gm_rd(sm, 0xc04u), gm_rd(sm, 0xc14u));
++	sweet_log_sync();
++	kg = g_map_win(0x3d00000ull, 0x40000u);
++	if (!kg) {
++		printf("SWEET SNAP: kgsl window alloc failed\n");
++		sweet_log_sync();
++		return;
++	}
++	printf("SWEET SNAP: rbbm_ident=%#x rbbm_status=%#x\n",
++	    gm_rd(kg, 0x0u), gm_rd(kg, 0x840u));
++	sweet_log_sync();
++	gc = g_map_win(0x3d90000ull, 0x10000u);
++	if (!gc) {
++		printf("SWEET SNAP: gpucc window alloc failed\n");
 +		sweet_log_sync();
 +		return;
 +	}
@@ -95,13 +113,17 @@
 +	    gm_rd(gc, 0x9318u), gm_rd(gc, 0x931cu), gm_rd(gc, 0x93ecu),
 +	    gm_rd(gc, 0x93f0u), gm_rd(gc, 0x9430u));
 +	sweet_log_sync();
-+	printf("SWEET SNAP: rbbm_ident=%#x rbbm_status=%#x\n",
-+	    gm_rd(kg, 0x0u), gm_rd(kg, 0x840u));
-+	sweet_log_sync();
-+	printf("SWEET SNAP: smmu id0=%#x id1=%#x s2cr0=%#x s2cr1=%#x "
-+	    "s2cr5=%#x\n", gm_rd(sm, 0x0u), gm_rd(sm, 0x4u),
-+	    gm_rd(sm, 0xc00u), gm_rd(sm, 0xc04u), gm_rd(sm, 0xc14u));
-+	sweet_log_sync();
++	if (en < 2) {
++		printf("SWEET SNAP: gmu skipped (level 1)\n");
++		sweet_log_sync();
++		return;
++	}
++	gm = g_map_win(0x3d68000ull, 0x10000u);
++	if (!gm) {
++		printf("SWEET SNAP: gmu window alloc failed\n");
++		sweet_log_sync();
++		return;
++	}
 +	printf("SWEET SNAP: gmu (last group)\n");
 +	printf("SWEET SNAP: cm3_reset=%#x fw_init=%#x hfi_cs=%#x hfi_ci=%#x "
 +	    "itcm0=%#x dtcm0=%#x\n", gm_rd(gm, 0x16000u), gm_rd(gm, 0x16070u),
@@ -593,7 +615,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +5949,14 @@
+@@ -5387,8 +5971,14 @@
  	int enabled = 0;
  	int rc;
  
