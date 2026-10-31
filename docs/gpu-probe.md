@@ -809,3 +809,22 @@ SWEET GMU: releasing cm3        ← 之后该线程永久卡住
 
 当前设计：三个一次性内核线程（A 放复位、B 300 ms 后写 `HFI_CTRL_INIT`、
 C 600 ms 起只读 DRAM 的 HFI 队列并写日志/复位），探针线程不再碰 GMU。
+
+### CM3 放复位后 AP 侧完全失去 GMU（posted 映射也不行）
+
+把 GMU 窗口改成 `VM_WIMG_POSTED`（nGnRE + early ack）后再试，结果不变：紧接
+着读 `FW_INIT_RESULT` 仍然卡住。结论收敛为一句话：
+
+> **CM3 一启动，GMU 的 AHB 就不再为 AP 服务；而 `gpu_cc_ahb` 我们打不开。**
+
+厂商的 AP 之所以能继续读 `FW_INIT`，是因为他们启动前就把 `gpu_cc_ahb` 打开了。
+这也是整个 GPU 线上唯一还没攻克的硬件门。
+
+两条后续路线：
+
+1. **攻 `gpu_cc_ahb`**：`0x911c` 写 bit0 不 latch 已确认；下一批要试的是
+   hub 分频器 `0x9430`（写入带 enable 位的值）、GCC QMIP 投票、以及 RPMh
+   里可能存在的 GCC 侧 GPU AHB 门控。
+2. **牺牲一个核**：把放复位的写绑定到非启动核，主核随后读 GPUCC 里的
+   `GX_GDSCR`（GMU 起来后的第一件事就是开 GX）——只要 `PWR_ON` 变 1，
+   就证明 CM3 在跑、而且能驱动 GPU，即使我们读不到 GMU 自己的寄存器。
