@@ -41,7 +41,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2634,424 @@
+@@ -2610,6 +2634,422 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -148,15 +148,13 @@
 +		base |= (1u << 21) | (1u << 17);
 +
 +		/*
-+		 * Full off/on cycle, as the vendor does: collapse, then power.
-+		 * With the rail votes now in the WAKE TCS group this should
-+		 * come back with PWR_ON=1; if it does not, the rail really is
-+		 * not being raised.
++		 * No collapse/power cycle: even with the rail votes moved to
++		 * the WAKE TCS group (state=2, as the vendor's rpmh_write
++		 * shows) the domain does not come back.  Stay on the state
++		 * ABL left until the power path is really understood.
 +		 */
-+		gm_wr(gc, 0x9108, (base | 1u) | (1u << 31));
-+		g_wait(3);
 +		gm_wr(gc, 0x9108, base);
-+		g_wait(3);
++		g_wait(2);
 +	}
 +	printf("SWEET GMU: cx gdscr=%#x\n", gm_rd(gc, 0x9108));
 +	sweet_log_sync();
@@ -466,7 +464,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5831,8 @@
+@@ -5389,6 +5829,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();

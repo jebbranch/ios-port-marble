@@ -886,3 +886,23 @@ cb1=0
 ⇒ 后续所有“`gpu_cc_ahb` 不 latch / GMU 无响应”的现象都可以统一解释为
 **平台电源没有真正就绪**，而不是寄存器序列的问题。下一步必须先解决
 RPMh 投票的真实生效（抓 `rpmh_write` 的 state 参数与完整 cmd 数组）。
+
+### WAKE 组投票也不行，CX 断电后回不来
+
+kprobe 显示厂商所有 GPU 轨道投票都是 `rpmh_write(state=2)`（**WAKE 组**），
+我们把 shim 的投票从 ACTIVE TCS(0-1) 改到 WAKE TCS(4-5) 后：
+
+```
+shim: lcx.lvl / lmx.lvl 投票 rc=0（命令完成）
+kernel: cx gdscr=0x228801   ← 掉电→上电周期后 PWR_ON 仍为 0
+        gmu=0x80000000      ← GMU 块整体不可访问
+        itcm0=0、cb1=0
+```
+
+结论：**ARC 投票命令"完成"不等于轨道真的改变**。WAKE 组是"唤醒时生效"的
+状态，当前电平来自别处（ABL/引导阶段的 active 配置）。我们既改不动当前
+电平，也无法在断电后把它拉回来。
+
+⇒ GPU 硬件启动剩下的所有路径都收敛到同一个前提：**在 XNU 里建立真实的
+电源管理路径**（RPMh/regulator/interconnect 的 active 侧投票与 PMIC 配置），
+而不是继续在 GPUCC 寄存器上打转。这已经不是探针能解决的问题，是驱动移植。
