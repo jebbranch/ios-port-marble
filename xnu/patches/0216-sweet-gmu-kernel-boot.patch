@@ -16,7 +16,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2616,384 @@
+@@ -2610,8 +2616,387 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -68,8 +68,8 @@
 +{
 +	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
 +	    ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-+}
-+
+ }
+ 
 +/*
 + * The write that releases the CM3 never completes: the GMU takes the AHB
 + * over as soon as it lands, and Device-nGnRnE ordering then blocks every
@@ -129,7 +129,8 @@
 +		register uint64_t x0 __asm("x0") = 0x84000009ull;
 +
 +		__asm volatile("dsb sy" ::: "memory");
-+		__asm volatile("smc #0" : "+r"(x0) : "x1", "x2", "x3", "memory");
++		__asm volatile("smc #0" : "+r"(x0) ::
++		    "x1", "x2", "x3", "memory");
 +	}
 +	for (;;) {
 +		__asm__ volatile("wfe");
@@ -398,10 +399,12 @@
 +			}
 +		}
 +	}
- }
- 
++}
++
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5773,8 @@
+  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
+  * Read-only probe: model, stream-match entries, and any existing mapping
+@@ -5389,6 +5774,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
