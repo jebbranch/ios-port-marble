@@ -16,7 +16,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2616,342 @@
+@@ -2610,6 +2616,384 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -83,6 +83,54 @@
 +
 +	(void)wr;
 +	*(volatile uint32_t *)(gm + GMU_OFF(0x1f800u)) = 0u;
++	for (;;) {
++		__asm__ volatile("wfe");
++	}
++}
++
++/* Writes land even when their completion never comes back. */
++static void
++g_gmu_hfi_init_thread(void *arg, wait_result_t wr)
++{
++	vm_offset_t gm = (vm_offset_t)arg;
++
++	(void)wr;
++	delay(300000);
++	*(volatile uint32_t *)(gm + GMU_OFF(0x1f986u)) = 1u;
++	for (;;) {
++		__asm__ volatile("wfe");
++	}
++}
++
++/* Watcher: only touches DRAM, so it survives the GMU owning the AHB. */
++static void
++g_gmu_watch_thread(void *arg, wait_result_t wr)
++{
++	vm_offset_t hfi = (vm_offset_t)arg;
++	uint32_t rr = 0, rw = 0, cmdw = 0, cmdr = 0;
++	int i;
++
++	(void)wr;
++	delay(600000);
++	for (i = 0; i < 50; i++) {
++		rr = *(volatile uint32_t *)(hfi + (18u + 10u) * 4u);
++		rw = *(volatile uint32_t *)(hfi + (18u + 11u) * 4u);
++		cmdr = *(volatile uint32_t *)(hfi + (6u + 10u) * 4u);
++		cmdw = *(volatile uint32_t *)(hfi + (6u + 11u) * 4u);
++		if (rw != 0 || cmdw != 0) {
++			break;
++		}
++		delay(100000);
++	}
++	printf("SWEET GMU: watch msg r/w=%u/%u cmd r/w=%u/%u after %d ms\n",
++	    rr, rw, cmdr, cmdw, 600 + i * 100);
++	sweet_log_sync();
++	{
++		register uint64_t x0 __asm("x0") = 0x84000009ull;
++
++		__asm volatile("dsb sy" ::: "memory");
++		__asm volatile("smc #0" : "+r"(x0) : "x1", "x2", "x3", "memory");
++	}
 +	for (;;) {
 +		__asm__ volatile("wfe");
 +	}
@@ -309,31 +357,25 @@
 +	{
 +		thread_t th;
 +
-+		if (kernel_thread_start((thread_continue_t)g_gmu_release_thread,
-+		    (void *)gm, &th) != KERN_SUCCESS) {
-+			printf("SWEET GMU: release thread failed\n");
-+			sweet_log_sync();
-+		} else {
++		if (kernel_thread_start((thread_continue_t)g_gmu_watch_thread,
++		    (void *)hfi, &th) == KERN_SUCCESS) {
 +			thread_deallocate(th);
 +		}
-+	}
-+	g_wait(200);
-+	{
-+		uint32_t rr, rw;
-+		int n;
-+
-+		for (n = 0; n < 30; n++) {
-+			rr = *(volatile uint32_t *)(hfi + (18u + 10u) * 4u);
-+			rw = *(volatile uint32_t *)(hfi + (18u + 11u) * 4u);
-+			if (rw != 0) {
-+				break;
-+			}
-+			g_wait(100);
++		if (kernel_thread_start((thread_continue_t)g_gmu_hfi_init_thread,
++		    (void *)gm, &th) == KERN_SUCCESS) {
++			thread_deallocate(th);
 +		}
-+		printf("SWEET GMU: released; hfi msg r/w=%u/%u after %d ms\n",
-+		    rr, rw, n * 100);
-+		sweet_log_sync();
++		if (kernel_thread_start((thread_continue_t)g_gmu_release_thread,
++		    (void *)gm, &th) == KERN_SUCCESS) {
++			thread_deallocate(th);
++		} else {
++			printf("SWEET GMU: release thread failed\n");
++			sweet_log_sync();
++		}
 +	}
++	g_wait(1000);
++	printf("SWEET GMU: probe thread still alive after release\n");
++	sweet_log_sync();
 +
 +	/* Done: reset so the ring can be pulled from Android/TWRP. */
 +	{
@@ -359,7 +401,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5731,8 @@
+@@ -5389,6 +5773,8 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
