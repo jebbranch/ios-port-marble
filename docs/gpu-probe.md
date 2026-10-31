@@ -769,3 +769,43 @@ GMU 寄存器的访问会挂（AHB 不再对 AP 开放），所以轮询 `FW_INI
 * 出问题时我们有 ring、有 console、有完整的 I/O，而不是"整机挂死"；
 * 副作用的具体内容（GMU 动了 GPUCC/RPMh/RSCC 的什么）可以在系统活着的时候
   一项一项对照。
+
+## 内核侧 GMU 启动（补丁 0216）
+
+架构改为：**shim 只做 staging，XNU 负责硬件动作**，这样每一步都能进 SWEETLOG。
+
+shim 把固件与缓冲摆到固定 PA 并打 `GMUF` 标记：
+
+| 地址 | 内容 |
+|---|---|
+| `0xa2e10000` | `gmu_gen70000.bin` 副本 |
+| `0xa2e20000` | GMU cache 块（64 KiB） |
+| `0xa2e30000` | HFI 队列表（64 KiB） |
+| `0xa2e40000` | 页表（20 KiB） |
+
+内核里 `g_gmu_boot()`（`sweetgmuboot=1`）按顺序完成：CX GDSCR → GPUCC 时钟 →
+ITCM/DTCM → SID5/CB1（含 TLB 失效）→ HFI 表 → 厂商预启动寄存器 → 放 CM3。
+
+真机已经走到的点：
+
+```
+SWEET GMU: staged fw 57272 bytes
+SWEET GMU: cx gdscr=0xf822f000
+SWEET GMU: clocks hub=0x2 ahb=0 gmu=0x2221
+SWEET GMU: fw loaded, itcm0=0x10007f80
+SWEET GMU: smmu smr1=0x80000005 s2cr1=0x1 cb1=0x1
+SWEET GMU: pre-boot cfg done
+SWEET GMU: releasing cm3        ← 之后该线程永久卡住
+```
+
+两个新事实：
+
+1. **Device 内存宽访问会 panic**：第一次运行死在 HFI 表初始化，编译器把表写
+   合成了 `stur q0`（128-bit NEON store），Device-nGnRnE 不允许。全部改成
+   32-bit 访问后通过。
+2. **放 CM3 的那次写永不返回**：写一旦落地，GMU 立刻接管 AHB，Device-nGnRnE
+   的顺序性会让该线程之后的所有内存访问永久阻塞。所以放复位必须放到一次性
+   线程里，主线程只能通过 **DRAM 里的 HFI 队列**观察 GMU。
+
+当前设计：三个一次性内核线程（A 放复位、B 300 ms 后写 `HFI_CTRL_INIT`、
+C 600 ms 起只读 DRAM 的 HFI 队列并写日志/复位），探针线程不再碰 GMU。
