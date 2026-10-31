@@ -48,7 +48,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,8 +2635,610 @@
+@@ -2610,6 +2635,611 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -190,8 +190,8 @@
 +	}
 +	printf("SWEET RAIL: done blocks=%u\n", seen);
 +	sweet_log_sync();
- }
- 
++}
++
 +/*
 + * ---- kernel-side GMU bring-up (sweetgmuboot=1) ----
 + *
@@ -603,19 +603,22 @@
 +		    *(volatile uint32_t *)(hfi + 0x44u),
 +		    *(volatile uint32_t *)(hfi + 0x70u),
 +		    *(volatile uint32_t *)(hfi + 0x74u));
++		sweet_log_sync();
 +		g_wait(200);
 +		printf("SWEET GMU: hfi later=%u/%u msg=%u/%u\n",
 +		    *(volatile uint32_t *)(hfi + 0x40u),
 +		    *(volatile uint32_t *)(hfi + 0x44u),
 +		    *(volatile uint32_t *)(hfi + 0x70u),
 +		    *(volatile uint32_t *)(hfi + 0x74u));
-+		/* The SMMU is the last block we dare touch. */
-+		printf("SWEET GMU: smmu gfsr=%#x fsynr1=%#x\n",
-+		    gm_rd(sm, 0x48u), gm_rd(sm, 0x54u));
++		sweet_log_sync();
 +		if (ao) {
 +			printf("SWEET GMU: ao=%#x %#x %#x\n", gm_rd(ao, 0x0u),
 +			    gm_rd(ao, 0x4u), gm_rd(ao, 0x8u));
++			sweet_log_sync();
 +		}
++		/* The SMMU is the last block we dare touch. */
++		printf("SWEET GMU: smmu gfsr=%#x fsynr1=%#x\n",
++		    gm_rd(sm, 0x48u), gm_rd(sm, 0x54u));
 +		sweet_log_sync();
 +	}
 +	v = 0;
@@ -654,12 +657,10 @@
 +			}
 +		}
 +	}
-+}
-+
+ }
+ 
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
-  * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5387,8 +6014,14 @@
+@@ -5387,8 +6017,14 @@
  	int enabled = 0;
  	int rc;
  
