@@ -8,12 +8,10 @@
  extern int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
      unsigned len);
  extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
-@@ -223,6 +224,24 @@
- 		return 0;
- 	}
+@@ -225,6 +226,24 @@
  	return g_win_map(w, pa, size);
-+}
-+
+ }
+ 
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -30,16 +28,17 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
- }
- 
++}
++
  static void
-@@ -2512,9 +2531,15 @@
- g_gpu_maybe_reset(void)
+ g_win_free(vm_offset_t win, vm_size_t size)
+ {
+@@ -2513,8 +2532,14 @@
  {
  	int rb = 0, gl = 1;
-+
-+	int gm = 0;
  
++	int gm = 0;
++
  	(void)PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb));
  	(void)PE_parse_boot_argn("sweetglink", &gl, sizeof(gl));
 +	(void)PE_parse_boot_argn("sweetgmuboot", &gm, sizeof(gm));
@@ -49,7 +48,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,621 @@
+@@ -2610,6 +2635,641 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -598,7 +597,27 @@
 +	 */
 +	printf("SWEET GMU: release written, gmu read skipped\n");
 +	sweet_log_sync();
-+	g_wait(300);
++	g_wait(50);
++	/*
++	 * RSCC sits outside the GPU AHB: its TCS DRV0 status words are what
++	 * the vendor polls to decide whether the GMU is healthy.  Word
++	 * offsets from gen7_reg.h, 32-bit registers (offset << 2).
++	 */
++	{
++		vm_offset_t rs = g_map_win_wimg(0x3d50000ull, 0x2000u,
++		    VM_WIMG_IO);
++
++		if (rs) {
++			printf("SWEET GMU: rscc tcs=%#x %#x %#x %#x\n",
++			    gm_rd(rs, 0xd18u), gm_rd(rs, 0xfb8u),
++			    gm_rd(rs, 0x1258u), gm_rd(rs, 0x14f8u));
++			sweet_log_sync();
++		} else {
++			printf("SWEET GMU: rscc map failed\n");
++			sweet_log_sync();
++		}
++	}
++	g_wait(250);
 +	{
 +		vm_offset_t ao = g_map_win_wimg(0x3d40000ull, 0x1000u,
 +		    VM_WIMG_IO);
@@ -671,7 +690,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +6027,14 @@
+@@ -5387,8 +6047,14 @@
  	int enabled = 0;
  	int rc;
  
