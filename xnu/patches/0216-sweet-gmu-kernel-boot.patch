@@ -8,12 +8,10 @@
  extern int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
      unsigned len);
  extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
-@@ -223,6 +224,24 @@
- 		return 0;
- 	}
+@@ -225,6 +226,24 @@
  	return g_win_map(w, pa, size);
-+}
-+
+ }
+ 
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -30,16 +28,17 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
- }
- 
++}
++
  static void
-@@ -2512,9 +2531,15 @@
- g_gpu_maybe_reset(void)
+ g_win_free(vm_offset_t win, vm_size_t size)
+ {
+@@ -2513,8 +2532,14 @@
  {
  	int rb = 0, gl = 1;
-+
-+	int gm = 0;
  
++	int gm = 0;
++
  	(void)PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb));
  	(void)PE_parse_boot_argn("sweetglink", &gl, sizeof(gl));
 +	(void)PE_parse_boot_argn("sweetgmuboot", &gm, sizeof(gm));
@@ -49,7 +48,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,565 @@
+@@ -2610,6 +2635,577 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -536,11 +535,23 @@
 +			sweet_log_sync();
 +			uint32_t r0, w0, r1, w1;
 +
-+			g_wait(10000);
++			/*
++			 * Hand-off: the shim core releases CM3 when it sees this.
++			 * The page must be uncached -- the shim polls it with the
++			 * MMU off, so a cached store would never become visible.
++			 */
++			vm_offset_t ho = g_map_win_wimg(0xa2e0f000ull, 0x1000u,
++			    VM_WIMG_IO);
++
++			if (ho) {
++				*(volatile uint32_t *)(ho + 0xf08) = 0x47505552u;
++				__asm__ volatile("dsb sy" ::: "memory");
++			}
++			g_wait(2000);
 +			printf("SWEET GMU: shim marks pre=%#x post=%#x beat=%u\n",
-+			    *(volatile uint32_t *)(hdr + 0xf08),
-+			    *(volatile uint32_t *)(hdr + 0xf0c),
-+			    *(volatile uint32_t *)(hdr + 0xf10));
++			    ho ? *(volatile uint32_t *)(ho + 0xf08) : 0xffffffffu,
++			    ho ? *(volatile uint32_t *)(ho + 0xf0c) : 0xffffffffu,
++			    ho ? *(volatile uint32_t *)(ho + 0xf10) : 0xffffffffu);
 +			sweet_log_sync();
 +			v = gm_rd(gc, 0x905cu);
 +			r0 = *(volatile uint32_t *)(hfi + (6u + 10u) * 4u);
@@ -615,7 +626,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +5971,14 @@
+@@ -5387,8 +5983,14 @@
  	int enabled = 0;
  	int rc;
  

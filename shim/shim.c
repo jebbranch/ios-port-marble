@@ -2422,7 +2422,18 @@ gp_gmu_release_from_secondary(void)
 {
 	uint32_t n;
 
-	gp_spin_ms(300u);		/* XNU is far enough along */
+	/*
+	 * Wait for XNU to finish the pre-boot configuration instead of
+	 * releasing CM3 on a timer: the kernel writes 0x47505552 ("GPUR")
+	 * to 0xa2e0ff08 right before it wants the release.  A fixed delay
+	 * here fired long before the firmware was even staged.
+	 */
+	for (n = 0; n < 20000u; n++) {
+		if (rd32(0xa2e0ff08UL) == 0x47505552u) {
+			break;
+		}
+		gp_spin_ms(1u);
+	}
 	/*
 	 * Markers in our own DDR (not behind the GMU AHB): if the release
 	 * store never completes, 0xff0c stays clear and the beat stops at 0.
