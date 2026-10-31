@@ -8,12 +8,10 @@
  extern int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
      unsigned len);
  extern int sweet_spmi_write(unsigned sid, unsigned addr, const uint8_t *buf,
-@@ -223,6 +224,24 @@
- 		return 0;
- 	}
+@@ -225,6 +226,24 @@
  	return g_win_map(w, pa, size);
-+}
-+
+ }
+ 
 +/* Same, with an explicit WIMG attribute (e.g. VM_WIMG_POSTED). */
 +static vm_offset_t
 +g_map_win_wimg(uint64_t pa, vm_size_t size, unsigned int wimg)
@@ -30,9 +28,11 @@
 +	pmap_map(w, (vm_offset_t)base, (vm_offset_t)(base + span),
 +	    VM_PROT_READ | VM_PROT_WRITE, wimg);
 +	return w + off;
- }
- 
++}
++
  static void
+ g_win_free(vm_offset_t win, vm_size_t size)
+ {
 @@ -2513,8 +2532,14 @@
  {
  	int rb = 0, gl = 1;
@@ -48,10 +48,12 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2612,6 +2637,598 @@
+@@ -2610,8 +2635,610 @@
+ 	}
+ 	sweet_log_sync();
  	g_gpu_maybe_reset();
- }
- 
++}
++
 +/*
 + * ---- GPU state snapshot (sweetgsnap=1) ----
 + *
@@ -188,8 +190,8 @@
 +	}
 +	printf("SWEET RAIL: done blocks=%u\n", seen);
 +	sweet_log_sync();
-+}
-+
+ }
+ 
 +/*
 + * ---- kernel-side GMU bring-up (sweetgmuboot=1) ----
 + *
@@ -592,14 +594,24 @@
 +
 +		/*
 +		 * GPUCC is behind the GMU's AHB once the CM3 runs: reading it
-+		 * after the release is what wedges the core.  Only DDR (HFI
-+		 * queues) and the AO block stay reachable from here.
++		 * after the release is what wedges the core.  Only the SMMU
++		 * (separate block), DDR (HFI queues) and the AO block stay
++		 * reachable from here, so those are all we touch.
 +		 */
-+		printf("SWEET GMU: after rel hfi rd/wr=%u/%u msg=%u/%u\n",
++		printf("SWEET GMU: after rel hfi=%u/%u msg=%u/%u\n",
 +		    *(volatile uint32_t *)(hfi + 0x40u),
 +		    *(volatile uint32_t *)(hfi + 0x44u),
 +		    *(volatile uint32_t *)(hfi + 0x70u),
 +		    *(volatile uint32_t *)(hfi + 0x74u));
++		g_wait(200);
++		printf("SWEET GMU: hfi later=%u/%u msg=%u/%u\n",
++		    *(volatile uint32_t *)(hfi + 0x40u),
++		    *(volatile uint32_t *)(hfi + 0x44u),
++		    *(volatile uint32_t *)(hfi + 0x70u),
++		    *(volatile uint32_t *)(hfi + 0x74u));
++		/* The SMMU is the last block we dare touch. */
++		printf("SWEET GMU: smmu gfsr=%#x fsynr1=%#x\n",
++		    gm_rd(sm, 0x48u), gm_rd(sm, 0x54u));
 +		if (ao) {
 +			printf("SWEET GMU: ao=%#x %#x %#x\n", gm_rd(ao, 0x0u),
 +			    gm_rd(ao, 0x4u), gm_rd(ao, 0x8u));
@@ -647,7 +659,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5387,8 +6004,14 @@
+@@ -5387,8 +6014,14 @@
  	int enabled = 0;
  	int rc;
  
