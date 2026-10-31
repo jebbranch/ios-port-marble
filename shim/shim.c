@@ -1194,6 +1194,21 @@ gp_gmu_iommu(volatile struct gpu_probe_result *r)
 	gp_wr32(s + 0xc04u, 0x1u);		/* S2CR(1) = TRANS, CB1 */
 	__asm__ volatile("dsb sy" ::: "memory");
 
+	/*
+	 * kgsl flushes the TLB before every GMU boot: stale translations from
+	 * a previous owner of this SMMU would send the CM3's first fetches to
+	 * the wrong physical pages.
+	 */
+	r->last_step = 702;
+	gp_wr32(s + 0x68u, 0u);			/* TLBIALLNSNH */
+	gp_wr32(s + 0x6cu, 0u);			/* TLBIALLH */
+	gp_wr32(s + 0x70u, 0u);			/* sTLBGSYNC */
+	for (i = 0; i < 100u; i++) {
+		if (!(gp_rd32(s + 0x74u) & 1u))
+			break;
+		delay_ms(1);
+	}
+
 #if GP_GMUBOOT == 4
 	/* Readback of the whole SID-5 wiring, nothing else runs. */
 	r->p_cb0_sctlr = gp_rd32(cb + 0x00u);	/* CB1.SCTLR */
@@ -1360,7 +1375,7 @@ gp_gmu_boot(volatile struct gpu_probe_result *r)
 		gp_wr32(GMU_HFI_INIT - 4u, 0x60000000u);	/* QTBL_ADDR */
 		gp_wr32(GMU_HFI_INIT - 8u, 1u);			/* QTBL_INFO */
 		gp_wr32(0x3d68000UL + ((uintptr_t)(0x23b11u - 0x1a000u) << 2),
-		    0x8c8008a0u);				/* AHB_FENCE_RANGE_0 */
+		    0x80c808a0u);				/* AHB_FENCE_RANGE_0 */
 		__asm__ volatile("dsb sy" ::: "memory");
 	}
 
@@ -1368,6 +1383,48 @@ gp_gmu_boot(volatile struct gpu_probe_result *r)
 	r->p_kgsl_ident = gp_rd32(GMU_ITCM_W);		/* ITCM[0] echo */
 #if GP_GMUBOOT == 1
 	gp_wr32(GMU_SYSRESET, 0u);			/* release CM3 */
+#endif
+#if GP_GMUBOOT == 7
+	/* Release the CM3 and hand off to XNU without touching anything else. */
+	gp_wr32(GMU_SYSRESET, 0u);
+	__asm__ volatile("dsb sy" ::: "memory");
+	delay_ms(200);
+#endif
+#if GP_GMUBOOT == 6
+	/*
+	 * Release the CM3 but never touch a GMU register afterwards: the AP
+	 * loses the AHB once the CM3 runs, but the HFI queue table lives in
+	 * our own DRAM.  If the GMU is alive it will write a message there.
+	 */
+	gp_wr32(GMU_SYSRESET, 0u);
+	__asm__ volatile("dsb sy" ::: "memory");
+	delay_ms(200);
+	{
+		volatile uint32_t *t = (volatile uint32_t *)gmu_hfi;
+
+		r->p_cb0_sctlr = t[18 + 10];	/* msg queue read index */
+		r->p_cb0_ttbr0 = t[18 + 11];	/* msg queue write index */
+		r->p_cb0_ttbr1 = ((volatile uint32_t *)(gmu_hfi + 176 + 4096))[0];
+		r->p_cb0_tcr = ((volatile uint32_t *)(gmu_hfi + 176 + 4096))[1];
+		r->p_cb0_tcr2 = ((volatile uint32_t *)(gmu_hfi + 176 + 4096))[2];
+		r->p_cb0_mair0 = ((volatile uint32_t *)(gmu_hfi + 176))[0];
+	}
+	con_hex2("GPUS", "msgr=", r->p_cb0_sctlr, "msgw=", r->p_cb0_ttbr0);
+#endif
+#if GP_GMUBOOT == 5
+	/* Release, wait, then reset the SoC without touching GMU registers. */
+	gp_wr32(GMU_SYSRESET, 0u);
+	__asm__ volatile("dsb sy" ::: "memory");
+	delay_ms(50);
+	{
+		register uint64_t x0 __asm("x0") = 0x84000009ull;
+
+		__asm volatile("dsb sy" ::: "memory");
+		__asm volatile("smc #0" : "+r"(x0) ::
+		    "x1", "x2", "x3", "memory");
+	}
+	for (;;)
+		delay_ms(1000);
 #endif
 	__asm__ volatile("dsb sy" ::: "memory");
 	for (k = 0; k < 2000u; k++) {
