@@ -1,0 +1,44 @@
+--- a/bsd/dev/sweet_spmi.c
++++ b/bsd/dev/sweet_spmi.c
+@@ -324,6 +324,31 @@
+ }
+ 
+ /*
++ * Unrestricted variant for bring-up probes: the battery guard above keeps
++ * the power path off every other PMIC peripheral, but read-only diagnosis
++ * needs the GPU rail SMPS blocks (PM8350C S6, PM8350 S5) too.
++ */
++int
++sweet_spmi_read_any(unsigned sid, unsigned addr, uint8_t *out)
++{
++	uint16_t apid;
++	int r;
++
++	if (!sp_ready || !out || sid > 15 || addr > 0xffffu) {
++		return -1;
++	}
++	IOLockLock(sp_lock);
++	apid = sp_find_apid((sid << 8) | (addr >> 8));
++	if (apid == SP_NO_APID || sp_poisoned[apid]) {
++		IOLockUnlock(sp_lock);
++		return -1;
++	}
++	r = sp_obs_read(apid, addr, out);
++	IOLockUnlock(sp_lock);
++	return r == 0 ? 0 : -1;
++}
++
++/*
+  * Multi-byte read (EXT_READL, BC = len-1).  The RTC time register at
+  * 0x6148 is a block register: the vendor's rtc-pm8xxx driver always reads
+  * four bytes at once, and single-byte reads of it are refused.
+--- a/bsd/dev/sweet_spmi.h
++++ b/bsd/dev/sweet_spmi.h
+@@ -8,6 +8,7 @@
+ int sweet_spmi_init(void);
+ /* Thread context only; 0 success, -1 failure; *out unchanged on failure. */
+ int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
++int sweet_spmi_read_any(unsigned sid, unsigned addr, uint8_t *out);
+ /* Block read (1..4 bytes); used for the RTC time register at 0x6148. */
+ int sweet_spmi_read_block(unsigned sid, unsigned addr, uint8_t *buf,
+     unsigned len);
