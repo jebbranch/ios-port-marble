@@ -41,10 +41,63 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2634,422 @@
+@@ -2610,8 +2634,477 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
++}
++
++/*
++ * ---- SPMI rail probe (sweetrail=1) ----
++ *
++ * PM8350C is SPMI SID 2 (DT qcom,pm8350c@2).  Its SMPS blocks sit at
++ * 0x1400 + (n-1)*0x100, so S6 (the GPU CX rail, rpmh-regulator-cxlvl) is
++ * at 0x1900 and pm8350 S5 (gfx) at SID 1 0x1800.  Read a window of each
++ * and let the values speak: a live rail shows a setpoint, a dead one
++ * does not.
++ */
++extern "C" int sweet_spmi_init(void);
++extern "C" int sweet_spmi_read(unsigned sid, unsigned addr, uint8_t *out);
++
++static void
++g_rail_probe(void)
++{
++	int en = 0;
++	unsigned base[2] = { 0x1900u, 0x1800u };	/* c6 / g5 */
++	unsigned sid[2] = { 2u, 1u };
++	unsigned b, o;
++
++	(void)PE_parse_boot_argn("sweetrail", &en, sizeof(en));
++	if (!en) {
++		return;
++	}
++	if (sweet_spmi_init() != 0) {
++		printf("SWEET RAIL: spmi init failed\n");
++		sweet_log_sync();
++		return;
++	}
++	for (b = 0; b < 2u; b++) {
++		uint32_t lo = 0, hi = 0;
++
++		printf("SWEET RAIL: sid%u base=%#x:", sid[b], base[b]);
++		for (o = 0x40u; o <= 0x5fu; o++) {
++			uint8_t v = 0xff;
++
++			if (sweet_spmi_read(sid[b], base[b] + o, &v) == 0) {
++				printf(" %02x=%02x", o, v);
++				if (o == 0x46u) {
++					lo = v;
++				}
++				if (o == 0x47u) {
++					hi = v;
++				}
++			}
++		}
++		printf("\n");
++		sweet_log_sync();
++		(void)lo;
++		(void)hi;
++	}
 +}
 +
 +/*
@@ -93,8 +146,8 @@
 +{
 +	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
 +	    ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-+}
-+
+ }
+ 
 +static void
 +g_gmu_boot(void)
 +{
@@ -461,13 +514,17 @@
 +			}
 +		}
 +	}
- }
- 
++}
++
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5389,6 +5829,8 @@
+  * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
+  * Read-only probe: model, stream-match entries, and any existing mapping
+@@ -5389,6 +5882,10 @@
  
  	/* Independent of the audio stack; gated by sweetgpu=1. */
  	g_gpu_probe();
++	/* SPMI rail probe; gated by sweetrail=1. */
++	g_rail_probe();
 +	/* Kernel-side GMU bring-up; gated by sweetgmuboot=1. */
 +	g_gmu_boot();
  	/* Independent too: gated by sweetsmp=1. */
