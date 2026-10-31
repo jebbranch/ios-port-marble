@@ -1,0 +1,326 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -2512,9 +2512,15 @@
+ g_gpu_maybe_reset(void)
+ {
+ 	int rb = 0, gl = 1;
++
++	int gm = 0;
+ 
+ 	(void)PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb));
+ 	(void)PE_parse_boot_argn("sweetglink", &gl, sizeof(gl));
++	(void)PE_parse_boot_argn("sweetgmuboot", &gm, sizeof(gm));
++	if (gm) {
++		return;	/* the gmu boot resets when it is done */
++	}
+ 	if (rb && !gl) {
+ 		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
+ 		sweet_log_sync();
+@@ -2610,6 +2616,298 @@
+ 	}
+ 	sweet_log_sync();
+ 	g_gpu_maybe_reset();
++}
++
++/*
++ * ---- kernel-side GMU bring-up (sweetgmuboot=1) ----
++ *
++ * The shim stages the firmware and its buffers at fixed physical addresses
++ * just past the probe page:
++ *   0xa2e10000 firmware   0xa2e20000 gmu cache   0xa2e30000 hfi queues
++ *   0xa2e40000 page tables
++ * Doing the boot here instead of in the shim means XNU is already running
++ * when the CM3 starts, so every step lands in the SWEETLOG ring.
++ */
++#define GMU_FW_PA	0xa2e10000ull
++#define GMU_CACHE_PA	0xa2e20000ull
++#define GMU_HFI_PA	0xa2e30000ull
++#define GMU_TBL_PA	0xa2e40000ull
++#define GMU_HDR_PA	0xa2e0f000ull
++#define GMU_STAGE_MAGIC	0x474d5546u	/* "GMUF" */
++
++#define GPUCC_PA	0x3d90000ull
++#define GMUREG_PA	0x3d68000ull
++#define KGSMMU_PA	0x3da0000ull
++#define KGSL_PA		0x3d00000ull
++
++/* gen7 register word offset -> byte offset in the gmu block */
++#define GMU_OFF(w)	((uint32_t)(((w) - 0x1a000u) << 2))
++
++static uint32_t
++gm_rd(vm_offset_t b, uint32_t o)
++{
++	uint32_t v = *(volatile uint32_t *)(b + o);
++
++	__asm__ volatile("dsb sy" ::: "memory");
++	return v;
++}
++
++static void
++gm_wr(vm_offset_t b, uint32_t o, uint32_t v)
++{
++	*(volatile uint32_t *)(b + o) = v;
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
++static uint32_t
++gm_fw_ld32(const uint8_t *p)
++{
++	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
++	    ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
++}
++
++static void
++g_gmu_boot(void)
++{
++	int en = 0;
++	vm_offset_t hdr, gc, gm, sm, fwp, cache, hfi, tbl, kg;
++	const uint8_t *fw;
++	uint32_t size, v, w;
++	unsigned i, k;
++	uint64_t fw_end, p;
++
++	(void)PE_parse_boot_argn("sweetgmuboot", &en, sizeof(en));
++	if (!en) {
++		return;
++	}
++	hdr = g_map_win(GMU_HDR_PA, 0x1000);
++	gc = g_map_win(GPUCC_PA, 0x10000);
++	gm = g_map_win(GMUREG_PA, 0x40000);
++	sm = g_map_win(KGSMMU_PA, 0x40000);
++	kg = g_map_win(KGSL_PA, 0x40000);
++	fwp = g_map_win(GMU_FW_PA, 0x10000);
++	cache = g_map_win(GMU_CACHE_PA, 0x10000);
++	hfi = g_map_win(GMU_HFI_PA, 0x10000);
++	tbl = g_map_win(GMU_TBL_PA, 0x10000);
++	if (!hdr || !gc || !gm || !sm || !kg || !fwp || !cache || !hfi ||
++	    !tbl) {
++		printf("SWEET GMU: window alloc failed\n");
++		sweet_log_sync();
++		return;
++	}
++	if (*(volatile uint32_t *)(hdr + 0xf00) != GMU_STAGE_MAGIC) {
++		printf("SWEET GMU: no staged firmware\n");
++		sweet_log_sync();
++		return;
++	}
++	size = *(volatile uint32_t *)(hdr + 0xf04);
++	printf("SWEET GMU: staged fw %u bytes\n", size);
++	sweet_log_sync();
++
++	/* 1. CX power */
++	v = gm_rd(gc, 0x9108);
++	if (!(v & (1u << 31))) {
++		gm_wr(gc, 0x9108, v & ~1u);
++		g_wait(2);
++	}
++	printf("SWEET GMU: cx gdscr=%#x\n", gm_rd(gc, 0x9108));
++	sweet_log_sync();
++
++	/* 2. clocks: hub/gmu RCGs, hub_aon, branches */
++	{
++		static const uint32_t rcg_cmd[2] = { 0x93ecu, 0x9318u };
++		static const uint32_t rcg_cfg[2] = { 0x93f0u, 0x931cu };
++		static const uint32_t br[6] = {
++			0x93e8u, 0x911cu, 0x9148u, 0x913cu, 0x9144u, 0x9150u
++		};
++
++		for (i = 0; i < 2u; i++) {
++			v = gm_rd(gc, rcg_cfg[i]);
++			v &= ~0x700u;
++			gm_wr(gc, rcg_cfg[i], v);
++			v = gm_rd(gc, rcg_cmd[i]);
++			gm_wr(gc, rcg_cmd[i], v | 0x3u);
++		}
++		for (i = 0; i < 6u; i++) {
++			v = gm_rd(gc, br[i]);
++			if (!(v & 1u)) {
++				gm_wr(gc, br[i], v | 1u);
++			}
++		}
++		printf("SWEET GMU: clocks hub=%#x ahb=%#x gmu=%#x\n",
++		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x911cu),
++		    gm_rd(gc, 0x913cu));
++		sweet_log_sync();
++	}
++
++	/* 3. firmware: blocks are {addr, size, 0xdeadbeef, 0xdeadbeef} */
++	fw = (const uint8_t *)fwp;
++	fw_end = (uint64_t)fw + size;
++	for (p = (uint64_t)fw; p + 16 <= fw_end; ) {
++		const uint8_t *q = (const uint8_t *)p;
++		uint32_t addr, bsize;
++
++		if (!(q[8] == 0xde && q[9] == 0xad && q[10] == 0xbe &&
++		    q[11] == 0xef && q[12] == 0xde && q[13] == 0xad &&
++		    q[14] == 0xbe && q[15] == 0xef)) {
++			p += 4;
++			continue;
++		}
++		addr = gm_fw_ld32(q);
++		bsize = gm_fw_ld32(q + 4);
++		p += 16;
++		if (bsize == 0 || p + bsize > fw_end) {
++			break;
++		}
++		if (addr < 0x4000u) {
++			for (i = 0; i < bsize; i += 4u) {
++				gm_wr(gm, GMU_OFF(0x1b400u) + addr + i,
++				    gm_fw_ld32((const uint8_t *)(p + i)));
++			}
++		} else if (addr >= 0x10000000u) {
++			for (i = 0; i < bsize; i += 4u) {
++				gm_wr(gm, GMU_OFF(0x1c400u) +
++				    (addr - 0x10004000u) + i,
++				    gm_fw_ld32((const uint8_t *)(p + i)));
++			}
++		} else {
++			for (i = 0; i < bsize; i++) {
++				*(uint8_t *)(cache + (addr - 0x4000u) + i) =
++				    ((const uint8_t *)p)[i];
++			}
++		}
++		p += bsize;
++	}
++	printf("SWEET GMU: fw loaded, itcm0=%#x\n",
++	    gm_rd(gm, GMU_OFF(0x1b400u)));
++	sweet_log_sync();
++
++	/* 4. HFI queue table (adreno_hfi.h init_queues) */
++	{
++		static const uint32_t qt[3] = { 0x0a00u, 0x0a01u, 0x2802u };
++		uint32_t *t = (uint32_t *)hfi;
++
++		t[0] = 0; t[1] = 42; t[2] = 6; t[3] = 12; t[4] = 3; t[5] = 3;
++		for (i = 0; i < 3u; i++) {
++			uint32_t *qh = &t[6u + i * 12u];
++
++			qh[0] = 1;
++			qh[1] = (uint32_t)GMU_HFI_PA + 176u + i * 4096u;
++			qh[2] = qt[i];
++			qh[3] = 1024u;
++		}
++	}
++
++	/* 5. SID-5 context bank 1: cache at 0x4000, hfi at 0x60000000 */
++	{
++		uint64_t *l1 = (uint64_t *)tbl;
++		uint64_t *l2 = (uint64_t *)(tbl + 0x1000);
++		uint64_t *l3 = (uint64_t *)(tbl + 0x2000);
++		uint64_t *h2 = (uint64_t *)(tbl + 0x3000);
++		uint64_t *h3 = (uint64_t *)(tbl + 0x4000);
++		vm_offset_t cb = sm + 0x21000u;	/* CB1 */
++
++		for (i = 0; i < 512u; i++) {
++			l1[i] = 0; l2[i] = 0; l3[i] = 0; h2[i] = 0; h3[i] = 0;
++		}
++		l1[0] = (uint64_t)(GMU_TBL_PA + 0x1000u) | 3u;
++		l2[0] = (uint64_t)(GMU_TBL_PA + 0x2000u) | 3u;
++		for (i = 4; i < 20u; i++) {
++			l3[i] = (GMU_CACHE_PA + (i - 4u) * 0x1000u) | 0x703u;
++		}
++		l1[1] = (uint64_t)(GMU_TBL_PA + 0x3000u) | 3u;
++		h2[0] = (uint64_t)(GMU_TBL_PA + 0x4000u) | 3u;
++		for (i = 0; i < 16u; i++) {
++			h3[i] = (GMU_HFI_PA + i * 0x1000u) | 0x703u;
++		}
++		__asm__ volatile("dsb sy" ::: "memory");
++
++		gm_wr(cb, 0x00u, 0u);
++		gm_wr(sm, 0x1004u, 0x1f000u);		/* CBAR(1) */
++		gm_wr(sm, 0x1804u, 1u);			/* CBA2R(1) */
++		gm_wr(cb, 0x20u, (uint32_t)(GMU_TBL_PA));
++		gm_wr(cb, 0x24u, (uint32_t)(GMU_TBL_PA >> 32));
++		gm_wr(cb, 0x10u, 0u);			/* TCR2 */
++		gm_wr(cb, 0x30u, 0x3520u);		/* TCR */
++		gm_wr(cb, 0x38u, 0xffu);		/* MAIR0 */
++		gm_wr(cb, 0x00u, 0x1u);			/* enable */
++		gm_wr(sm, 0x804u, 0x80000005u);		/* SMR(1) SID 5 */
++		gm_wr(sm, 0xc04u, 0x1u);		/* S2CR(1) */
++		gm_wr(sm, 0x68u, 0u);			/* TLBIALLNSNH */
++		gm_wr(sm, 0x70u, 0u);			/* sTLBGSYNC */
++		printf("SWEET GMU: smmu smr1=%#x s2cr1=%#x cb1=%#x\n",
++		    gm_rd(sm, 0x804u), gm_rd(sm, 0xc04u), gm_rd(cb, 0x00u));
++		sweet_log_sync();
++	}
++
++	/* 6. vendor pre-boot register configuration */
++	{
++		static const struct { uint32_t w, v; } cfg[] = {
++			{ 0x1f8f1u, 0x1u }, { 0x1f8f0u, 0x1u },
++			{ 0x1f81cu, 0x0u }, { 0x1f801u, 0x2u },
++			{ 0x1f985u, (uint32_t)GMU_HFI_PA },
++			{ 0x1f984u, 0x1u },
++			{ 0x1f82du, 0x4052u },
++			{ 0x1f9ceu, 0x0u }, { 0x1f9cfu, 0x7030200u },
++			{ 0x1f9cdu, 0x60002003u },
++			{ 0x1f40fu, 0x1u }, { 0x1f400u, 0x1u },
++			{ 0x1f401u, 0x1u },
++			{ 0x1f991u, 0xffffffffu }, { 0x1f993u, 0xffff7ff9u },
++			{ 0x23b11u, 0x80c808a0u },
++		};
++
++		for (i = 0; i < sizeof(cfg) / sizeof(cfg[0]); i++) {
++			gm_wr(gm, GMU_OFF(cfg[i].w), cfg[i].v);
++		}
++		gm_wr(gc, 0xe000u + 0x39u * 4u, 1u);	/* TCM retention */
++		gm_wr(kg, 0x3c45u * 4u, 0u);		/* GBIF halt off */
++	}
++
++	/* 7. release the CM3 and wait for the firmware */
++	gm_wr(gm, GMU_OFF(0x1f800u), 0u);
++	for (k = 0; k < 2000u; k++) {
++		v = gm_rd(gm, GMU_OFF(0x1f81cu));
++		if (v & (1u << 8)) {
++			break;
++		}
++		g_wait(1);
++	}
++	printf("SWEET GMU: cm3 fw_init=%#x after %u ms\n", v, k);
++	sweet_log_sync();
++	if (v & (1u << 8)) {
++		gm_wr(gm, GMU_OFF(0x1f986u), 1u);
++		for (k = 0; k < 200u; k++) {
++			v = gm_rd(gm, GMU_OFF(0x1f980u));
++			if (v & 1u) {
++				break;
++			}
++			g_wait(1);
++		}
++		printf("SWEET GMU: hfi status=%#x after %u ms\n", v, k);
++		sweet_log_sync();
++	}
++
++	/* Done: reset so the ring can be pulled from Android/TWRP. */
++	{
++		int rb = 0, gl = 1;
++
++		(void)PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb));
++		(void)PE_parse_boot_argn("sweetglink", &gl, sizeof(gl));
++		if (rb && !gl) {
++			printf("SWEET GMU: PSCI SYSTEM_RESET\n");
++			sweet_log_sync();
++			{
++				register uint64_t x0 __asm("x0") = 0x84000009ull;
++
++				__asm volatile("dsb sy" ::: "memory");
++				__asm volatile("smc #0" : "+r"(x0) ::
++				    "x1", "x2", "x3", "memory");
++			}
++			for (;;) {
++				delay(1000);
++			}
++		}
++	}
+ }
+ 
+ /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
+@@ -5389,6 +5687,8 @@
+ 
+ 	/* Independent of the audio stack; gated by sweetgpu=1. */
+ 	g_gpu_probe();
++	/* Kernel-side GMU bring-up; gated by sweetgmuboot=1. */
++	g_gmu_boot();
+ 	/* Independent too: gated by sweetsmp=1. */
+ 	sweet_smp_start();
+ 

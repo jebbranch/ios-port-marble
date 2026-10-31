@@ -29,7 +29,7 @@ build() {
 	local extra="${1:-GP_SURVEY=1 GP_PWR=1}"
 	# shellcheck disable=SC2086
 	env D22AP_ADT="$ADT" CPUS="${CPUS:-8}" GPU_PROBE_LEVEL=1 $extra \
-		./scripts/mkimage.sh sweetgpu=1 sweetglink=0 \
+		./scripts/mkimage.sh sweetgpu=1 sweetglink=0 ${EXTRA_ARGS:-} \
 		> "$OUTDIR/gpu-pwr.build.log" 2>&1 || {
 			tail -20 "$OUTDIR/gpu-pwr.build.log" >&2; return 1; }
 	grep -q "sweetgpu=1" "$OUTDIR/gpu-pwr.build.log" || return 1

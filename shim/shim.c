@@ -243,6 +243,9 @@ static void irq_handler(void)
 #ifndef GP_TCM
 #define GP_TCM			0	/* v23: are the ITCM/DTCM windows writable? */
 #endif
+#ifndef GP_STAGE
+#define GP_STAGE		0	/* v28: stage GMU fw + buffers for XNU */
+#endif
 #define GP_STR2(x) #x
 #define GP_STR(x) GP_STR2(x)
 static const char gp_level_tag[] __attribute__((used)) =
@@ -255,7 +258,8 @@ static const char gp_level_tag[] __attribute__((used)) =
     "d" GP_STR(GP_CMDB) "r" GP_STR(GP_RAIL)
     "k" GP_STR(GP_CLK) "m" GP_STR(GP_GMU) "s" GP_STR(GP_CLK_SEL)
     "b" GP_STR(GP_BR) "g" GP_STR(GP_GCC) "o" GP_STR(GP_VOTE)
-    "c" GP_STR(GP_RSCC) "u" GP_STR(GP_GMUBOOT) "t2" GP_STR(GP_TCM);
+    "c" GP_STR(GP_RSCC) "u" GP_STR(GP_GMUBOOT) "t2" GP_STR(GP_TCM)
+    "st" GP_STR(GP_STAGE);
 
 /* Keep this layout identical to the copy in bsd/dev/sweet_glink.c. */
 struct gpu_probe_result {
@@ -1123,8 +1127,6 @@ gp_rscc_load(volatile struct gpu_probe_result *r)
 #define GMU_HFI_STATUS	0x3d7e600UL	/* 0x1f980 */
 #define GMU_HFI_INIT	0x3d7e618UL	/* 0x1f986 */
 
-extern const uint8_t gmu_fw_start[], gmu_fw_end[];
-
 /* GMU cache block lands here (64 KiB, page aligned, identity mapped). */
 static uint8_t gmu_cache[0x10000] __attribute__((aligned(4096)));
 static uint8_t gmu_hfi[0x10000] __attribute__((aligned(4096)));
@@ -1505,6 +1507,46 @@ gp_tcm_test(volatile struct gpu_probe_result *r)
 }
 #endif
 
+extern const uint8_t gmu_fw_start[], gmu_fw_end[];
+
+#if GP_STAGE
+/*
+ * Stage everything the kernel-side GMU boot needs at fixed physical
+ * addresses just past the result page (outside the ADT bank, so XNU will
+ * not allocate it):
+ *   0xa2e10000  firmware image (copy of gmu_gen70000.bin)
+ *   0xa2e20000  GMU cache block   (64 KiB)
+ *   0xa2e30000  HFI queue table   (64 KiB)
+ *   0xa2e40000  page tables      (16 KiB)
+ * A small header at 0xa2e0ff00 tells the kernel it is staged.
+ */
+static void
+gp_stage_gmu(volatile struct gpu_probe_result *r)
+{
+	uint8_t *fw = (uint8_t *)0xa2e10000UL;
+	uint8_t *bufs = (uint8_t *)0xa2e20000UL;
+	uint32_t size = (uint32_t)(gmu_fw_end - gmu_fw_start);
+	uint32_t i;
+
+	for (i = 0; i < size; i++)
+		fw[i] = gmu_fw_start[i];
+	for (i = 0; i < 0x30000u; i++)	/* cache + hfi + tables */
+		bufs[i] = 0;
+	{
+		volatile uint32_t *hdr = (volatile uint32_t *)0xa2e0ff00UL;
+
+		hdr[0] = 0x474d5546u;	/* "GMUF" */
+		hdr[1] = size;
+		hdr[2] = 1;		/* version */
+	}
+	__asm__ volatile("dsb sy" ::: "memory");
+	for (i = 0; i < size; i += 64)
+		__asm__ volatile("dc civac, %0" :: "r"((uintptr_t)(fw + i)) : "memory");
+	r->p_cbw_flags |= 0x4000u;
+	con_hex2("GPUS", "staged=", size, "at=", 0xa2e10000u);
+}
+#endif
+
 /* v11: stage-1 tables, identity mapped (the shim is VA==PA). */
 static uint64_t gp_cbw_l1[512] __attribute__((aligned(4096)));
 static uint64_t gp_cbw_l2[512] __attribute__((aligned(4096)));
@@ -1588,6 +1630,9 @@ gpu_probe_boot(void)
 #endif
 #if GP_TCM
 	gp_tcm_test(r);
+#endif
+#if GP_STAGE
+	gp_stage_gmu(r);
 #endif
 #if GP_GX
 	gp_power_gx(r);
