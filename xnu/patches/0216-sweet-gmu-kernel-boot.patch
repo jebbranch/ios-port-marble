@@ -436,7 +436,7 @@
 +		gm_wr(gc, 0x913cu, gm_rd(gc, 0x913cu) | 1u);	/* cx_gmu */
 +		gm_wr(gc, 0x9144u, gm_rd(gc, 0x9144u) | 1u);	/* cxo */
 +		gm_wr(gc, 0x911cu, gm_rd(gc, 0x911cu) | 1u);	/* gpu_cc_ahb */
-+		printf("SWEET GMU: hub cmd=%#x cfg=%#x ahb=%#x gmu=%#x\n",
++		printf("SWEET GMU: rootkeep hub cmd=%#x cfg=%#x ahb=%#x gmu=%#x\n",
 +		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x93f0u), gm_rd(gc, 0x911cu),
 +		    gm_rd(gc, 0x9318u));
 +		sweet_log_sync();
