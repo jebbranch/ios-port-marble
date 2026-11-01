@@ -1,0 +1,59 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -3018,11 +3018,26 @@
+ 		gm_wr(gc, 0x9148u, gm_rd(gc, 0x9148u) | 1u);	/* hub_cx_int */
+ 		gm_wr(gc, 0x913cu, gm_rd(gc, 0x913cu) | 1u);	/* cx_gmu */
+ 		gm_wr(gc, 0x9144u, gm_rd(gc, 0x9144u) | 1u);	/* cxo */
+-		gm_wr(gc, 0x911cu, gm_rd(gc, 0x911cu) | 1u);	/* gpu_cc_ahb */
+-		printf("SWEET GMU: rootkeep hub cmd=%#x cfg=%#x ahb=%#x gmu=%#x\n",
+-		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x93f0u), gm_rd(gc, 0x911cu),
++		/*
++		 * hub_ahb_div(0x9430) sits between the hub RCG and
++		 * gpu_cc_ahb, and every survey has it reading 0: we have only
++		 * ever read it, never enabled it.  Try it *before* the ahb
++		 * branch.  If 0x9430 is a plain divider CFG and not a branch
++		 * CFG, bit 0 carries no enable meaning and the div/neigh
++		 * readbacks below show that instead.  This is the last
++		 * untried item on the hub clock chain.
++		 */
++		gm_wr(gc, 0x9430u, gm_rd(gc, 0x9430u) | 1u);	/* hub_ahb_div */
++		gm_wr(gc, 0x911cu, gm_rd(gc, 0x911cu) | 1u);	/* gpu_cc_ahb */
++		printf("SWEET GMU: rootkeep ahbdiv hub cmd=%#x cfg=%#x "
++		    "div=%#x ahb=%#x gmu=%#x\n",
++		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x93f0u),
++		    gm_rd(gc, 0x9430u), gm_rd(gc, 0x911cu),
+ 		    gm_rd(gc, 0x9318u));
+ 		sweet_log_sync();
++		printf("SWEET GMU: ahbdiv neigh=%#x %#x\n",
++		    gm_rd(gc, 0x9434u), gm_rd(gc, 0x9438u));
++		sweet_log_sync();
+ 	}
+ 
+ 	/* 3. firmware: blocks are {addr, size, 0xdeadbeef, 0xdeadbeef} */
+@@ -3223,6 +3238,26 @@
+ 			goto gmu_done;
+ 		}
+ 	}
++	/*
++	 * 7a. A clock/rail-only run must not release the CM3.  Without
++	 * this switch rel==0 always fell through to the release below,
++	 * so every GMU boot ended with the core wedged and the ring cut
++	 * short (no PSCI SYSTEM_RESET, watchdog picked it up).  Exit to
++	 * gmu_done instead: the PSCI reset fires and the ring is pulled
++	 * whole, which is what makes the ahbdiv readback trustworthy.
++	 */
++	{
++		int norel = 0;
++
++		(void)PE_parse_boot_argn("sweetgmunorel", &norel,
++		    sizeof(norel));
++		if (norel) {
++			printf("SWEET GMU: release suppressed (sweetgmunorel=%d)\n",
++			    norel);
++			sweet_log_sync();
++			goto gmu_done;
++		}
++	}
+ 	printf("SWEET GMU: releasing cm3 (posted window)\n");
+ 	sweet_log_sync();
+ 	/*
