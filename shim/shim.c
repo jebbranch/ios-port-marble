@@ -1313,6 +1313,8 @@ gp_hfi_init(void)
 		    "r"((uintptr_t)gmu_hfi + i * 0x1000u) : "memory");
 }
 
+extern const uint8_t gmu_fw_start[], gmu_fw_end[];
+
 static void
 gp_gmu_boot(volatile struct gpu_probe_result *r)
 {

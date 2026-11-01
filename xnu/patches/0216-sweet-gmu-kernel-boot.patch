@@ -48,7 +48,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,734 @@
+@@ -2610,6 +2635,738 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -420,7 +420,11 @@
 +			gm_wr(gc, f, (gm_rd(gc, f) & ~0x10371fu) |
 +			    0x100001u);				/* HW_CLK_CTRL|div 1 */
 +			gm_wr(gc, c, (gm_rd(gc, c) & ~1u) | 1u); /* UPDATE */
-+			gm_wr(gc, c, gm_rd(gc, c) & ~2u);	/* ROOT_EN off */
++			/*
++			 * Leave ROOT_EN on: clearing it (as an earlier version
++			 * did) gates the root back off, and every branch below
++			 * -- hub_ahb_div, gpu_cc_ahb -- stays dead.
++			 */
 +		}
 +		gm_wr(gc, 0x93e8u, gm_rd(gc, 0x93e8u) | 1u);	/* hub_aon */
 +		gm_wr(gc, 0x7000u, gm_rd(gc, 0x7000u) | 1u);	/* smmu vote */
@@ -783,7 +787,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +6140,15 @@
+@@ -5387,8 +6144,15 @@
  	int enabled = 0;
  	int rc;
  
