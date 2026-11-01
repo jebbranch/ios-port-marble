@@ -3,11 +3,10 @@
 > **音频/SMMU 接手必读：** [`docs/smmu-dead-ends.md`](docs/smmu-dead-ends.md) ——
 > 已经证伪的 SMMU 做法、正确的寄存器地图、以及“别再拿 DATA_BUFFER 当探针”的纪律。
 >
-> **GPU 接手必读：** [`docs/gpu-handoff-2026-11-01.md`](docs/gpu-handoff-2026-11-01.md)
-> （现状、已证事实、失败清单与并行分工）、[`docs/gpu-probe.md`](docs/gpu-probe.md)
-> （v1–v30 全部真机读数与厂商 kprobe trace）、
-> [`docs/gpu-gpt-question.md`](docs/gpu-gpt-question.md)（外部问答稿）、
+> **GPU 接手必读：** [`docs/gpu-probe.md`](docs/gpu-probe.md)（v1–v30 全部真机读数与
+> 厂商 kprobe trace）、[`docs/gpu-gpt-question.md`](docs/gpu-gpt-question.md)（外部问答稿）、
 > [`docs/gpu-feasibility.md`](docs/gpu-feasibility.md)（可行性盘点）。
+> 设备相关的交接与失败清单只在本地维护，不进入本仓库。
 
 把 Apple 开源的 **XNU 8796.141.3**（iOS 16 同期内核）跑到
 **Redmi Note 12 Turbo（marble / SM7475 / Snapdragon 7+ Gen 2）** 上。
