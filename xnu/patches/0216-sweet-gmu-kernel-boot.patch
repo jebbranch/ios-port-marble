@@ -48,7 +48,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,6 +2635,722 @@
+@@ -2610,6 +2635,734 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -660,6 +660,18 @@
 +		}
 +	}
 +	/*
++	 * Put the GMU AO AHB fence in ALLOW mode and clear any latched
++	 * fence status before the CM3 runs.  gen7_gmu_pwrctrl_suspend does
++	 * exactly these two writes; without them the firmware can leave the
++	 * fence armed, and from that point *every* AP access to GPUCC, the
++	 * GMU, the SMMU and RSCC wedges the core.
++	 */
++	gm_wr(gm, GMU_OFF(0x23b14u), 0x7u);	/* AHB_FENCE_STATUS_CLR */
++	gm_wr(gm, GMU_OFF(0x23b10u), 0u);	/* AO_AHB_FENCE_CTRL: allow */
++	printf("SWEET GMU: fence ctrl=%#x status=%#x\n",
++	    gm_rd(gm, GMU_OFF(0x23b10u)), gm_rd(gm, GMU_OFF(0x23b14u)));
++	sweet_log_sync();
++	/*
 +	 * Vendor order: gpu_cc_ahb is enabled immediately *before* the
 +	 * release, not seconds earlier.  It self-gates when idle, so doing
 +	 * it with the clocks and then staging firmware leaves it closed by
@@ -771,7 +783,7 @@
  }
  
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
-@@ -5387,8 +6128,15 @@
+@@ -5387,8 +6140,15 @@
  	int enabled = 0;
  	int rc;
  
