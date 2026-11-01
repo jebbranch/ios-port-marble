@@ -49,7 +49,7 @@
  	if (rb && !gl) {
  		printf("SWEET GPU: PSCI SYSTEM_RESET\n");
  		sweet_log_sync();
-@@ -2610,8 +2635,701 @@
+@@ -2610,8 +2635,703 @@
  	}
  	sweet_log_sync();
  	g_gpu_maybe_reset();
@@ -63,6 +63,8 @@
 + * addresses so the GPU BCM/ARC resources can be voted by name instead of
 + * by guessing offsets.
 + */
++static uint32_t gm_rd(vm_offset_t b, uint32_t o);
++
 +static void
 +g_cmddb_dump(void)
 +{
@@ -111,8 +113,8 @@
 +	}
 +	printf("SWEET DB: done entries=%u\n", shown);
 +	sweet_log_sync();
-+}
-+
+ }
+ 
 +/*
 + * ---- GPU state snapshot (sweetgsnap=1) ----
 + *
@@ -249,8 +251,8 @@
 +	}
 +	printf("SWEET RAIL: done blocks=%u\n", seen);
 +	sweet_log_sync();
- }
- 
++}
++
 +/*
 + * ---- kernel-side GMU bring-up (sweetgmuboot=1) ----
 + *
@@ -751,7 +753,7 @@
  /* The ADSP reaches DDR through the platform's apps-smmu (SMMU-500 at
   * 0x15000000, lpass_tbu at 0x151e9000, SID range 0x180000..0x1bffff).
   * Read-only probe: model, stream-match entries, and any existing mapping
-@@ -5387,8 +6105,15 @@
+@@ -5387,8 +6107,15 @@
  	int enabled = 0;
  	int rc;
  
