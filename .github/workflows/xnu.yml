@@ -167,6 +167,7 @@ jobs:
                    "SWEET GMU: ahb burst ahb=" \
                    "SWEET MARK: ampfirst before bringup" \
                    "SWEET MARK: ampread " \
+                   "pre-stream" \
                    "SWEET MARK: vcfg2 rc " \
                    "SWEET MARK: s1ap leaf=" \
                    "SWEET MARK: dbraw dst="; do
