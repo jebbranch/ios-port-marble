@@ -1,0 +1,137 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -499,7 +499,12 @@ se15_pins(void)
+ 	static const uint32_t pa[2] = { 0x0f138000u, 0x0f139000u };
+ 
+ 	for (int i = 0; i < 2; i++) {
+-		vm_offset_t v = ml_io_map(pa[i], 0x1000u);
++		/*
++		 * 0238: sw_pad_map() caches one mapping per pad; ml_io_map() here
++		 * leaked a kernel_map entry on every call, and this function is
++		 * now also called from the read-back path.
++		 */
++		vm_offset_t v = sw_pad_map(pa[i]);
+ 		uint32_t cfg;
+ 
+ 		if (!v) {
+@@ -765,6 +770,55 @@ se15_aw_init(uint8_t addr)
+ 	return bad ? -1 : 0;
+ }
+ 
++/*
++ * Read-back over the same GENI transfer path that already produces
++ * "geni amp %#x r=0 id=%#x".  The register list is taken from the vendor ACF
++ * table itself (0x00 device id / soft-reset, 0x03 and 0x04 SYSCTRL - 0x04 is
++ * written as 0xb440 by aw882xx_music_a, 0x05 next to it), so nothing here is
++ * a guessed datasheet offset.  This exists to turn the "44/44" line into
++ * something stronger than a transmit count, and to give the amplifier side a
++ * witness that does not run through GLINK.
++ */
++void sweet_i2c_amp_readback(const char *tag);
++
++void
++sweet_i2c_amp_readback(const char *tag)
++{
++	static const uint8_t addrs[2] = { 0x34, 0x35 };
++	static const uint8_t regs[4] = { 0x00, 0x03, 0x04, 0x05 };
++
++	/*
++	 * 0238: put pads 56/57 back on the GENI function before reading.  The
++	 * first boot that tried a read-back (ring-ampverify.txt:2558) saw all
++	 * eight reads time out with irq=0, while the very same call had
++	 * succeeded moments earlier - the only thing between those two moments
++	 * is our own bit-bang phase, which switches exactly these two pads to
++	 * GPIO.  If the reads answer now, that is the proof of who broke it;
++	 * if they still time out, something else owns the bus and the read-back
++	 * stays unusable from the AP.
++	 */
++	se15_pins();
++	printf("SWEET MARK: ampread pins re-applied\n");
++	sweet_log_sync();
++
++	for (int i = 0; i < 2; i++) {
++		for (int r = 0; r < 4; r++) {
++			/*
++			 * 0241: the sentinel was 0xffff, which is also a value the amp can
++			 * genuinely return (reg 0x03 read 0xffff in ring-anchor3.txt:1587), so
++			 * a match against the table could never be told apart from "no byte
++			 * ever came back".  0xa5a5 is not in the vendor table at all.
++			 */
++			uint16_t v = 0xa5a5;
++			int rc = se15_aw_read(addrs[i], regs[r], &v);
++
++			printf("SWEET MARK: ampread %s addr=%#x reg=%#x "
++			    "r=%d val=%#x\n", tag, addrs[i], regs[r], rc, v);
++		}
++	}
++	sweet_log_sync();
++}
++
+ void sweet_i2c_probe_amps(void);
+ 
+ void
+@@ -807,9 +861,64 @@ sweet_i2c_probe_amps(void)
+ 					(void)se15_aw_init(addrs[i]);
+ 				}
+ 			}
++		/*
++		 * 0240: read the PA back at the last moment GENI is still usable.
++		 * The 0237 boot proved the ordering: this same se15_aw_read()
++		 * returned id=0x2032 a few lines above (ring-rxsnap.txt:2313), and
++		 * the identical call forty log lines later timed out with irq=0
++		 * (ibid.:2358).  Between them sits only our own bit-bang phase,
++		 * which switches exactly these two pads to GPIO
++		 * (sw_gpio_cfg(SW_I2C_SCL/SDA, 0, false) below), i.e. off the QUP.
++		 * So "post-stream read-back fails" was never about the stream.
++		 * This call is placed before that phase to keep one window where
++		 * the instrument is known-good; gated by sweetampverify so no boot
++		 * changes unless the flag is given.
++		 */
++		{
++			int ampverify = 0;
++
++			(void)PE_parse_boot_argn("sweetampverify", &ampverify,
++			    sizeof(ampverify));
++			if (ampverify) {
++				sweet_i2c_amp_readback("pre-bitbang");
++			}
++		}
+ 		}
+ 	}
+ 
++	/*
++	 * 0241: sweetnobb=1 returns before the bit-bang phase.  The anchor3 boot
++	 * settled the argument about *what* breaks the amplifier: pads 56/57 were
++	 * re-applied to the QUP function (pin 56 cfg=0x87, the same value they had
++	 * when the reads worked), yet the very same read that returned r=0 at
++	 * ring-anchor3.txt:1586 returns r=-2 at :1636 - and r=-2 is se15_msg()'s
++	 * NACK branch, so the transfer reaches the bus and the chip does not
++	 * acknowledge.  The bit-bang scans agree from inside their own phase
++	 * ("0 amplifier(s) answered 0x2032", :1631).  So it is the device that
++	 * left the bus, not our pins.
++	 *
++	 * Skipping costs no evidence we were using - that phase has been a known
++	 * bad instrument since the 0235 census - and buys a stream that runs while
++	 * the PA is still addressable.  What stops printing, stated so nobody has
++	 * to rediscover it: the levels/floating/driven GPIO lines, both address
++	 * scans, the bit-by-bit probe results and the final
++	 * "N amplifier(s) answered" count.  Nothing is unmapped on this path and
++	 * sw_i2c_pins_down() only restores two saved TLMM cfg registers, so
++	 * returning early neither leaks nor leaves the pads in a worse state -
++	 * it leaves them exactly where se15_pins() put them, on the QUP.
++	 */
++	{
++		int nobb = 0;
++
++		(void)PE_parse_boot_argn("sweetnobb", &nobb, sizeof(nobb));
++		if (nobb) {
++			printf("SWEET MARK: bitbang skipped\n");
++			sweet_log_sync();
++			return;
++		}
++	}
++
++
+ 	/* Leave the bus alone and look at what the bootloader handed us.  The
+ 	 * external I2C pull-ups are a good proxy for the audio I/O rail: if
+ 	 * they are unpowered the lines sit low even with both pins released. */

@@ -98,10 +98,16 @@ SWEET I2C: geni amp 0x34 r=0 id=0x2032 … profile 44/44   # 必须早于 pcm to
 SWEET GLINK: data_buffer: dst=0x40bd done status=0        # 槽位字段跟着 ping-pong 走
 ```
 
-已知坏仪器（0237 定位到机制，别重复推一遍）：`sweetampverify=1` 的 GENI **读回**现在全
-`r=-1`，不是 PA 也不是流——是 `sweet_i2c.c:873-874` 的 bit-bang 段把 SCL/SDA 两个 pad 的 mux
-切回 GPIO，把 SE15 从总线上摘了下来。修法在 0238（读回前重新 `se15_pins()`）+ 0240（读回插到
-bit-bang 之前），三个仪器的开机前期望表在 `docs/audio-closeout.md` 最后一节。
+已知坏仪器（0237→anchor3 两次开机定位，别重复推一遍）：`sweetampverify=1` 的 GENI **读回**
+有两层坏，都实测过：
+1. `sweet_i2c.c:873-874` 的 bit-bang 段把 SCL/SDA 两个 pad 的 mux 切回 GPIO，于是 pad 之后的
+   每次传输连启动都没启动（`se15 timeout ... irq=0`）。0238 读回前重新 `se15_pins()` 修掉了这层。
+2. 修完以后传输真在总线上了，**但芯片自己不应答**：pads 已经是 cfg=0x87（和读成功时同一个值），
+   同一个 read 仍返回 `r=-2`＝SE15 的 NACK 分支。也就是说 bit-bang 段弄掉的不是我们的引脚，
+   是**放大器本身**。所以历史上每一次开机，真正放声的那一刻 PA 早已不在总线上。
+0240（读回插到 bit-bang 之前）是唯一还活着的读路：`ampread pre-bitbang addr=0x34 reg=0 r=0
+val=0x2032`——AP 第一次真读到 AW882xx。下一步是 0241 `sweetnobb=1`（整段 bit-bang 不跑）。
+判据表在 `docs/audio-closeout.md` 最后两节。
 
 三个开关的来历（不要凭印象改）：`sweetshmhi=1` 把 SHM_MAP 地址高字当 **stream index**
 发（不是地址位）；`sweetshmflag=4` 是厂商的 offset 模式，**只有在 `sweets1ap=3` 下才会被

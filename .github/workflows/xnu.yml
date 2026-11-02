@@ -172,6 +172,7 @@ jobs:
                    "pre-stream" \
                    "pre-bitbang" \
                    "SWEET MARK: ampread pins re-applied" \
+                   "SWEET MARK: bitbang skipped" \
                    "SWEET MARK: vcfg2 rc " \
                    "SWEET MARK: s1ap leaf=" \
                    "SWEET MARK: dbraw dst="; do
