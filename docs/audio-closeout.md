@@ -1645,3 +1645,43 @@ allowing (remove VALID) page`（例如 `ring-nobb.txt:1064`），也就是签名
    4 hunk、+87/−0、`git apply --check` 干净、函数括号 11/11、单函数 stub 在
    `-Wall -Wextra -Wformat=2 -Werror` 下**零诊断**；marker `"SWEET MARK: ibat "` 已进
    workflow 列表（`3e10a82`）。**尚未开机**，所以 E1–E5 一格都没判。
+
+## I4 判决（18:50 开机，`logs/ring-i4.txt`，sweettime=1793633440）—— 未命中
+
+有效性全绿：`graph_start … status=0` ×1、`done status=0` ×4、`bitbang skipped` ×1、
+`levels before` ×1、**`r=-1`/`r=-2` 计数 0** ⇒ 三段时间点 24 次读回全部成功，这格可以判。
+
+| 格 | 判据 | 实测 | 落点 |
+|---|---|---|---|
+| I4 | `pre-stream` 与 `post-stream` 同地址同寄存器**值不同** | `:1573-1580` 与 `:1736-1743` 逐位相同（两颗芯片 `2032 / ffff / 4003 / 38`），且与 `pre-bitbang`（`:1561-1568`）也相同 | **未命中** |
+| I3 | 只有 `p65` 被拒 | 仍是 `vcfg2 rc bf=-1 c0=-1 c8=-1 p65=-1`（`:1647`）——与上一次开机逐字一致 | 未命中；②的 I2 结论**跨开机可复现** |
+
+⇒ **目标要的那条"独立于 DONE 的正证据"，到 0241+0235 两件套用尽之后仍然没有。** 现在能说的只是：
+PA 在流前后没有可测变化、厂商那四包在这张图上被拒、并且这两件事都能复现。
+
+**订正我自己订正过的东西一次，说清楚是什么时候改的**：E4 原来写"插着 USB 一律不判"，
+理由是充电电流支配。实测支持例外：`SWEET BATT: tick … cap=100% 4414mV **0mA** status=4 usb=1`
+⇒ 满电时充电已终止、净电流≈0，USB 在位本身不掩盖音频负载。
+**这条修改发生在下一次开机之前**（不是事后），改后规则：同一次开机里必须同时打印 `status`/`usb`，
+若读到非零正向（充电）电流则 E1/E2 不判；`0mA/status=4` 这类充电终止态允许判。
+
+## 下一批（A2 + B1 同一版 kernel、同一次开机，攒成一次推送）
+
+- 0243 = 三阶段 IBAT 突发（E1–E5）；0244 = 空壳音频服务（下面 P1–P4）。
+  两者互不相干：一个只发 SPMI 读，一个只是发布 IOService + 打日志，
+  **都不动数据面参数**，所以同机不互相污染；各自有效性门独立。
+- 开机参数（相对 I4 只多两个仪器开关）：
+  `… sweetshmflag=4 sweets1ap=3 sweetampfirst=1 sweetampverify=1 sweetreadrx=1 sweetnobb=1
+  sweetvcfg2=1 sweetibatburst=1 sweetaudioprobe=1 sweetbufs=30`
+
+| 格 | 判据（开机前写死） | 落点 |
+|---|---|---|
+| P1 | 两行 `SWEET AUDIO: … registered` 都在 | 服务发布成功；缺行 ⇒ gate 没触发或 `start()` 没到，P2/P3 记未运行 |
+| **P2** | 出现任意 `SWEET AUDIO: … open by pid N` | **本目标 B 组要的第一个二元答案**：有人来找音频设备了。同时记下 pid 与之后的 `sel=` 序列（序列就是 ABI 复原的原料） |
+| **P3** | 一次 `open` 都没有 | mediaserverd 根本没走到 IOKit ⇒ 不许开始写音频后端，先解决"它为什么不找设备"（HAL bundle 是否加载、签名、依赖进程） |
+| P4 | `open by pid` 的 pid 归属 | 用同一次 ring 的 `exec …` 与 `p=NN[name]` 行核对是不是 mediaserverd；**不许凭印象认 pid** |
+| E1/E2 | 见上一节（`ok=<有效>/<N>` 不足即该阶段作废） | 能量侧第一次判定 |
+| E5 | `done status=0`/`graph_start status=0` 缺失 | 整次作废，E/P 全记未运行 |
+
+风险如实说：0244 是**新增 IOKit C++**，本机没法编译校验（只能靠 CI）。它若编坏，这一版 kernel
+会红，A2 的那次开机一起延后——这是把两件事攒成一次推送的代价，我按用户要求攒了。

@@ -1,0 +1,304 @@
+diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
+new file mode 100644
+--- /dev/null
++++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
+@@ -0,0 +1,268 @@
++/*
++ * SWEET: an empty audio service, published under the names iOS's audio userspace
++ * looks up, whose only job is to report whether anyone opens it.
++ *
++ * Why this file exists: the audio path through the DSP is already working
++ * (GRAPH_OPEN/PREPARE/START and DATA_BUFFER_DONE status=0 against our own shared
++ * memory), but every byte that reaches it is synthesised here in the kernel.  An
++ * iOS app cannot make a sound until something in the kernel answers the name its
++ * audio server goes looking for.  Two facts make this worth a single boot rather
++ * than a research project:
++ *
++ *   - our own booted kernel contains no Apple audio class at all
++ *     (out/kernel.adsp: IOAudio2Device, IOAudio2DeviceUserClient,
++ *     AppleAOPAudioController, AppleEmbeddedAudioDevice all absent), and the tree
++ *     we compile has no "class IOAudio2Device" and no audio source in
++ *     iokit/conf/files.arm64 - so taking these names cannot collide at link time;
++ *   - the same trick already demonstrably works for haptics: the services
++ *     published by iokit/Kernel/arm/hid/SweetHaptics.cpp are opened by
++ *     backboardd (pid 57) ~99 times per boot, with map and selector calls
++ *     following.  Publishing an Apple-named IOService is not a guess here, it is
++ *     a measured path.
++ *
++ * What this step asks is one binary question: does mediaserverd (or anything
++ * else on the audio side) call IOServiceOpen on these names?  Everything here is
++ * therefore inert - no PCM, no GLINK, no GPIO, nothing plays and nothing can
++ * hang.  It is also off unless asked for: without sweetaudioprobe=1 the classes
++ * never call registerService(), so a boot that does not want this experiment is
++ * byte-for-byte the boot it had before.
++ *
++ * Unknown selectors are acknowledged with zeroed outputs so that a client that
++ * does get as far as issuing calls keeps going and we capture the whole
++ * sequence - the same reason the haptics probe does it.
++ */
++
++#include <IOKit/IOLib.h>
++#include <IOKit/IOService.h>
++#include <IOKit/IOUserClient.h>
++#include <libkern/c++/OSDictionary.h>
++#include <libkern/c++/OSSymbol.h>
++#include <libkern/c++/OSCollectionIterator.h>
++#include <kern/task.h>
++#include <kern/boot_params.h>
++
++#define SWEET_AUDIO_OPEN_LIMIT 8
++
++static bool
++sweet_audio_probe_enabled(void)
++{
++	static int cached = -1;
++
++	if (cached < 0) {
++		int on = 0;
++
++		(void)PE_parse_boot_argn("sweetaudioprobe", &on, sizeof(on));
++		cached = on ? 1 : 0;
++	}
++	return cached == 1;
++}
++
++static void
++sweet_audio_props(IOService *service, OSObject *properties)
++{
++	OSDictionary *dict = OSDynamicCast(OSDictionary, properties);
++	OSCollectionIterator *it;
++
++	if (dict == NULL) {
++		IOLog("SWEET AUDIO: %s setProperties (non-dict)\n",
++		    service->getName());
++		return;
++	}
++	it = OSCollectionIterator::withCollection(dict);
++	if (it == NULL) {
++		return;
++	}
++	IOLog("SWEET AUDIO: %s setProperties count=%u\n", service->getName(),
++	    (unsigned)dict->getCount());
++	OSObject *key;
++	while ((key = it->getNextObject()) != NULL) {
++		const OSSymbol *sym = OSDynamicCast(OSSymbol, key);
++
++		IOLog("SWEET AUDIO:   prop %s\n",
++		    sym ? sym->getCStringNoCopy() : "?");
++	}
++	it->release();
++}
++
++/*
++ * Shared user client.  initWithTask is the answer to the question this file
++ * exists to ask, so the process is identified by pid and, where the kernel can
++ * see it, by name; everything else just records what the client tried.
++ */
++class SweetAudioUCBase : public IOUserClient {
++	OSDeclareDefaultStructors(SweetAudioUCBase);
++public:
++	virtual bool initWithTask(task_t owningTask, void *securityID,
++	    UInt32 type, OSDictionary *properties) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn externalMethod(uint32_t selector,
++	    IOExternalMethodArguments *arguments,
++	    IOExternalMethodDispatch *dispatch, OSObject *target,
++	    void *reference) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn clientClose(void) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn clientDied(void) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn registerNotificationPort(mach_port_t port, UInt32 type,
++	    UInt32 refCon) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn clientMemoryForType(UInt32 type,
++	    IOOptionBits *options, IOMemoryDescriptor **memory)
++	    APPLE_KEXT_OVERRIDE;
++private:
++	int fPid;
++};
++
++OSDefineMetaClassAndStructors(SweetAudioUCBase, IOUserClient);
++
++bool
++SweetAudioUCBase::initWithTask(task_t owningTask, void *securityID,
++    UInt32 type, OSDictionary *properties)
++{
++	fPid = owningTask ? task_pid(owningTask) : -1;
++	if (!IOUserClient::initWithTask(owningTask, securityID, type,
++	    properties)) {
++		return false;
++	}
++	IOLog("SWEET AUDIO: %s open by pid %d type %#x\n", getName(), fPid,
++	    (unsigned)type);
++	return true;
++}
++
++IOReturn
++SweetAudioUCBase::externalMethod(uint32_t selector,
++    IOExternalMethodArguments *arguments, IOExternalMethodDispatch *dispatch,
++    OSObject *target, void *reference)
++{
++	IOLog("SWEET AUDIO: %s sel=%u sin=%u sout=%u struct_in=%u "
++	    "struct_out=%u\n", getName(), (unsigned)selector,
++	    (unsigned)arguments->scalarInputCount,
++	    (unsigned)arguments->scalarOutputCount,
++	    (unsigned)arguments->structureInputSize,
++	    (unsigned)arguments->structureOutputSize);
++
++	for (uint32_t i = 0;
++	    i < arguments->scalarInputCount && i < SWEET_AUDIO_OPEN_LIMIT; i++) {
++		IOLog("SWEET AUDIO:   in[%u]=%#llx\n", i,
++		    (unsigned long long)arguments->scalarInput[i]);
++	}
++	for (uint32_t i = 0;
++	    i < arguments->scalarOutputCount && i < SWEET_AUDIO_OPEN_LIMIT; i++) {
++		arguments->scalarOutput[i] = 0;
++	}
++	return kIOReturnSuccess;
++}
++
++IOReturn
++SweetAudioUCBase::registerNotificationPort(mach_port_t port, UInt32 type,
++    UInt32 refCon)
++{
++	IOLog("SWEET AUDIO: %s notify port type=%#x ref=%#x\n", getName(),
++	    (unsigned)type, (unsigned)refCon);
++	return IOUserClient::registerNotificationPort(port, type, refCon);
++}
++
++IOReturn
++SweetAudioUCBase::clientMemoryForType(UInt32 type, IOOptionBits *options,
++    IOMemoryDescriptor **memory)
++{
++	/*
++	 * Refused on purpose.  Mapping a buffer is how a real audio client would
++	 * hand us its ring, and that is a later step with a real backend; here we
++	 * only want to know that it asked.
++	 */
++	IOLog("SWEET AUDIO: %s map refused type=%u\n", getName(),
++	    (unsigned)type);
++	return kIOReturnUnsupported;
++}
++
++IOReturn
++SweetAudioUCBase::clientClose(void)
++{
++	IOLog("SWEET AUDIO: %s closed (pid %d)\n", getName(), fPid);
++	return IOUserClient::clientClose();
++}
++
++IOReturn
++SweetAudioUCBase::clientDied(void)
++{
++	IOLog("SWEET AUDIO: %s died (pid %d)\n", getName(), fPid);
++	return IOUserClient::clientDied();
++}
++
++/*
++ * The two names worth asking about first.  AppleAOPAudioController is the
++ * IOProviderClass the rootfs's own HAL bundle declares it needs
++ * (/System/Library/Audio/Plug-Ins/HAL/AppleAOPAudioPlugin.driver), so if the iOS
++ * audio server walks any IOKit path at all it passes through this one.
++ * IOAudio2Device is the class the audio clients open against, with the
++ * IOAudio2DeviceUID "Speaker" that an output device would be looked up by.
++ */
++class AppleAOPAudioControllerUC : public SweetAudioUCBase {
++	OSDeclareDefaultStructors(AppleAOPAudioControllerUC);
++};
++OSDefineMetaClassAndStructors(AppleAOPAudioControllerUC, SweetAudioUCBase);
++
++class AppleAOPAudioController : public IOService {
++	OSDeclareDefaultStructors(AppleAOPAudioController);
++public:
++	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(AppleAOPAudioController, IOService);
++
++bool
++AppleAOPAudioController::start(IOService *provider)
++{
++	if (!IOService::start(provider)) {
++		return false;
++	}
++	if (!sweet_audio_probe_enabled()) {
++		return true;
++	}
++	setProperty("IOUserClientClass", "AppleAOPAudioControllerUC");
++	registerService();
++	IOLog("SWEET AUDIO: AppleAOPAudioController registered\n");
++	return true;
++}
++
++IOReturn
++AppleAOPAudioController::setProperties(OSObject *properties)
++{
++	sweet_audio_props(this, properties);
++	return kIOReturnSuccess;
++}
++
++class IOAudio2DeviceUC : public SweetAudioUCBase {
++	OSDeclareDefaultStructors(IOAudio2DeviceUC);
++};
++OSDefineMetaClassAndStructors(IOAudio2DeviceUC, SweetAudioUCBase);
++
++class IOAudio2Device : public IOService {
++	OSDeclareDefaultStructors(IOAudio2Device);
++public:
++	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++	virtual IOReturn setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(IOAudio2Device, IOService);
++
++bool
++IOAudio2Device::start(IOService *provider)
++{
++	if (!IOService::start(provider)) {
++		return false;
++	}
++	if (!sweet_audio_probe_enabled()) {
++		return true;
++	}
++	setProperty("IOUserClientClass", "IOAudio2DeviceUC");
++	setProperty("IOAudio2DeviceUID", "Speaker");
++	setProperty("IOAudio2DeviceManufacturer", "sweet");
++	setProperty("IOAudio2DeviceModel", "marble");
++	registerService();
++	IOLog("SWEET AUDIO: IOAudio2Device Speaker registered\n");
++	return true;
++}
++
++IOReturn
++IOAudio2Device::setProperties(OSObject *properties)
++{
++	sweet_audio_props(this, properties);
++	return kIOReturnSuccess;
++}
+diff --git a/iokit/KernelConfigTables.cpp b/iokit/KernelConfigTables.cpp
+--- a/iokit/KernelConfigTables.cpp
++++ b/iokit/KernelConfigTables.cpp
+@@ -109,6 +109,16 @@ const char * gIOKernelConfigTables =
+     "     'IOMatchCategory' = AppleHapticsSupportCallan;"
+     "   },"
+ #endif
++    "   {"
++    "     'IOClass'         = AppleAOPAudioController;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOMatchCategory' = AppleAOPAudioController;"
++    "   },"
++    "   {"
++    "     'IOClass'         = IOAudio2Device;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOMatchCategory' = IOAudio2Device;"
++    "   },"
+     "   {"
+     "     'IOClass'         = IOPanicPlatform;"
+     "     'IOProviderClass' = IOPlatformExpertDevice;"
+diff --git a/iokit/conf/files.arm64 b/iokit/conf/files.arm64
+--- a/iokit/conf/files.arm64
++++ b/iokit/conf/files.arm64
+@@ -18,6 +18,7 @@ iokit/Kernel/arm/SweetFramebuffer.cpp                            optional iokitc
+ iokit/Kernel/arm/SweetBattery.cpp                                optional iokitcpp
+ iokit/Kernel/arm/hid/SweetHID.cpp                                optional iokitcpp
+ iokit/Kernel/arm/hid/SweetHaptics.cpp                            optional iokitcpp
++iokit/Kernel/arm/hid/SweetAudioProbe.cpp                                       optional iokitcpp
+ iokit/Kernel/arm/hid/IOHIDEvent.cpp                              optional iokitcpp
+ iokit/Kernel/arm/hid/IOHIDEventServiceQueue.cpp                  optional iokitcpp
+ iokit/Kernel/arm/hid/IOHIDEventServiceUserClient.cpp             optional iokitcpp
