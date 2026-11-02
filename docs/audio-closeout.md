@@ -196,35 +196,49 @@ arm 前必须先逐个 disable。
 `dst=1 tok=280 handle=0xb0e36868 size=18128 <== TARGET`）、`tools/apm_shm_read.c`、
 `tools/acdb_size_scan.py`。
 
-### 5. AW882xx 收口：判定树（用已有 ring 收口，不是新功能）
-语料 = `logs/ring-*`（155 个归档，含 `levels before` 的行全部取出）：
+### 5. AW882xx 收口：判定树 —— "无 ACK" 是 bit-bang 仪器失败，不是功放失败
 
-```
-所有出现过的功放行只有两种，且都是成功：
-  80 × "geni amp 0x34 r=0 id=0x2032"   80 × "geni amp 0x34 profile 44/44"
-  80 × "geni amp 0x35 r=0 id=0x2032"   80 × "geni amp 0x35 profile 44/44"
-整个语料里没有任何一条 NACK / r!=0 / "no amp"。
-```
-再看复位状态，语料**整齐地分成两组**：
+> 订正：本节第一版只 grep 了 `geni amp` 这个前缀，漏掉了 bit-bang 的另一种措辞
+> `amp 0x34 no ack`，因而一度得出"语料里没有 NACK"的错误结论。下表是按**两种措辞**
+> 重新统计的结果，第一版的错误作废。
 
-| 组 | `levels before (rstA=…)` | 有没有"我们放复位"那行 | ACK |
-|---|---|---|---|
-| A（80 次成功里全部） | **rstA=1 rstB=1 spksw=1** | 有 `rstA=1 rstB=1 spksw=1 irq=1` | 2/2 |
-| B（`ring-amp8`、`ring-b*/c*/d*/e*/f*/g*` 等 GPU 时代的跑） | **rstA=0 rstB=0 spksw=0** | **没有**（根本没走到） | 0（未到探测点） |
+语料 = `logs/` 全量（含 `logs/raw/*.bin`）：
 
-判定树（每条都对应一个可直接读的证据，不需要新代码）：
+| 观测 | 行数 | 文件数 |
+|---|---|---|
+| `amp 0x34/0x35 no ack`（软件 bit-bang 探测） | 470 | 155 |
+| `0 amplifier(s) answered 0x2032` | 235 | — |
+| `N amplifier(s) answered`，N > 0 | **0** | — |
+| `geni amp 0x34/0x35 r=0 id=0x2032`（GENI SE 主机） | 160 | 80 |
+| `geni amp … profile 44/44` | 160 | 80 |
 
-1. `levels before` 里 rstA/rstB 已经是 1 ⇒ 复位是**上一次会话留下的**，
-   本次只是"接着用一个已经出复位的芯片"。**今天所有 80 次成功都属于这一类。**
-2. rstA/rstB = 0 且日志里**没有** `rstA=1 rstB=1 spksw=1 irq=1` ⇒ 这台根本没走到功放探测
-   （GPU 实验跑或提前死机），**不能**记为"功放不 ACK"。
-   → `docs/status-log.md:722`（run67"0 个功放"）属于这一类，"I2C 无 ACK"这个前提在语料里**没有证据**。
-3. 只有当日志里**同时**出现"我们放复位那行"和 `r!=0` 时，才是真的电气/时序问题，
-   此时按顺序查：`scl/sda` 空闲电平（是否被拉低）→ 复位低电平保持时间 →
-   先写 `0x00=0x55aa` 软复位再读 ID → 地址 7 位/8 位写法。
+两条总线的记录完全相反：**bit-bang 235/235 全败，GENI 80/80 全胜**；而 bit-bang 自己报的
+电气检查是通过的（`sda driven low reads 0` / `scl driven high reads 1` / `bus idle, sda=1`），
+所以线是好的、地址是对的、芯片是活的——失败在 bit-bang 自己的时序/起始条件那一侧。
+结论：**`docs/status-log.md:722`（run67"本轮 I2C 扫描 0 个功放"）不是功放故障**，那台跑
+的正是 bit-bang 路径；GENI 路径在同一块硬件上从未失败过。
 
-⇒ **唯一还没被任何一次开机验证过的叶子**：真正冷启动（rstA=0）由我们自己放复位之后，
-功放到底 ACK 不 ACK。验证成本 = 1 次开机：长按电源彻底断电（或拔插电池/静置到 rst 线回到 0），
-再 `fastboot boot`，只看三行——`levels before (rstA=0…)` → `rstA=1 rstB=1 spksw=1 irq=1` →
-`geni amp 0x34 r=?`。出现 `r=0 id=0x2032` 即"冷启动也能自己拉起"，这条彻底收口；
-出现 `r!=0` 才进入上面第 3 步。
+判定树（每步只看日志措辞就能分叉，不需要新代码）：
+
+1. 先分主机：`amp …` = bit-bang（**不作为功放好坏的证据**），`geni amp …` = GENI SE。
+2. `geni amp 0x34 r=0 id=0x2032` → 芯片在；继续看 `profile 44/44` 是否满 44。
+3. 只有 `geni amp` 出现 `r!=0`/`no ack` 才进入硬件分支，顺序是：
+   `levels before (rstA=… rstB=…)` → 我们放复位那行 `rstA=1 rstB=1 spksw=1 irq=1` 有没有出现 →
+   `scl/sda` 空闲电平 → 复位低电平保持时间 → 先写 `0x00=0x55aa` 软复位再读 ID。
+4. 没同时看到"放复位那行 + GENI NACK"就不许改代码，一律先怀疑仪器。
+
+**唯一还没被任何一次开机验证过的叶子**：80 次 GENI 成功的开机，`levels before` **全部**是
+`rstA=1 rstB=1 spksw=1`（复位是上一次会话留下的），`cold(rstA=0) + geni amp` 的文件数 = **0**。
+也就是"由我们自己从 0 拉起复位、GENI 能不能读到 0x2032"从未被证明。
+验证 = 1 次开机：`adb reboot bootloader`（warm reboot 会把 TLMM 恢复默认 ⇒ rstA=0）后
+`fastboot boot` 一个**不带 GPU 探测**的镜像——GPU 探测结束时会复位 SoC，把功放阶段切掉，
+这正是那 155 个 bit-bang-only 文件的成因。只看三行：
+`levels before (rstA=0…)` → `rstA=1 rstB=1 spksw=1 irq=1` → `geni amp 0x34 r=?`。
+
+### 6. 附带发现：刷缓冲的遗留探针会挤掉音频事件
+`/data/adb/post-fs-data.d/99-gpuclk.sh`（开机 arm `rpmh_write_batch`/`rpmh_write`/
+`kgsl_regmap_bulk_write`）在一次 35 分钟的会话里产生 **203,951** 条事件，音频窗口的事件被
+挤出环形缓冲（`tools/gpr_capture.sh arm` 的 `echo > kprobe_events` 也因此返回 EBUSY，
+旧的 96 字探针原样留着）。`tools/apm_blob_capture.sh arm` 现在会先把 `rhb/rhw/kbw` disable
+再开新探针。目标里的收尾义务（`99-rpmh.sh`）已删除并核对；`99-gpuclk.sh`/`99-gpuprobe.sh`
+是 GPU 线的工具，保留，但任何音频抓包前必须静音它们。

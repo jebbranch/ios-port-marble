@@ -87,6 +87,26 @@ def d22ap_product_child(name, path=D22AP_ADT):
                             if not f and k not in ('name', 'AAPL,phandle')]
     return None
 
+
+def d22ap_arm_io_child(name, path=D22AP_ADT):
+    """/arm-io/<name> properties from the real D22AP tree.
+
+    Haptics.framework resolves the Callan provider through the
+    haptics-support-interface device-tree node.  Copy only properties that
+    iBoot does not fill in: the real tcal-cal/pscl-cal entries are marked as
+    placeholders and contain syscfg references rather than calibration data."""
+    if not os.path.exists(path):
+        return None
+    root, _ = adt.parse(open(path, 'rb').read())
+    for c in root.children:
+        if c.name == 'arm-io':
+            for ac in c.children:
+                if ac.name == name:
+                    return [(k, v) for k, f, v in ac.props
+                            if not f and k not in ('name', 'AAPL,phandle')]
+    return None
+
+
 u32 = lambda *v: struct.pack('<%dI' % len(v), *v)
 u64 = lambda *v: struct.pack('<%dQ' % len(v), *v)
 cstr = lambda s: s.encode() + b'\0'
@@ -200,14 +220,7 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
         ('virtual-timer-intid', u32(QEMU_VTIMER_INTID if qemu else VTIMER_INTID)),
         ('reg', u64(gicd - SOC_BASE, GICD_SIZE, gicr - SOC_BASE, GICR_SIZE)),
     ])
-    arm_io = node('arm-io', [
-        ph(),
-        ('device_type', cstr('sweet-io')),
-        ('compatible', cstr('sweet-io') + cstr('arm-io')),
-        ('#address-cells', u32(2)),
-        ('#size-cells', u32(2)),
-        ('ranges', u64(0, SOC_BASE, 0x100000000 - SOC_BASE)),
-    ], [gic,
+    arm_io_children = [gic,
         # No hardware: watchdogd checks IODeviceTree:/arm-io/wdt for no-pmu and
         # otherwise crashes trying to set the PMU boot stage (customer builds
         # ignore the -wdt_no_pmu boot-arg).
@@ -232,7 +245,22 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
             # backboardd ask for a hardware scaler that does not exist)
             ('canvas-width', u32(1080 if native else 1125)),
             ('canvas-height', u32(2400 if native else 2436)),
-        ])])
+        ])]
+    # Apple's Callan haptics driver matches the device-tree provider by this
+    # interface node.  The Redmi's HAP is bridged by SweetHaptics, but without
+    # the node Haptics.framework never reaches the user client.
+    haptics_support_props = d22ap_arm_io_child('haptics-support-interface')
+    if haptics_support_props is not None:
+        arm_io_children.append(node('haptics-support-interface',
+                                    [ph()] + haptics_support_props))
+    arm_io = node('arm-io', [
+        ph(),
+        ('device_type', cstr('sweet-io')),
+        ('compatible', cstr('sweet-io') + cstr('arm-io')),
+        ('#address-cells', u32(2)),
+        ('#size-cells', u32(2)),
+        ('ranges', u64(0, SOC_BASE, 0x100000000 - SOC_BASE)),
+    ], arm_io_children)
 
     fbcon = node('sweet-fbcon', [
         ph(),
@@ -274,9 +302,12 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
     # the haptics child is copied; camera/facetime would describe hardware we
     # do not have (and mediaserverd would try to use it).
     product_children = []
-    haptic_props = d22ap_product_child('haptics')
-    if haptic_props is not None:
-        product_children.append(node('haptics', [ph()] + haptic_props))
+    # Keep the old-ADT control image available while isolating the
+    # /product/haptics startup regression on marble.
+    if os.environ.get('MARBLE_ADT_HAPTICS', '1') != '0':
+        haptic_props = d22ap_product_child('haptics')
+        if haptic_props is not None:
+            product_children.append(node('haptics', [ph()] + haptic_props))
     product = [node('product', [ph()] + product_props, product_children)] if product_props else []
 
     # Identity of the iPhone X whose userland runs here: compatible[0] is

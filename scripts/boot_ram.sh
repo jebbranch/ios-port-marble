@@ -4,12 +4,12 @@
 #
 #   SERIAL=2aa26095 ./scripts/boot_ram.sh [image]
 #
-# Default image: images/shim-iosroot-adsp.img
+# Default image: the tested 8-core / KEEPALIVE baseline.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-IMAGE="${1:-$ROOT/images/shim-iosroot-adsp.img}"
+IMAGE="${1:-$ROOT/images/daily-v97g.img}"
 SERIAL="${SERIAL:-}"
 
 [ -f "$IMAGE" ] || { echo "missing image: $IMAGE" >&2; exit 1; }
@@ -48,4 +48,4 @@ fi
 
 echo "booting $IMAGE (RAM-only; nothing is flashed)"
 fastboot -s "$SERIAL" boot "$IMAGE"
-echo "kernel running.  It resets itself when done; pull logs with scripts/pull_logs.sh"
+echo "kernel running. RAM-only; KEEPALIVE images stay in iOS until manually rebooted."

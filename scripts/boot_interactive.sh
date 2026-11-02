@@ -3,7 +3,7 @@
 #
 #   ./scripts/boot_interactive.sh [image]
 #
-# Default: the last known-good 8-core / keepalive / quiet image.
+# Default: the tested 8-core / KEEPALIVE / debug baseline.
 # This is for KEEPALIVE builds (no sweetreboot=1): it does not wait for a
 # reset and does not pull SWEETLOG.  Nothing is written to the phone's
 # partitions; the only device operation is `fastboot boot`.
@@ -14,7 +14,7 @@ ROOT="$(cd "$HERE/.." && pwd)"
 cd "$ROOT"
 
 SERIAL="${SERIAL:-2aa26095}"
-IMG="${1:-images/daily-v100b-8core-keepalive-quiet-v97g.img}"
+IMG="${1:-images/daily-v97g.img}"
 
 [ -f "$IMG" ] || { echo "!! missing image: $IMG" >&2; exit 1; }
 [ "$(wc -c < "$IMG")" -gt 10000000 ] || {
@@ -58,7 +58,7 @@ for _ in $(seq 1 30); do
 done
 
 echo
-echo "image handed over. This build is KEEPALIVE + QUIET:"
-echo "  - stays in iOS (no automatic reset; sweetlog ring disabled)"
+echo "image handed over. This is a KEEPALIVE boot:"
+echo "  - it stays in iOS until you manually reboot"
 echo "  - to come back: hold power until the screen goes dark, then boot TWRP"
-echo "  - if it panics, the panic screen is the only diagnostic (logs are off)"
+echo "  - use boot_one.sh for images that reset automatically and collect logs"
