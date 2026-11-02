@@ -17,8 +17,8 @@
 | ADSP / GLINK / GPR / APM 控制面 | ✅ | GRAPH_OPEN/PREPARE/START、TDM SET_CFG 全 status 0 |
 | **音频数据面（DSP 消费我们的 PCM）** | **✅ 2026-11-02** | `sweets1ap=3`（S1 叶子 AP=11）后 `DATA_BUFFER done status=0`，槽位归还与我们的 ping-pong 一致，1200 buffer 跑完正常复位，cb5 无新故障位 |
 | GPU SMMU（kgsl-smmu） | 🟡 探测完成 | 全局寄存器可读，SMR/S2CR=TRANS 可写，BYPASS 被禁，CB 页访问挂死 |
-| 音频出声（内核侧） | 🟡 未证 | DONE 只证明 WR 端点收下并归还 buffer。① 证明 PA 全程可寻址但四个寄存器在流前后**逐位相同**（J3 未命中）；② 证明把厂商那四包原字节发给 `0x40bf/0x40c0/0x40c8/0x4165` **全被拒**（`vcfg2 rc bf=-1 c0=-1 c8=-1 p65=-1`，I2）⇒ 缺口是结构性的；③ 因拿不到厂商参考值而收掉 |
-| iOS 应用出声（音频桥） | ⛔ 零代码 | mediaserverd 在本移植上能起且当前不崩（`ring-h2-dst-tdm.txt:778`、`ring-nobb.txt:1064`），但它下面没有任何它认识的音频设备；我们的 ADT 要 AOP+`aop-mca`+`audio-control,cs35l26`，marble 是 ADSP+TDM+AW882xx ⇒ 设计、路线排序与可数差距清单见 `docs/audio-hal-bridge.md` |
+| 音频出声（内核侧） | 🔴 未证，参数侧已收 | ① PA 寄存器三时刻逐位相同（J3 未命中）；② 厂商四包重放全被拒 `vcfg2 rc bf=-1 c0=-1 c8=-1 p65=-1`，I4 补测后**跨开机可复现**（`ring-i4.txt:1647`，有效性全绿）；③ 时钟见证因拿不到厂商已知值而关闭 ⇒ 静态快照这条路判死，只剩能量侧（0243）与 iOS 侧的桥（`docs/audio-hal-bridge.md`） |
+| iOS 应用出声（音频桥） | 🟡 探测中 | mediaserverd 能起且不崩；我们内核里没有任何 Apple 音频类，而自写服务已被 backboardd 真实 open ⇒ 0244 发一个空壳 `AppleAOPAudioController`/`IOAudio2Device(Speaker)`问一个二元问题：有没有人来 open。路线与差距清单见 `docs/audio-hal-bridge.md` |
 | 电池 | 🟡 通道已开 | pmic_glink 能 open，属性请求的响应格式不对 |
 | RTC | 🟡 读到了 | PMK8350 RTC 由 EE4（ADSP）拥有，AP 写入被拒 |
 
