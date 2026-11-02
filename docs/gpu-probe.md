@@ -1388,3 +1388,62 @@ G4：HFI 消费的证据为 0（观察面随整机消失）。
 GPU 线的重启条件（写在这里，避免下次又从零开始猜）：**必须先解释"一个只读自有 DRAM 的
 线程为什么会在 `CM3_SYSRESET=0` 完成后停止被调度"**——即整机级停摆的机理（互连/NoC 投票、
 GMU 上电时对总线的动作，或放复位写触发的某种总线锁），而不是继续在 GPU 寄存器上加读数点。
+
+---
+
+## 2026-11-02（晚）：成员复核推翻了我四条前提（源码逐条对过）
+
+`内核并发与崩溃专家` 交回的 GPU 报告，我逐条验证。行号一律以**上游源码树**
+`work/ci-src/xnu-xnu-8796.141.3/` 与本仓库 `xnu/patches/`、归档 ring 为准；它报告里给的
+`sweet_glink.c:36xx` 是"把 0215…0229 依序应用后的重建副本"行号，**不可直接用**。
+
+### 已证实（我亲自复核）
+
+1. **`delay()` 在本 port 是睡眠，不是忙等 ⇒ canary 心跳从来不是"无中断观测面"。**
+   `osfmk/arm64/cpu.c:802` 把 `cpu_idle_latency` 初始化成 `0x0ULL`，唯一赋值点是 Apple
+   powergate 的 `machine_routines.c:1410`（我们不走）；`ml_delay_should_spin()`
+   （`machine_routines.c:2360-2373`）在 `cpu_idle_latency==0` 时**显式 `return FALSE`**
+   （注释："Early boot… Err on the side of blocking"）；`_clock_delay_until_deadline_with_leeway()`
+   （`osfmk/kern/clock.c:1570-1585`）只有在 `ml_delay_should_spin() || get_preemption_level()!=0
+   || !ml_get_interrupts_enabled()` 时才自旋。
+   ⇒ `docs/gpu-probe.md:1171` 里"0222 改成 delay(20ms) 忙等、心跳不再依赖中断投递"**作废**；
+   "纯 DDR 线程也没被调度"这个推断从来没和"timer 中断不再送达 / 日志刷盘线程停了"分离过。
+2. **G4 那一次放复位是唯一一次"没屏蔽 GMU SPI、没设 AHB fence"的放复位。**
+   `xnu/patches/0216-sweet-gmu-kernel-boot.patch`：`goto gmu_done` 在 640 行，
+   `GICD_ICENABLER9/ICPENDR9`（SPI 304/305）屏蔽块在 661 行、`fence ctrl=` 在 675 行、
+   标签 `gmu_done:` 在 765 行；`0229` 新增的 `rel==2` 分支（patch 第 64 行）直接 `goto gmu_done`
+   （第 87 行）→ **跳过屏蔽与 fence**。
+   ⇒ 用 G4 下的"①整机级停摆"结论落在我自己 v26 列的嫌疑 1（level 断言 SPI 风暴）之上，**未证伪**。
+   （D/E 走了 fall-through，有 `gic masked en=0 pend=0`，所以 D/E 不受这一条污染 —— 但受第 1 条污染。）
+3. **0228 的有效性判据没有排除"目标读数 == 校准字"。**
+   判据是 `c1==CAL && c2==CAL && c3==CAL && a1==a2`（`xnu/patches/0228-…patch`），没有 `a != c`。
+   G4 实际行：`cal2 valid=7 bad=1 ahb=f8228800 0 f8228800 f8228800 0 f8228800 0 0` —— 8 格里 4 格
+   就是校准字本身，而 `valid=7` 意味着其中至少 3 格是被判为"有效"的读数。
+   ⇒ 文档早先登记的第 1 条不足（未初始化槽恰好是校准字）只解释了 1 格，**剩下的属于串值污染**。
+   重算：G3+G4 里"既不等于校准字、又满足 a1==a2"的干净 `0x911c` 样本共 8 个，**bit0 全 0；
+   干净 bit0=1 样本 0 个** ⇒ **B 仍然成立**，但样本量从 6/8 缩到约 4，且"0"仍不能排除
+   "该窗口固定返回 0"。
+4. **`releaser returned` 不证明写到达 GMU。** 放复位窗口映射用的是 `VM_WIMG_POSTED`
+   = Device-nGnRE，nGnRE 允许互连中间点 early-ack ⇒ E（存储没返回）与 G4（返回了）
+   可能只是 ack 点不同，不是两种形状。
+5. **"自有 DDR"不是 Normal WB。** `g_map_win(GMU_HFI_PA,…)` → `pmap_map(…, VM_WIMG_IO)`
+   → Device-GRE（`osfmk/arm/pmap/pmap.c:5651-5661` + `osfmk/mach/arm/vm_param.h:302` 的
+   `is_dram_addr()`）；只有内核 BSS（`g_canary_scratch`）才是 Normal WB。做对照必须区分这两类。
+6. **跨 boot 的 DRAM 保留在本机不成立**，不要再把"下次开机读回"当通道：G4 归档里
+   shim 的 `prev_magic/prev_step` 是垃圾（`... prev=2835435508 magic=0xaa1403e0`）。
+
+### 这两条不需要同一个机制解释（原提问前提不成立）
+写 `0x911c` 触发的 GPUCC 读失真，出现在 `sweetgmunorel=1`（CM3 从未放复位）的轮里
+（Run A/D/F/G1 都有）；而 G3 同时有失真样本与**完整 ring + `PSCI SYSTEM_RESET`**。
+⇒ "失真是放复位造成的"从未被证明；反之"整机静默"在 D/E/G4 里的观测通道只有日志环
+（依赖另一个线程 + UFS 写 + timer），所以它是 6 个因子的复合函数，现有数据选不出其中之一。
+
+### 重启 GPU 仪器线的门槛（不是再冻结一次）
+下一次上机必须同时满足：
+- **心跳换成真自旋**：关中断（或提 preemption level）+ 只读 `CNTVCT_EL0` 的循环，
+  零 MMIO、零内存写；这样它才不依赖 timer 投递与调度器。
+- **放复位前必然先屏蔽 SPI 304/305 并设 AHB fence**（把 0216 的 661/675 两块移到 `rel==2`
+  分支之前），否则 G4 的混淆变量还在。
+- **日志环不能当唯一输出通道**：先解决"死机时证据怎么出来"。本机已证 DRAM 不跨 boot 保留
+  （第 6 条），所以剩下的候选是 AOP/PMIC 侧的复位后转储 —— 这条我**没有找到**已证实的入口，
+  属于待查而不是方案。在这个问题解决前，再多次上机只会得到同一组 6 选 1 的歧义。
