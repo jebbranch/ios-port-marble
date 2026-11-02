@@ -1,0 +1,48 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -2831,6 +2831,45 @@
+ 			sweet_log_sync();
+ 		}
+ 	}
++	/*
++	 * cmd-db names the four GPU rails and all four sit on SID 4:
++	 *   vrm.cx=0x42900 (SMPC6)   vrm.gfx=0x40600 (SMPB5)
++	 *   vrm.lcx=0x42000 (LDOB8)  vrm.mxc=0x42700 (SMPC2)
++	 * The sweep above only walks SID 0..3, so these blocks have never been
++	 * read on this device: "the rails are up" was only ever inferred from
++	 * RPMh returning COMPLETE, never observed.  Read the first eight
++	 * registers of each, plus nothing else -- this is read-only and does not
++	 * touch any voltage or configuration bit, deliberately: writing a SMPC
++	 * enable is not symmetric in risk and we have not even shown the rail is
++	 * the reason gpu_cc_ahb looks off.
++	 * A voted / not-voted pair on the same boot is directly comparable here.
++	 */
++	{
++		static const unsigned int vr[4] = {
++			0x2900u, 0x0600u, 0x2000u, 0x2700u
++		};
++		static const char *vn[4] = { "cx", "gfx", "lcx", "mxc" };
++		unsigned int i, j;
++
++		for (i = 0; i < 4u; i++) {
++			uint8_t b[8];
++			int ok = 0;
++
++			for (j = 0; j < 8u; j++) {
++				b[j] = 0xff;
++				if (sweet_spmi_read_any(4u, vr[i] + j,
++				    &b[j]) == 0) {
++					ok++;
++				}
++			}
++			printf("SWEET RAIL: vrm_%s@4:%04x ok=%d %02x %02x %02x %02x "
++			    "%02x %02x %02x %02x\n",
++			    vn[i], vr[i], ok, b[0], b[1], b[2], b[3], b[4], b[5],
++			    b[6], b[7]);
++			sweet_log_sync();
++		}
++	}
++
+ 	printf("SWEET RAIL: done blocks=%u\n", seen);
+ 	sweet_log_sync();
+ }

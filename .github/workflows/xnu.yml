@@ -155,6 +155,7 @@ jobs:
                    "SWEET HAPTICS: AppleSPUHaptics" \
                    "SWEET SNAP: cx_gdscr" \
                    "SWEET RAIL: done blocks" \
+                   "SWEET RAIL: vrm_" \
                    "SWEET GMU: rootkeep ahbdiv hub cmd=" \
                    "SWEET GMU: ahbdiv witness gdscr=" \
                    "SWEET CANARY: n=" \
