@@ -1,17 +1,23 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -3059,6 +3059,55 @@ static uint32_t g_canary_scratch[64];
+@@ -28,6 +28,7 @@
+ #include <kern/clock.h>
+ #include <kern/thread.h>
+ #include <kern/sched_prim.h>
++#include <kern/cpu_data.h>
+ #include <machine/machine_routines.h>
+ #include <pexpert/pexpert.h>
+ #include <vm/pmap.h>
+@@ -3059,6 +3060,53 @@
  #define G_CANARY_SCRATCH_N (sizeof(g_canary_scratch) / sizeof(g_canary_scratch[0]))
  #define G_CANARY_TICK_US	   20000u	/* 20 ms; 100 ticks = 2 s window */
  
-+/*
-+ * SWEET: preemption control lives in the core kernel, not in a header
-+ * this file includes, so declare it here (same pattern as the
-+ * sweet_cpu_busy/tid prototypes above the canary).  XNU builds with
-+ * implicit function declarations as an error.
++/* NOTE: disable_preemption()/enable_preemption() are macros from
++ * <kern/cpu_data.h> (included above) expanding to _disable_preemption()/
++ * _enable_preemption().  The plain names have no linkable definition, so
++ * they must not be declared extern here (the extern form failed the
++ * link on the 2026-11-02 fork CI run).
 + */
-+extern void disable_preemption(void);
-+extern void enable_preemption(void);
 +
 +/*
 + * True spin on the virtual counter.  delay() and g_wait() block on a
@@ -56,7 +62,7 @@
  static unsigned int
  g_canary_selftest(void)
  {
-@@ -3131,16 +3180,17 @@ g_canary_thread(void *arg, wait_result_t wr)
+@@ -3131,16 +3179,17 @@
  		uint64_t tv[4] = { 0, 0, 0, 0 };
  
  		/*
@@ -82,7 +88,7 @@
  		}
  		if (!g_canary_go) {
  			continue;
-@@ -3209,7 +3259,7 @@ g_rel_thread(void *arg, wait_result_t wr)
+@@ -3209,7 +3258,7 @@
  
  	(void)arg;
  	(void)wr;
@@ -91,7 +97,7 @@
  	gm = g_map_win_wimg(GMUREG_PA, 0x40000, VM_WIMG_POSTED);
  	if (!gm) {
  		printf("SWEET REL2: gm map failed\n");
-@@ -3222,7 +3272,7 @@ g_rel_thread(void *arg, wait_result_t wr)
+@@ -3222,7 +3271,7 @@
  	printf("SWEET REL2: releaser returned\n");
  	sweet_log_sync();
  	for (;;) {
@@ -100,7 +106,7 @@
  		printf("SWEET REL2: releaser alive\n");
  		sweet_log_sync();
  	}
-@@ -3696,6 +3746,9 @@ g_gmu_boot(void)
+@@ -3696,6 +3745,9 @@
  			 * that the machine still runs after the store; moving write
  			 * index is the first piece of evidence that the CM3 consumes
  			 * the queues, without reading a single GPU register.
@@ -110,7 +116,7 @@
  			 */
  			unsigned int t;
  			thread_t th;
-@@ -3711,7 +3764,7 @@ g_gmu_boot(void)
+@@ -3711,7 +3763,7 @@
  				sweet_log_sync();
  			}
  			for (t = 0; t < 60u; t++) {
