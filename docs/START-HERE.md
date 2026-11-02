@@ -17,7 +17,8 @@
 | ADSP / GLINK / GPR / APM 控制面 | ✅ | GRAPH_OPEN/PREPARE/START、TDM SET_CFG 全 status 0 |
 | **音频数据面（DSP 消费我们的 PCM）** | **✅ 2026-11-02** | `sweets1ap=3`（S1 叶子 AP=11）后 `DATA_BUFFER done status=0`，槽位归还与我们的 ping-pong 一致，1200 buffer 跑完正常复位，cb5 无新故障位 |
 | GPU SMMU（kgsl-smmu） | 🟡 探测完成 | 全局寄存器可读，SMR/S2CR=TRANS 可写，BYPASS 被禁，CB 页访问挂死 |
-| 音频出声 | 🟡 未证 | DONE 只证明 WR 端点收下并归还 buffer；图里仍缺厂商 `0x40bf/0x40c0/0x40c8/0x4165/0x4308` 这些配置对象，是否走到 TDM→codec→喇叭没测 |
+| 音频出声（内核侧） | 🟡 未证 | DONE 只证明 WR 端点收下并归还 buffer。① 证明 PA 全程可寻址但四个寄存器在流前后**逐位相同**（J3 未命中）；② 证明把厂商那四包原字节发给 `0x40bf/0x40c0/0x40c8/0x4165` **全被拒**（`vcfg2 rc bf=-1 c0=-1 c8=-1 p65=-1`，I2）⇒ 缺口是结构性的；③ 因拿不到厂商参考值而收掉 |
+| iOS 应用出声（音频桥） | ⛔ 零代码 | mediaserverd 在本移植上能起且当前不崩（`ring-h2-dst-tdm.txt:778`、`ring-nobb.txt:1064`），但它下面没有任何它认识的音频设备；我们的 ADT 要 AOP+`aop-mca`+`audio-control,cs35l26`，marble 是 ADSP+TDM+AW882xx ⇒ 设计、路线排序与可数差距清单见 `docs/audio-hal-bridge.md` |
 | 电池 | 🟡 通道已开 | pmic_glink 能 open，属性请求的响应格式不对 |
 | RTC | 🟡 读到了 | PMK8350 RTC 由 EE4（ADSP）拥有，AP 写入被拒 |
 
@@ -122,7 +123,8 @@ DSP 真正读通**；`sweetampfirst=1` 把 PA 的配置挪到开图之前——�
 | 文件 | 内容 |
 |---|---|
 | `docs/status-log.md` | 按时间追加的完整实验日志（最新结论先看这里） |
-| `docs/audio-closeout.md` | 音频收尾：SHM_MAP 高字、报文/模块对表、S1 叶子 AP 与 PA 排序（18 KB 缺口已撤销，见 2026-11-02 各节） |
+| `docs/audio-closeout.md` | 音频收尾：SHM_MAP 高字、报文/模块对表、S1 叶子 AP 与 PA 排序，以及 ①②③ 三次开机各自的判决表（J1–J6 / I1–I6 / K1–K6） |
+| `docs/audio-hal-bridge.md` | **iOS 侧出声还差什么**：已复核的十条事实、四条路线排序、最便宜的判别实验（空壳 Speaker 看有没有 IOServiceOpen）、可数差距清单；震动为何同线（§7） |
 | `docs/smmu-dead-ends.md` | apps-smmu 的寄存器地图与已证伪/已修正的路线 |
 | `docs/gpu-probe.md` | kgsl-smmu 探针、组合扫描结果、CB 页墙 |
 | `docs/speaker-path.md` | 扬声器 = TERTIARY TDM + 2×AW882xx（无 WSA） |
