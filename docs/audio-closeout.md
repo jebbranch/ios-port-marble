@@ -1631,6 +1631,17 @@ allowing (remove VALID) page`（例如 `ring-nobb.txt:1064`），也就是签名
 | **E4** | 插着 USB | E1/E2 **一律不判**（充电电流量级支配），开机前先核 `usb=` 字段；若整次都插着就记未运行 |
 | **E5** | `done status=0` 或 `graph_start status=0` 缺失 | 整次开机作废，E1–E4 全记未运行 |
 
-4. **代价说在前面**：要命中窗口，音需要拉到 ~1 s（幅度仍是 1/16），即 `sweetbufs` 从 30 提到
-   ~170。**这已经贴着"不放长音"的边界，必须明确许可才做**；拿不到许可就不跑 0243，
-   直接交 `docs/audio-hal-bridge.md` 的桥清单，并且如实写"内核侧这条仪器没测，因为音长不允许"。
+4. **订正（写完代码才发现，我上一版这条约束是错的，撤回）**：我说过"要命中窗口，音需要拉到
+   ~1 s，即 `sweetbufs` 从 30 提到 ~170，贴着'不放长音'的边界，要专门许可"。
+   **不成立。** 一次 burst 是 12 个样本 × (2 次 SPMI 读 + `delay(10000)` = 10 ms) ≈ **130 ms**，
+   而 `sweetbufs=30` 的音本身就 ≥120 ms（一个 buffer 4 ms，外加 gap/DONE 等待），
+   且 `tone` 相是插在 `n == tone_buffers/2` 处，正好压在音的中段。
+   ⇒ **0243 不需要加长音，`sweetbufs` 保持 30，宿舍限制一个字都不用改。**
+   真正剩下的风险不是音长，而是电量计 IBAT 的**平均窗口**有多长：几十毫秒级滑动平均，
+   130 ms 的突发还压得进去；平均到秒级，`tone` 与 `pre/idle2` 会被同一个均值抹平 ⇒ 那是
+   **E2（本仪器分辨不动）**，仍然**不是**"没有出声"。这条只能跑了才知道。
+5. 代码与校验状态：`xnu/patches/0243-sweet-ibat-three-phase-burst.patch` 按"先 commit 基线
+   再 `git diff`"生成（基线 = `work/chain-tree` 的 `e42021b chain through 0242`），
+   4 hunk、+87/−0、`git apply --check` 干净、函数括号 11/11、单函数 stub 在
+   `-Wall -Wextra -Wformat=2 -Werror` 下**零诊断**；marker `"SWEET MARK: ibat "` 已进
+   workflow 列表（`3e10a82`）。**尚未开机**，所以 E1–E5 一格都没判。
