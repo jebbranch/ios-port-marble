@@ -1,0 +1,191 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -2881,9 +2881,180 @@
+ {
+ 	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+ 	    ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
++}
++
++/*
++ * Fabric canary for the CM3 release window (sweetgcanary=1).
++ *
++ * Every GMU boot so far has answered the same way: the core that writes
++ * CM3_SYSRESET disappears, the ring stops, and the watchdog picks the box
++ * up.  From that one thread two completely different faults look identical
++ * -- either the core is pinned by a Device read that never completes, or
++ * the whole interconnect goes down and nothing can reach DRAM or the log
++ * any more.  Those need opposite fixes, so a run has to say which it was.
++ *
++ * This thread is started immediately before the release write and runs on
++ * whatever core the scheduler hands it, i.e. not the releasing core.  Each
++ * 100 ms tick prints:
++ *
++ *   n=...      the tick itself: this core, DRAM and the log path work;
++ *   self=...   a pure-DRAM write/compare self-test, so a heartbeat is not
++ *              merely the scheduler being alive;
++ *   busy=0x..  which CPUs currently have a non-idle active thread;
++ *   t0..t3     the active thread id on those CPUs.  A core stuck inside a
++ *              Device read keeps its tid forever while the others change;
++ *              a dead fabric freezes every tid at once;
++ *   probe=     one target per tick, printed as arm/done around the access.
++ *              An arm with no done names the block that pins the core.
++ *              hfi is our own DRAM and acts as the control.
++ *
++ * Deliberately excluded: GPUCC and the GMU window (0216 already knows they
++ * are fatal once the CM3 runs) and the SMMU, because reading GFSR has
++ * read-restore-lock semantics and the probe would disturb the very state
++ * being observed.
++ *
++ * Known limitation: if the releasing core dies while holding the log lock,
++ * this heartbeat stops for the same reason a fabric death would.  The tick
++ * counter and the tid columns are what separate the two cases -- a lock
++ * wait leaves the other CPUs' tids changing in the ring lines we do get.
++ */
++static int g_canary_chan;
++static volatile int g_canary_go;
++static vm_offset_t g_canary_ao;
++static vm_offset_t g_canary_rs;
++static vm_offset_t g_canary_hfi;
++static uint32_t g_canary_scratch[64];
++
++#define G_CANARY_SCRATCH_N (sizeof(g_canary_scratch) / sizeof(g_canary_scratch[0]))
++
++static unsigned int
++g_canary_selftest(void)
++{
++	unsigned int bad = 0;
++	unsigned int i;
++	const uint32_t seed = 0x5a5a0000u;
++
++	for (i = 0; i < G_CANARY_SCRATCH_N; i++) {
++		g_canary_scratch[i] = seed + i;
++	}
++	for (i = 0; i < G_CANARY_SCRATCH_N; i++) {
++		if (g_canary_scratch[i] != seed + i) {
++			bad++;
++		}
++	}
++	return bad;
++}
++
++static void
++g_canary_probe(unsigned int which)
++{
++	static const char *nm[3] = { "hfi", "ao", "rscc" };
++
++	if (which > 2) {
++		return;
++	}
++	printf("SWEET CANARY: probe %s arm\n", nm[which]);
++	sweet_log_sync();
++	switch (which) {
++	case 0:
++		printf("SWEET CANARY: probe hfi done=%u/%u\n",
++		    *(volatile uint32_t *)(g_canary_hfi + 0x40u),
++		    *(volatile uint32_t *)(g_canary_hfi + 0x44u));
++		break;
++	case 1:
++		printf("SWEET CANARY: probe ao done=%#x %#x\n",
++		    gm_rd(g_canary_ao, 0x0u), gm_rd(g_canary_ao, 0x4u));
++		break;
++	default:
++		printf("SWEET CANARY: probe rscc done=%#x %#x\n",
++		    gm_rd(g_canary_rs, 0xd18u), gm_rd(g_canary_rs, 0xfb8u));
++		break;
++	}
++	sweet_log_sync();
+ }
+ 
+ static void
++g_canary_thread(void *arg, wait_result_t wr)
++{
++	unsigned int n;
++	unsigned int nc = ml_get_cpu_count();
++
++	(void)arg;
++	(void)wr;
++	if (nc > 8u) {
++		nc = 8u;
++	}
++	g_canary_ao = g_map_win_wimg(0x3d40000ull, 0x1000u, VM_WIMG_IO);
++	g_canary_rs = g_map_win_wimg(0x3d50000ull, 0x2000u, VM_WIMG_IO);
++	g_canary_hfi = g_map_win(GMU_HFI_PA, 0x1000u);
++	printf("SWEET CANARY: start nc=%u ao=%#llx rs=%#llx hfi=%#llx\n", nc,
++	    (unsigned long long)g_canary_ao, (unsigned long long)g_canary_rs,
++	    (unsigned long long)g_canary_hfi);
++	sweet_log_sync();
++
++	for (n = 0; n < 40u; n++) {
++		uint64_t deadline;
++		unsigned int mask = 0;
++		unsigned int i;
++		unsigned int bad;
++		uint64_t tv[4] = { 0, 0, 0, 0 };
++
++		clock_interval_to_deadline(100, NSEC_PER_MSEC, &deadline);
++		(void)assert_wait_deadline(&g_canary_chan, THREAD_UNINT,
++		    deadline);
++		(void)thread_block(THREAD_CONTINUE_NULL);
++		if (!g_canary_go) {
++			continue;
++		}
++		for (i = 0; i < nc; i++) {
++			if (sweet_cpu_busy((int)i) == 1) {
++				mask |= 1u << i;
++			}
++			tv[i & 3u] = sweet_cpu_tid((int)i);
++		}
++		bad = g_canary_selftest();
++		printf("SWEET CANARY: n=%u self=%u busy=0x%x tid=%llu "
++		    "t0=%llu t1=%llu t2=%llu t3=%llu\n", n, bad, mask,
++		    (unsigned long long)thread_tid(current_thread()),
++		    (unsigned long long)tv[0], (unsigned long long)tv[1],
++		    (unsigned long long)tv[2], (unsigned long long)tv[3]);
++		sweet_log_sync();
++		/*
++		 * Two clean heartbeat ticks first: prove the fabric is alive
++		 * after the release before spending a probe on a target that
++		 * may pin this core as well.
++		 */
++		if (n >= 2u) {
++			g_canary_probe((n - 2u) % 3u);
++		}
++	}
++	printf("SWEET CANARY: done\n");
++	sweet_log_sync();
++}
++
++static void
++g_canary_arm(void)
++{
++	int cy = 0;
++	thread_t th;
++
++	(void)PE_parse_boot_argn("sweetgcanary", &cy, sizeof(cy));
++	if (!cy) {
++		return;
++	}
++	g_canary_go = 1;
++	if (kernel_thread_start((thread_continue_t)g_canary_thread, NULL,
++	    &th) == KERN_SUCCESS) {
++		thread_deallocate(th);
++		printf("SWEET CANARY: armed\n");
++	} else {
++		printf("SWEET CANARY: arm failed\n");
++	}
++	sweet_log_sync();
++}
++
++
++static void
+ g_gmu_boot(void)
+ {
+ 	int en = 0;
+@@ -3303,6 +3474,7 @@
+ 	gm_wr(gc, 0x911cu, gm_rd(gc, 0x911cu) | 1u);
+ 	printf("SWEET GMU: ahb armed=%#x\n", gm_rd(gc, 0x911cu));
+ 	sweet_log_sync();
++	g_canary_arm();
+ 	gm_wr(gm, GMU_OFF(0x1f800u), 0u);
+ 	/*
+ 	 * Do not touch the GMU window after the release: once the CM3 owns
