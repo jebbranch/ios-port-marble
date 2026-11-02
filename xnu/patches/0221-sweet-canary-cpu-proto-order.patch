@@ -1,0 +1,19 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -2882,6 +2882,16 @@
+ 	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+ 	    ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+ }
++
++/*
++ * SWEET: these two live in osfmk/kern/processor.c (patch 0188) and are
++ * also declared again further down next to the SMP sampler.  The canary
++ * below runs earlier in the file, and XNU builds with ISO C99 implicit
++ * function declarations as an error, so the prototypes have to be here
++ * rather than only at the sampler site.
++ */
++extern int sweet_cpu_busy(int cpu);
++extern uint64_t sweet_cpu_tid(int cpu);
+ 
+ /*
+  * Fabric canary for the CM3 release window (sweetgcanary=1).
