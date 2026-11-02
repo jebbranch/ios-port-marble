@@ -1,0 +1,26 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -6855,6 +6855,23 @@
+ 			printf("SWEET MARK: ampfirst before bringup\n");
+ 			sweet_log_sync();
+ 			sweet_i2c_probe_amps();
++			/*
++			 * 0236: with sweetampverify=1 take a snapshot here too, before the
++			 * graph is opened.  Two snapshots inside the SAME boot turn the
++			 * read-back into a paired measurement - a register that differs
++			 * between pre-stream and post-stream is attributable to the
++			 * stream, which a single snapshot can never decide.  Read-only;
++			 * the cost is eight GENI transfers.
++			 */
++			{
++				int ampverify_pre = 0;
++
++				(void)PE_parse_boot_argn("sweetampverify",
++				    &ampverify_pre, sizeof(ampverify_pre));
++				if (ampverify_pre) {
++					sweet_i2c_amp_readback("pre-stream");
++				}
++			}
+ 		}
+ 		g_apm_graph_bringup();
+ 		sweet_log_sync();
