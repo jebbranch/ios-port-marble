@@ -1,0 +1,50 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -4019,6 +4019,28 @@
+ 			    sizeof(s1_attr));
+ 			(void)PE_parse_boot_argn("sweets1cbar", &s1_cbar,
+ 			    sizeof(s1_cbar));
++			/*
++			 * sweets1ap11=1 turns the leaf's Access Permission into
++			 * EL0-data-accessible (AP=11) and sets AF.  Motivation:
++			 * the cb5 fault at FAR=our IOVA only ever shows up in the
++			 * offset-mode (property_flag=4) boot, i.e. the one boot
++			 * where the DSP really walks this page table - and our
++			 * leaf has AP=00 (privileged only) plus AF=0, which a
++			 * non-privileged or HTTU-off master access reads as a
++			 * permission fault.  ATS/ats1pr cannot see this because
++			 * it probes at EL1 privileged.
++			 */
++			{
++				int s1_ap11 = 0;
++				(void)PE_parse_boot_argn("sweets1ap11", &s1_ap11,
++				    sizeof(s1_ap11));
++				if (s1_ap11) {
++					s1_leaf |= (3ull << 6) | 0x2ull;
++					printf("SWEET MARK: s1ap11af leaf=%#llx\n",
++					    (unsigned long long)s1_leaf);
++					sweet_log_sync();
++				}
++			}
+ 			/*
+ 			 * sweets1off=1 leaves the bank's CBAR at type 1 but writes
+ 			 * SCTLR=0, i.e. stage-1 translation disabled.  That is
+@@ -5414,6 +5436,18 @@
+ 	static int dbg;
+ 	if (!g_rsp_ready || g_rsp_len < 40) {
+ 		if (dbg++ < 4) {
++			/* `len < 40` also swallows a real 32-byte basic response,
++			 * so "no rsp" used to be an inference, not an observation.
++			 * Print the raw fields before deciding. */
++			printf("SWEET MARK: dbraw dst=%#x ready=%d len=%u "
++			    "w0=%#x w4=%#x w8=%#x w12=%#x w16=%#x w20=%#x\n",
++			    dst_port, g_rsp_ready, g_rsp_len,
++			    g_rsp_len >= 4 ? g_le32(g_rsp + 0) : 0,
++			    g_rsp_len >= 8 ? g_le32(g_rsp + 4) : 0,
++			    g_rsp_len >= 12 ? g_le32(g_rsp + 8) : 0,
++			    g_rsp_len >= 16 ? g_le32(g_rsp + 12) : 0,
++			    g_rsp_len >= 20 ? g_le32(g_rsp + 16) : 0,
++			    g_rsp_len >= 24 ? g_le32(g_rsp + 20) : 0);
+ 			printf("SWEET GLINK: data_buffer: no rsp (dst=%#x)\n",
+ 			    dst_port);
+ 			sweet_log_sync();
