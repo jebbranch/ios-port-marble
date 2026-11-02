@@ -2249,15 +2249,29 @@ cmdb_done:
 #if GP_GX
 #if GP_RAIL
 		/* Recorded in slots the survey never writes:
-		 * fault= cx.lvl vote  restore= mxc.lvl vote  trans= gfx.lvl vote */
-		r->w2cr_f = (uint32_t)gp_rh_vote(0x30000u, 384u); /* control */
+		 * fault= cx.lvl vote  restore= mxc.lvl vote  trans= mx.lvl vote
+		 *
+		 * ARC levels, not voltages.  gp_rh_vote() writes its second
+		 * argument straight into the TCS data word, and the vendor's own
+		 * rpmh_send_msg tracepoint (boot window, 28201 messages) only ever
+		 * puts small integers in these slots: cx.lvl(0x30000)=5 then 7,
+		 * mx.lvl(0x30010)=4 then 7, mxc.lvl(0x300a0)=2/4/6, lcx(0x30030)=7,
+		 * lmx(0x30040)=5.  The 384/192 this block used before are regulator
+		 * framework numbers (microvolts-ish) and mean nothing here; that is
+		 * why every "vote returned COMPLETE" never proved a rail was at the
+		 * level we thought.  gfx.lvl(0x30050) is dropped rather than
+		 * guessed: no vendor capture in this tree -- the 10-31 kprobe trace
+		 * and today's boot window -- ever votes that address, so the gx
+		 * rail level is most likely taken care of by the GMU's own path.
+		 */
+		r->w2cr_f = (uint32_t)gp_rh_vote(0x30000u, 7u);	/* cx.lvl */
 		delay_ms(5);
-		r->w2cr_r = (uint32_t)gp_rh_vote(0x30120u, 384u); /* mxc.lvl */
+		r->w2cr_r = (uint32_t)gp_rh_vote(0x300a0u, 6u);	/* mxc.lvl */
 		delay_ms(5);
-		r->w2cr_t = (uint32_t)gp_rh_vote(0x30050u, 192u); /* gfx.lvl */
+		r->w2cr_t = (uint32_t)gp_rh_vote(0x30010u, 7u);	/* mx.lvl */
 		delay_ms(5);
 		r->p_cbw_flags |= 0x1000u;
-		con_hex2("GPUS", "cx=", r->w2cr_f, "mxc=", r->w2cr_r);
+		con_hex2("GFXV", "arc7 cx=", r->w2cr_f, "mxc6=", r->w2cr_r);
 #endif
 		gp_power_gx(r);
 #if GP_RAIL
