@@ -160,8 +160,9 @@ AGM 服务（`vendor.qti.hardware.AGMIPC@1.0-service`，pid 1700）里唯一的�
 
 ### 2. 文件路线与 ACDB 路线都排除
 - `aw882xx_acf.bin` = **2672 B**（`/vendor/firmware/`，需 root 才能取，`adb pull` 直接 Permission denied）。
-  2712 = 2672 + 40（24 B GPR 头 + 16 B `apm_cmd_hdr`）——**此前标为"未验证"的那条算式，
-  第一次由文件大小本身证实**，也说明厂商是把整个文件当正文塞进 shm。
+  2712 = 2672 + 40（24 B GPR 头 + 16 B `apm_cmd_hdr`）。**【已撤回，见文末"撤回 1"】**
+  那条 2712 的包 `p5=0x01001000` 是 **GRAPH_OPEN**（设备图正文），不是 ACF 的 SET_CFG；
+  2672 与 2712-40 相等是巧合。文件大小本身没错，错在我给它贴的报文类型标签。
 - 全量按尺寸筛 `/vendor{,/etc,/firmware} /odm /apex /data/vendor`（18050..18200 B）：
   只有 `libplatformconfig.so`(18132) 和两个 vndk `.so`(18164)，**无音频件**。
 - 正在用的 ACDB = `/vendor/etc/acdbdata/Forte/Forte_acdb_cal.acdb`（1634478 B，AGM fd 11）
@@ -358,7 +359,7 @@ am start --user 0 -a android.intent.action.SET_ALARM \
 966.400755  SET_CFG   dst=1  tok=47 handle=0xb0d5f2c8 size=496
 966.402396  SET_CFG   dst=1  tok=48 handle=0xb0d5f2c8 size=264
 966.408117  SET_CFG   dst=1  tok=53 handle=0xb0d5f2c8 size=2872
-966.411748  SHM_MAP   dst=1  tok=54 p6=0x10003 p7=4 p8=0x20010000 p9=1 p10=20480
+966.411748  SHM_MAP   dst=1  tok=54 p6=0x10003 p7=4 p8=0x1FFF0000 p9=1 p10=20480
 966.412217  SET_CFG   dst=1  tok=55 handle=0xb0d8e7c8 size=18504      ← ★ 就是这一类
 966.413385  SHM_UNMAP dst=1  tok=56 p6=0xb0d8e7c8
 966.414512  SET_CFG   dst=1  tok=57 handle=0xb0d5f2c8 size=112
@@ -370,7 +371,8 @@ am start --user 0 -a android.intent.action.SET_ALARM \
    现在可以确定它是**运行期拼装**的 ⇒ 移植目标从"抠出那 18128 字节"改成"**复刻结构**"，
    把厂商某一次的字节固化进固件是错的路线（哪怕抠到了也不能直接抄）。
 2. **SHM region 大小恒定 20480**（两轮都是 `p10=20480`），18504+40=18544 < 20480 自洽；
-   `p8` 是 DSP 侧地址（本轮 0x20010000，Oct-27 是 0x1ffd0000）⇒ 这块区是 **APM 配置专用区**。
+   `p8` 是 DSP 侧地址（本轮 0x1FFF0000，Oct-27 是 0x1FFD0000 ⇒ **每次开机不同**，不能当常量登记）；
+   但 region **大小**恒定 20480 ⇒ 这块区是 APM 配置专用区。
 3. 一次会话里有**两个 handle**：`0xb0d5f2c8` 承载小的（264/496/2872/112），
    `0xb0d8e7c8` 只承载大的（18504）⇒ 大正文单独一次映射、用完立刻 unmap（1.2 ms）。
 
