@@ -1112,3 +1112,69 @@ SWEET GMU: release written, gmu read skipped
    父级 `hub_ahb_div` 需要先跑起来；
 2. 修好 `GP_SMPREL`（牺牲核放复位 + 现场观测），否则放复位后没有任何观测面；
 3. 在 1/2 任一成立之前，不再重复"放复位后读寄存器"的实验。
+
+## 2026-11-02：ROOT_EN 结案、`hub_ahb_div` 能 latch、`ahb=0` 可能是门控期读 0 的假象
+
+三轮真机，同一台机器、同一套 shim 旋钮（`GP_SURVEY=1 GP_PWR=1 GP_RAIL=1
+GP_STAGE=1`，`GP_SMPREL=0`），只换内核补丁与 boot-args。ring 都按
+`sweettime` 与镜像核对过，不是陈旧环：
+
+| 轮 | 内核 | boot-args | sweettime | 归档 |
+|---|---|---|---|---|
+| Run A | `d669e45`(0218) | `sweetgmuboot=1 sweetgmunorel=1` | 1793578399 | `logs/ring-gpu-pwr-runA-1793578399.txt` |
+| Run C | `bcc091b`(0218+0220+0221) | 同上 | 1793579842 | `logs/ring-gpu-pwr-runC-1793579842.txt` |
+| Run D | `bcc091b` | `sweetgmuboot=1 sweetgcanary=1` | 1793580437 | `logs/ring-gpu-pwr.txt` |
+
+```
+Run C  2067 ahbdiv witness gdscr=0xf8228800 cxgmu=0x2221 hubcx=0x1 cmd=0x2 cfg=0x100001
+Run C  2068 rootkeep ahbdiv hub cmd=0x2 cfg=0x100001 div=0x1 ahb=0 gmu=0x2
+Run C  2069 ahbdiv neigh=0x2 0x2
+Run C  2073 release suppressed (sweetgmunorel=1) → 2074 PSCI SYSTEM_RESET
+
+Run A  2058 rootkeep ahbdiv hub cmd=0 cfg=0 div=0 ahb=0 gmu=0   ← 全 0
+Run D  2110 ahbdiv witness gdscr=0xf8228800 cxgmu=0x2221 hubcx=0x1 cmd=0x2 cfg=0x100001
+Run D  2111 rootkeep ahbdiv hub cmd=0 cfg=0 div=0 ahb=0 gmu=0   ← 全 0（witness 两行前还活着）
+Run D  2119 ahb pre-release=0x1   ★ 项目里第一次读到 gpu_cc_ahb=1
+Run D  2120 ahb armed=0
+```
+
+### 结案
+
+1. **ROOT_EN 这条"最强线索"到此结案**：Run C 的 hub/gmu 两个 RCG 的 ROOT_EN 都保住
+   （`cmd=0x2`）、CFG 精确 `0x100001`，`gpu_cc_ahb(0x911c)` 仍然读 0。根不是门。
+2. **`hub_ahb_div(0x9430)` 第一次 latch**（`div=0x1`；此前每一轮包括 shim survey 的
+   `cbar` 字段都读 0），配套 `0x9434/0x9438 = 0x2/0x2`，形态与 branch 的 CMD/STATUS
+   一致。⇒ `0x9430` 确实有使能语义、父级能开；**但父级开着 `ahb` 仍读 0，
+   "父分频器没跑"这条也被排除**。上面第 1 条怀疑列表里的父级项已经用尽。
+3. **GPUCC 时钟页的全 0 与任何写入没有因果**：Run D 里 witness 读到真值、两行之后的
+   主 print 全 0；Run C 同一位置全活。差别不在写序列。⇒ 我一度把 Run A 的全 0 归因于
+   新增的 `0x9430` 写入，**那个归因是错的**，被 Run D 的 witness 直接推翻。
+4. **新模型（未证实）**：`0216:679-681` 我们自己注释过 `gpu_cc_ahb` "self-gates when
+   idle"。如果这片页在时钟门住时**读回 0**，那么"读到 0 还是真值"取决于当下有没有在途
+   访问——Run D 的 `witness 活（2110）/ 主 print 死（2111）/ 同一轮稍后的 pre-release
+   探针读到 `ahb=1`（2119）` 正是这个形状。
+   ⇒ **过去所有 `ahb=0` 读数都不能作为"写不进"的证据**；需要一次专门的连续读实验
+   证实/证伪（同一位置连读 8 次、中间夹一次写，看值是否随访问密度变化）。
+
+### 死亡点（第 3 次确认）
+
+三轮都是：`release written, gmu read skipped` 之后，第一个"放复位后的读"
+（`0216:703-716` 的 RSCC map + 4 次 TCS 字读）之前 ring 断，且没有 `PSCI SYSTEM_RESET`
+——设备都是被 PMIC 看门狗带回 Android 的。`sweetgmunorel=1`（0218）是本项目第一次
+拿到"放复位前完整不截断"的 ring。
+
+### canary v1 的教训（Run D）
+
+`SWEET CANARY: armed` 和 `start` 都打了，**一条 `n=` 心跳都没有**。当时日志锁是自由的
+（主线程刚完成一次 printf+sync）。v1 阻塞在 100 ms deadline 上等第一拍，因此
+"没被调度"与"timer 中断没送到"无法区分，而后者会**伪装成全局塌陷**。0222 改成
+`delay(20 ms)` 忙等 + arm 后立即打第 0 拍，心跳不再依赖中断投递。
+
+### 现在的目标形态（取代上面第 1/2/3 条）
+
+判定放复位后 AP 是否还有任何可观测面，然后二选一：
+① 有 → 用它读 DDR 里 HFI 队列的读写索引，证明 CM3 在消费；
+② 没有 → 证实/证伪第 4 条那个"门控期读 0"模型，并转去找维持 AHB 时钟的办法
+（cmd-db 的 `vrm.gfx=0x40600`/`vrm.cx=0x42900` regulator 对象，厂商那次上电里我们
+没复刻的 3 次 `regulator_enable`，以及 BCM/HLOS 投票）。
+止损：连续 3 轮上机 canary 心跳仍不出现就停止加仪器（Run D 是第 1 轮）。
