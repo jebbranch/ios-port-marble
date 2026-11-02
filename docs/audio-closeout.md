@@ -800,3 +800,83 @@ g_graph_vendor4+12, 2712, 0, "graph_open/vendor4")` → `g_audio_graph_cfg_vp()`
 注意：即使这一格全绿，也**不等于听到声音**——它只证明厂商那张图能开、能收 buffer。
 "PA 真在驱动"的正证据要靠 ③（GENI 读回 AW882xx 状态/故障寄存器），
 `bit-bang` 那条链是坏仪器，禁止拿它下结论。
+
+## 2026-11-02 17:09 判决①（`sweetvgraph=1`）：落在"无应答"格，而且它把后面的开图一起拖死了
+
+镜像 `images/vgraph.img`（sweettime 1793610339），ring `logs/ring-vgraph.txt`，
+kernel 与 s1ap3 同一版（0232），args 只多 `sweetvgraph=1 sweetbufs=30`。
+开机前的期望表在 `35616b2`（先推后开）。
+
+| 判点 | 实测（行号） | 落格 |
+|---|---|---|
+| `graph_open/vendor4` | `:2309` 发出（shm handle `0xb0d7f408`，len 2712）→ **`:2354 no response`** → `:2355 vendor4 graph open failed` | **第 2 格：无应答** |
+| 回落到我们自己的图 | `:2356 vp-wr` → `:2370 no response`；再 `vp-inline :2382`、`vp-shm :2405`、`tdm-inline :2451`、`inline :2473`、`shm :2523`、`vendor :2576`——**全部 no response**，`:2577 graph_open failed on every payload` | **新的、更重的发现** |
+| DATA_BUFFER | 整个 ring **0 条**（图没开成，自然不发） | — |
+| 收尾 | `:2620 ===== done =====` → `:2621 PSCI SYSTEM_RESET`，机器正常回 Android | 没挂 |
+
+两条结论：
+
+1. **厂商 4 子图 blob 这条路在现认知下判死**。历史上"无应答"是 S1 权限还没修时测的；
+   现在权限已修（同机 `leaf=0x7c1` 打印正常、`shm_map status=0`）仍然无应答
+   ⇒ 不是权限问题，是 **blob 本身或 offset/length 还不对**（12 字节头那个疑点仍然活着）。
+2. **运维红线：`sweetvgraph=1` 是"有毒"的一次尝试。** 它失败之后，同一开机里原本一直
+   `status=0` 的 `vp-wr` 也不再应答了——那次 vendor4 的 GRAPH_OPEN 把 APM/DSP 的建图状态
+   弄坏了，后续每个 payload 都被静音。
+   ⇒ 以后测厂商 blob 必须**独占一次开机**，不许指望回落到我们的图；
+   而且换 blob 参数之前要先跑一次"纯 baseline"确认控制面恢复 `status=0`
+   （本次没有验证恢复性——这是本节唯一没测的环节，下次开机顺手就能补上）。
+
+## 顺手抓到的结构性缺陷：PA 是在音源灌完之后才配置的（0233 修的就是它）
+
+现树 `:6755-6769` 的调用顺序：
+
+```c
+g_apm_graph_bringup();      /* :6766  开图 + g_audio_tone() 灌 DATA_BUFFER */
+sweet_log_sync();
+sweet_i2c_probe_amps();     /* :6768  这里才 GENI 复位 + 写厂商 Music profile */
+g_lpass_probe(...);         /* :6769 */
+```
+
+两次开机独立证实了真机上的样子：`ring-s1ap3.txt` 里 `4902 pcm tone done (1200 buffers)`
+在 `4903+ 的 SWEET I2C: … geni amp … profile 44/44` **之前**；`ring-vgraph.txt` 里 amp 配置在
+`:2595-2598`，而那次图根本没开成。
+⇒ **迄今每一次开机，喇叭 PA 拿到 Music profile 时 PCM 早就灌完了。**
+"没听到声音"不需要用"图里缺转换器/缺 0x4165 端口映射"来解释——**顺序本身就不可能出声**。
+这是"出声"这条线的排序半边，与图内容无关。
+
+补丁 **0233**（`xnu/patches/0233-sweet-amp-before-bringup.patch`）：`sweetampfirst=1`
+⇒ 先 `sweet_i2c_probe_amps()` 再 `g_apm_graph_bringup()`，并跳过后面那次调用。
+为什么必须跳过：`sweet_i2c.c:797` 的 `if (se15_probe_calls++ > 0)` 让 **GENI 只在第二次调用里跑**
+（0124 的 early probe 是第 1 次，故意在 UFS 挂载前不碰 GENI），所以"先配置 PA"依赖这次成为第 2 次；
+不跳过就变成第 3 次，等于在灌完数据后再灌一遍 Music profile。
+缺省（不给 `sweetampfirst`）= 一个字节都不变。marker：`SWEET MARK: ampfirst before bringup`
+（已同批进 workflow 校验列表）。
+
+### 事先登记：下一次开机 = baseline + `sweetampfirst=1`（只改这一个变量）
+
+```
+… sweetshmflag=4 sweets1ap=3 sweetampfirst=1 sweetbufs=30
+```
+
+| 判点 | 期望 | 若不满足说明什么 |
+|---|---|---|
+| `SWEET MARK: ampfirst before bringup` | 出现，且**早于** `graph_open/vp-wr rsp … status=0` | 无 marker ⇒ 补丁被 CI 跳过（marker 校验会直接把构建判失败） |
+| `geni amp 0x34/0x35 … profile 44/44` | 出现在 `pcm tone start` **之前** | 仍在后面 ⇒ 调用次数/顺序没生效，别谈出声 |
+| `data_buffer … done status=0` | 至少一条，槽位字段跟 ping-pong 一致 | 反而不回 ⇒ PA 的配置动作（软复位/I2C 时序）搅乱了 GLINK 节奏 |
+| cb5 `FSR/FAR/FSYNR0` | post == pre（`0x400` 基线） | 新增位 ⇒ 排序变化把访问带回故障路径，原样记下码 |
+| 声音 | **不作为判据**（宿舍安静要求） | 判"出声"用寄存器，不用耳朵 |
+
+四格全绿但仍拿不到独立证据，才轮到目标里的 ②：把 `0x4165 param 0x080010C4 {0x428f}` 与
+`0x40bf/0x40c0 param 0x08001008` 的原字节补进我们这张图，作为 **0234**
+（目标文本里的"0233"号被排序修复占用，因为它是更靠前的门槛）。
+
+### 一条方法学订正：我引用的"行号"是什么性质的
+
+`/tmp/chain` 这类重建树是把 `xnu/patches/*.patch` 逐个
+`git apply --include=bsd/dev/sweet_glink.c` 到 `work/ci-src` 那份拷贝上得到的；
+其中约 48 个补丁（0110..0201 段）**正着 apply、反着 apply 都不干净**
+（`git apply -R --check` 对 0113 也报 `patch does not apply`）。
+所以这份树**不是** CI 的逐字节真树，只能说"在我编辑的那些区域与 CI 一致"，
+而该一致性由实测背书：0232 推上去后 CI 产物里 `SWEET MARK: s1ap leaf=` 命中、旧串归零，
+真机打印 `leaf=0x7c1`。
+⇒ 行号可以引用，但**补丁的唯一硬校验是 CI 产物里的 marker grep**，不是本地 diff。
