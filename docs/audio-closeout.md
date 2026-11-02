@@ -697,3 +697,75 @@ DATA_BUFFER 不被消费的唯一/主要原因 ≤10%**；校准改的是增益/
 顺带记一条仪器学：`FSR` 只能证明"**走到了哪一步失败**"，不能证明"**读进去的是什么**"；
 所以同一次开机里 `dbraw ready/len`（0230）与 `buffer probe` 的返回值仍是一等读数，
 `done status` 才是终判。
+
+## 2026-11-02 16:54 判决①重做：**数据面打通了** —— S1 叶子的 AP=00 就是那个主因
+
+镜像 `images/s1ap3.img`（sweettime 1793609394，kernel 来自 0232 的 CI 产物，
+marker 核对：`SWEET MARK: s1ap leaf=` 命中、旧串 `s1ap11af leaf=` 归零），
+ring 归档 `logs/ring-s1ap3.txt`。boot-args 相对上一次开机只多一处：
+`sweets1ap11=1` → `sweets1ap=3`。
+
+### 按事先登记的真值表读数（`a851ef9`，开机前写的）
+
+| 读数 | 实测 | 命中的格子 |
+|---|---|---|
+| 叶子 | `:2310 SWEET MARK: s1ap leaf=0x7c1 req=3`、`:2314 s1 cb5 … leaf=0x7c1` | 掩码生效、`[1:0]` 保持 block ✓ |
+| pre cb5 | `:2362 FSR=0x400 FAR=0x22140410 FSYNR0=0x40c5f`（陈旧基线） | 与上两次同一基线 ✓ |
+| post-send cb5 | `:2368 FSR=0x400`（FAR/FSYNR0 一字未动） | — |
+| **post cb5** | `:2397 FSR=0x400 FAR=0x22140410 FSYNR0=0x40c5f` | **格 1：不新增任何位** |
+| 缓冲探棒 | `:2404 buffer probe dst=0x40bd -> 0`（历史值 `-1`） | — |
+| 终判 | `:2398/2408/2416/2424 data_buffer: dst=0x40bd **done status=0**` | **`status=0x0` 达成** |
+
+仪器学要点（这条是自证的关键，不然 `FSR=0x400` 会被读成"没测到"）：
+**`FSR` 是负对照，`DONE` 才是正测量**。这次 `FSR` 三个字段与 pre 逐字相同 = 没有新故障；
+而正证据是 DSP 主动回了 4 条 56 字节 `APM_RSP_DATA_BUFFER_DONE_V2`
+（`+10 .. 04 10 00 05` = `0x05001004`，`+20 f8 45 e1 b0` = 我们的 handle `0xb0e145f8`），
+并且**回复里的槽位跟着我们的 ping-pong 走**：
+第 1、3 条回 `+10 00 00 00 00 … 00 00`（offset 0、slot 0），
+第 2 条回 `+10 01 00 00 00 … 08 00`（**slot 1、offset 0x800**）——
+这不是回声，是模块在归还具体的槽。
+
+跑完整条链路：`pcm tone start` → **1200 个 buffer 全部发出** → `pcm tone done (1200 buffers)`
+→ `===== done =====` → `PSCI SYSTEM_RESET` 正常复位。
+整份 ring 里 `no rsp / not consumed / did not start / open failed` **出现 0 次**。
+
+### 这推翻/改写了四条旧结论
+
+1. **"控制面全绿、缺的是 18 KB APM 配置"——主因不是它。** 真正的拦路虎是我们自己那张
+   S1 页表的叶子 `0x701`：`AP=[7:6]=00` 只允许特权访问，DSP 以非特权读 `0x1ffe8000`
+   直接被 SMMU 终止。放开 AP（`0x7c1`）后，一个厂商字节都没多给，数据面就通了。
+   `18128/18504` 那篇的判读（"缺它置信度 ≤10%"）事后看是对的。
+2. **`status=0x2` 的来源解释变了**：`flag=0`（裸物理地址模式）下 DSP 根本不查我们的表，
+   于是走参数校验分支回 BADPARAM；`flag=4` 下它真去查表，查不过就一声不响。
+   两个症状是**同一个根因的两面**，不是两个故障。
+3. **"offset 模式会拖死互连"这条止损前提 weakened**：这次 `property_flag=4` + 1200 个 buffer
+   一路跑完并正常复位，没有任何挂死迹象。也就是说历史上那些"offset 模式一开就死"，
+   至少要重新检验是不是**翻译失败的访问**造成的，而不是 offset 本身。
+   （GPU 线那句"未解问题"因此要重开：见 `docs/gpu-probe.md` 的 reopen gate。）
+4. **0230 的 bit1 故事没有被证明，也没有被否证**：真值表的格 3（"0x7c1 也回 0x402 ⇒ 我的
+   类型字段读法错"）没有发生，我们落在格 1。所以"bit1=类型位"仍是**推理**，
+   只是这次不需要它也能解释全部数据（`0x7c3` 的 `0x402` 由".walk 进了不存在的 L3 表"解释）。
+   下次别再把这两件事混在一句话里说。
+
+### 还没证明的（不许顺着杆往上爬）
+
+- ** audible 输出没证明**：DONE 只说明 WR 端点收下了 buffer 并归还槽位，
+  不证明 PCM 走到了 TDM→codec→喇叭。同一 ring 尾部 `geni amp 0x34/0x35 r=0 id=0x2032
+  profile 44/44` 是我们自己那套 I2C 侧写（传输计数，不是回读），而 bit-bang 那串
+  `0 amplifier(s) answered` 已知是仪器故障。要判定"真出声"得另外测：
+  设备图/后端是否被拉起（`TDM-LPAIF-RX-TERTIARY` 在我们这张图里只是iid，没有厂商的
+  0x4165 端口映射与转换器配置），或者回读 DSP 写回共享区的痕迹。
+- **稳态 pacing 没测**：1200 个 buffer 是 fire-and-forget 一次灌完的；
+  只有前 4 个拿到 DONE（探棒 1 + 循环前 3），之后不再等回复。
+  厂商语料里 B 档是 95 个包/4 槽轮转，真实播放需要按 DONE 节流（`sweetbufgap`）。
+- **图仍然比厂商窄**：`0x40bf/0x40c0/0x40c8/0x4165/0x4308` 这些配置对象不在我们打开的图里
+  （上一节 §3/§4 的表仍然成立）。它们现在**不再是数据面的门槛**，但很可能是"出声"的门槛。
+
+### 复现命令（这条现在是已知-good 配置）
+
+```bash
+D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PROBE_LEVEL=0 \
+  ./scripts/mkimage.sh sweetgpu=0 sweetpcm=1 sweets1=1 sweetiova=1 \
+  sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 sweets1ap=3
+# 期望：s1ap leaf=0x7c1 / cb5 FSR 三字段 post==pre / buffer probe -> 0 / done status=0
+```

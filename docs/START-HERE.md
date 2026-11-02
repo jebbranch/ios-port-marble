@@ -6,7 +6,7 @@
 >
 > 本文是入口；细节都在 `docs/`，按下面的索引查。
 
-## 一、现在能做什么（2026-10-27，内核 v90）
+## 一、现在能做什么（表格基线 2026-10-27 / 内核 v90；音频行更新到 2026-11-02）
 
 | 能力 | 状态 | 说明 |
 |---|---|---|
@@ -15,19 +15,26 @@
 | UFS root | ✅ | userdata 尾部的 HFS+ 镜像 |
 | 8 核 SMP | ✅ | GICR stride 0x40000 修复后 8/8 起核，调度器分配工作 |
 | ADSP / GLINK / GPR / APM 控制面 | ✅ | GRAPH_OPEN/PREPARE/START、TDM SET_CFG 全 status 0 |
+| **音频数据面（DSP 消费我们的 PCM）** | **✅ 2026-11-02** | `sweets1ap=3`（S1 叶子 AP=11）后 `DATA_BUFFER done status=0`，槽位归还与我们的 ping-pong 一致，1200 buffer 跑完正常复位，cb5 无新故障位 |
 | GPU SMMU（kgsl-smmu） | 🟡 探测完成 | 全局寄存器可读，SMR/S2CR=TRANS 可写，BYPASS 被禁，CB 页访问挂死 |
-| 音频出声 | ⏸ 暂停 | 挂死原因已找到（见下），DSP 仍不回 DATA_BUFFER_DONE |
+| 音频出声 | 🟡 未证 | DONE 只证明 WR 端点收下并归还 buffer；图里仍缺厂商 `0x40bf/0x40c0/0x40c8/0x4165/0x4308` 这些配置对象，是否走到 TDM→codec→喇叭没测 |
 | 电池 | 🟡 通道已开 | pmic_glink 能 open，属性请求的响应格式不对 |
 | RTC | 🟡 读到了 | PMK8350 RTC 由 EE4（ADSP）拥有，AP 写入被拒 |
 
 ## 二、几个必须知道的结论
 
-### 1. 音频：挂死的真正原因不是 hypervisor
+### 1. 音频：挂死的真正原因不是 hypervisor，数据面断在**我们自己 S1 叶子的 AP**
 厂商 `SHM_MAP` 的地址是 `{addr_lsw=0x1FFD0000, addr_msw=1}`。高字不是地址
 （33 位 IOVA 会让 DSP 翻译 fault），而是 **stream index**。我们一直发
-`msw=0`。加上 `sweetshmhi=1` 后**不再挂总线**，控制面全绿；剩下的缺口是
-厂商那块 **18 KB 的 APM 级 SET_CFG**（`handle=0xb0e36868, size=18128`），
-kprobe 只抓到包头、没抓到共享内存内容。详见 `docs/audio-closeout.md`。
+`msw=0`。加上 `sweetshmhi=1` 后**不再挂总线**，控制面全绿。
+**2026-11-02 数据面打通**：真正的门槛是 cb5 阶段 1 页表叶子 `0x701` 的
+`AP=[7:6]=00`（特权访问专用）——DSP 非特权读 `0x1ffe8000` 被 SMMU 终止，
+于是 `DATA_BUFFER` 一声不响；把它放到 `0x7c1`（`sweets1ap=3`）后
+`done status=0` 回来、槽位归还跟我们的 ping-pong 一致、1200 个 buffer 跑完并正常复位，
+全程没有新故障位。当初怀疑的"厂商 18 KB APM 级 SET_CFG"**不是主因**
+（大小随开机变 18128/18504，一个厂商字节都没多给就通了）。
+未证：是否真出声（图里仍缺 `0x40bf/0x40c0/0x40c8/0x4165/0x4308` 这些配置对象）。
+详见 `docs/audio-closeout.md`（2026-11-02 16:54 一节）。
 
 ### 2. 多核：GICR stride
 marble 的 redistributor 间距是 **0x40000**，XNU 默认 **0x20000**。
