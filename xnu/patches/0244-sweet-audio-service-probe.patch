@@ -2,7 +2,7 @@ diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/Swe
 new file mode 100644
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,268 @@
+@@ -0,0 +1,272 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -44,7 +44,11 @@ new file mode 100644
 +#include <libkern/c++/OSSymbol.h>
 +#include <libkern/c++/OSCollectionIterator.h>
 +#include <kern/task.h>
-+#include <kern/boot_params.h>
++
++/* kern/boot_params.h is not on this file's include path (it failed CI that way),
++ * so declare the one kernel entry point we need, the way SweetHaptics.cpp declares
++ * sweet_haptics_kick(). */
++extern "C" int PE_parse_boot_argn(const char *name, void *value, int length);
 +
 +#define SWEET_AUDIO_OPEN_LIMIT 8
 +
