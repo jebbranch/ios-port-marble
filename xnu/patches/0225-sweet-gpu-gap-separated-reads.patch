@@ -1,0 +1,37 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -3293,8 +3293,34 @@
+ 			g_wait(20);
+ 			printf("SWEET GMU: ahb burst after20ms ahb=%x cxgmu=%x\n",
+ 			    gm_rd(gc, 0x911cu), gm_rd(gc, 0x913cu));
++			sweet_log_sync();
++		/*
++		 * Run F showed that back-to-back reads of this page return the
++		 * previous transfer rather than the addressed register: cx_gmu,
++		 * which read 0x2221 one line earlier in the witness, came back
++		 * 0x100001 four times in a row inside the burst -- 0x100001 being
++		 * the hub CFG value transferred just before it -- while the pair
++		 * taken after a 20 ms gap (ahb=0, cxgmu=2221) is self-consistent.
++		 * So a trustworthy gpu_cc_ahb sample is one read per gap.  Take
++		 * three gapped reads, then one immediately-following pair as the
++		 * in-run control that the artifact is still there.
++		 */
++		{
++			uint32_t ga, gcm, gh, b1, b2;
++
++			g_wait(20);
++			ga = gm_rd(gc, 0x911cu);
++			g_wait(20);
++			gcm = gm_rd(gc, 0x913cu);
++			g_wait(20);
++			gh = gm_rd(gc, 0x93ecu);
++			b1 = gm_rd(gc, 0x911cu);
++			b2 = gm_rd(gc, 0x911cu);
++			printf("SWEET GMU: gap ahb=%x cxgmu=%x cmd=%x backtoback=%x %x\n",
++			    ga, gcm, gh, b1, b2);
+ 			sweet_log_sync();
+ 		}
++		}
+ 		printf("SWEET GMU: rootkeep ahbdiv hub cmd=%#x cfg=%#x "
+ 		    "div=%#x ahb=%#x gmu=%#x\n",
+ 		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x93f0u),

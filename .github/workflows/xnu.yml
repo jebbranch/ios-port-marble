@@ -157,6 +157,7 @@ jobs:
                    "SWEET RAIL: done blocks" \
                    "SWEET RAIL: vrm_" \
                    "SWEET GMU: rootkeep ahbdiv hub cmd=" \
+                   "SWEET GMU: gap ahb=" \
                    "SWEET GMU: ahbdiv witness gdscr=" \
                    "SWEET CANARY: n=" \
                    "SWEET CANARY: start v2 nc=" \
