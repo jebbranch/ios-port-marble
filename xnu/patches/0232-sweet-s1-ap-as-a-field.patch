@@ -1,0 +1,72 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -4019,28 +4019,6 @@
+ 			    sizeof(s1_attr));
+ 			(void)PE_parse_boot_argn("sweets1cbar", &s1_cbar,
+ 			    sizeof(s1_cbar));
+-			/*
+-			 * sweets1ap11=1 turns the leaf's Access Permission into
+-			 * EL0-data-accessible (AP=11) and sets AF.  Motivation:
+-			 * the cb5 fault at FAR=our IOVA only ever shows up in the
+-			 * offset-mode (property_flag=4) boot, i.e. the one boot
+-			 * where the DSP really walks this page table - and our
+-			 * leaf has AP=00 (privileged only) plus AF=0, which a
+-			 * non-privileged or HTTU-off master access reads as a
+-			 * permission fault.  ATS/ats1pr cannot see this because
+-			 * it probes at EL1 privileged.
+-			 */
+-			{
+-				int s1_ap11 = 0;
+-				(void)PE_parse_boot_argn("sweets1ap11", &s1_ap11,
+-				    sizeof(s1_ap11));
+-				if (s1_ap11) {
+-					s1_leaf |= (3ull << 6) | 0x2ull;
+-					printf("SWEET MARK: s1ap11af leaf=%#llx\n",
+-					    (unsigned long long)s1_leaf);
+-					sweet_log_sync();
+-				}
+-			}
+ 			/*
+ 			 * sweets1off=1 leaves the bank's CBAR at type 1 but writes
+ 			 * SCTLR=0, i.e. stage-1 translation disabled.  That is
+@@ -4091,6 +4069,40 @@
+ 			default:	/* 0 (and anything else) = as before */
+ 				s1_attr = 0;
+ 				break;
++			}
++			/*
++			 * sweets1ap=<1..3> rewrites ONLY the leaf descriptor's Access
++			 * Permission field ([7:6]); absent or 0 leaves the descriptor exactly
++			 * as built.  Motivation: the cb5 fault at FAR=our IOVA only ever
++			 * shows up in the offset-mode (property_flag=4) boot - the one boot
++			 * where the DSP really walks this table - and our leaf carries
++			 * AP=00, privileged-only.  ats1pr cannot see that: it probes at EL1.
++			 *
++			 * This replaces the sweets1ap11 hunk of 0230, which ORed
++			 * (3ull << 6) | 0x2.  bit1 is part of the TYPE field: at L2
++			 * [1:0] = 0b01 means "2 MiB block" and 0b11 means "pointer to an L3
++			 * table", so that boot measured a broken walk, not a permission
++			 * result - post cb5 went FSR 0x408 -> 0x402 with FAR unchanged and
++			 * FSYNR0 0x40002 -> 0x40003 (logs/ring-s1ap11.txt:2428 against
++			 * logs/ring-audio-coldamp.txt:2371).  The identical trap is
++			 * documented above for 0x703.  AF is bit10 and 0x701 already sets
++			 * it, so only AP is missing - and it must be MASKED, not ORed.
++			 *
++			 * Placed after the sweets1attr switch on purpose: that switch
++			 * overwrites s1_leaf wholesale, so an earlier edit would be lost
++			 * as soon as the two knobs are combined.
++			 */
++			{
++				int s1_ap = 0;
++
++				(void)PE_parse_boot_argn("sweets1ap", &s1_ap, sizeof(s1_ap));
++				if (s1_ap >= 1 && s1_ap <= 3) {
++					s1_leaf &= ~(3ull << 6);
++					s1_leaf |= ((uint64_t)s1_ap) << 6;
++					printf("SWEET MARK: s1ap leaf=%#llx req=%d\n",
++					    (unsigned long long)s1_leaf, s1_ap);
++					sweet_log_sync();
++				}
+ 			}
+ 			/* sweets1cbar=1 uses the exact value the vendor arm-smmu
+ 			 * driver writes for a stage-1 bank:
