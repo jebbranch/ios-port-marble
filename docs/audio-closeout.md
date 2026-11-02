@@ -974,3 +974,34 @@ PA 读回证明"放大器那头收到了我们的配置/或被动过"，macro �
 而该一致性由实测背书：0232 推上去后 CI 产物里 `SWEET MARK: s1ap leaf=` 命中、旧串归零，
 真机打印 `leaf=0x7c1`。
 ⇒ 行号可以引用，但**补丁的唯一硬校验是 CI 产物里的 marker grep**，不是本地 diff。
+
+## 2026-11-02 17:30 `sweetampfirst=1`：四格全绿 —— PA 第一次"在流之前"配好
+
+镜像 `images/ampfirst.img`（sweettime 1793611642），ring `logs/ring-ampfirst.txt`，
+kernel = 0233 的 CI 产物（取包时实测 `ampfirst` marker 命中 1 次，`ampread` 还不在这一版里）。
+判据表在开机前写死（上一节）。args = 已知-good baseline + `sweetampfirst=1 sweetbufs=30`。
+
+| 判点 | 期望（开机前写的） | 实测 | 判定 |
+|---|---|---|---|
+| `SWEET MARK: ampfirst before bringup` | 出现且早于 `graph_open/vp-wr rsp … status=0` | `:2281` marker，`:2339 rsp … status=0` | ✓ 顺序反过来生效 |
+| `geni amp … profile 44/44` | 早于 `pcm tone start` | `:2299/:2300/:2302`（0x34 `r=0 id=0x2032`，两颗 `44/44`）；`pcm tone start` 在 `:2456` | ✓ **历史上第一次：PA 先配、流后灌** |
+| `done status=0` | 至少一条，槽位跟 ping-pong 一致 | `:2449 :2459 :2467 :2475` 四条 + `buffer probe → 0`（`:2455`） | ✓ 排序改动没弄坏数据面 |
+| cb5 `FSR/FAR/FSYNR0` | post == pre | `:2413 pre 0x400/0x22140410/0x40c5f` == `:2448 post` 三字段逐项相同 | ✓ 无新故障位 |
+| 收尾 | 正常复位 | `:2537 pcm tone done (30 buffers)` → `:2539 ===== done =====` → `:2540 PSCI SYSTEM_RESET` | ✓ `sweetbufs=30` 兑现，总量 ≈180 ms |
+
+**顺手关掉我自己留在 vgraph 那节的一个缺口**：那里我把"控制面能否恢复"列为
+"唯一没测的环节"。这次 `graph_open/vp-wr rsp … status=0` 正是在那台被 vendor4
+拖死过的机器之后的下一次开机拿到的 ⇒ **那次毒是每次开机独立的，不跨开机残留**。
+
+现在**已知-good 的出声候选配置**（数据面 + 排序都对，仍无独立出声证据）：
+
+```bash
+D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PROBE_LEVEL=0 \
+  ./scripts/mkimage.sh sweetgpu=0 sweetpcm=1 sweets1=1 sweetiova=1 \
+  sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 \
+  sweets1ap=3 sweetampfirst=1 sweetbufs=30
+```
+
+还缺的就一件事，而且它不是参数问题：**"PA 在流之前配好" ≠ "PA 在推功率"**。
+下一格 = 0234 的读回（`sweetampverify=1`，判据已登记）；再往后 = `sweetreadrx=1`
+（要等人到手机旁边，`wdt=-1` 下 panic 不会自动复位）。
