@@ -1,0 +1,69 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -3329,35 +3329,41 @@
+ 		}
+ 		}
+ 		/*
+-		 * Calibration reads.  Six boots of this same site showed the witness
+-		 * taken *before* writing 0x911c is byte-identical every time, while most
+-		 * samples taken after it come back zeroed or holding another register's
+-		 * value.  So sample gpu_cc_ahb eight times and put a calibration read of
+-		 * CX_GDSCR after each one: this function wrote 0x228800 with PWR_ON and
+-		 * the witness confirms 0xf8228800 in every boot that has one.  A pair
+-		 * counts only when the calibration word is exact, which turns the
+-		 * artifact into filtered-out samples instead of a source of conclusions.
+-		 * Only then can "does bit 0 of gpu_cc_ahb ever latch" be answered.
++		 * Sandwiched calibration, replacing the 0227 loop.  Reading the same
++		 * register back to back cannot detect a stale readback at all: a
++		 * repeated gpu_cc_ahb matches its own previous transfer whether or
++		 * not the bridge is feeding us pipeline data, so 0227 would print
++		 * valid=8/8 either way and the A/B decision would be unreadable.
++		 * Each sample now takes CX_GDSCR before, between and after two
++		 * gpu_cc_ahb reads; all three calibration words must be exactly
++		 * 0xf8228800 (this function wrote 0x228800 with PWR_ON, and six
++		 * boots of witnesses agree) and the two target reads must match.
++		 * Only pairs passing both checks count, and only counted pairs may
++		 * decide A or B.
+ 		 */
+ 		{
+-				uint32_t av[8];
+-				uint32_t cv[8];
+-				unsigned int t, valid = 0;
++			uint32_t a1, a2, c1, c2, c3;
++			uint32_t va[8];
++			unsigned int t, valid = 0, bad = 0;
+ 
+-				for (t = 0; t < 8u; t++) {
+-						av[t] = gm_rd(gc, 0x911cu);
+-						cv[t] = gm_rd(gc, 0x9108u);
+-						if (cv[t] == 0xf8228800u) {
+-								valid++;
+-						}
+-						g_wait(2);
++			for (t = 0; t < 8u; t++) {
++				c1 = gm_rd(gc, 0x9108u);
++				a1 = gm_rd(gc, 0x911cu);
++				c2 = gm_rd(gc, 0x9108u);
++				a2 = gm_rd(gc, 0x911cu);
++				c3 = gm_rd(gc, 0x9108u);
++				if (c1 == 0xf8228800u && c2 == 0xf8228800u &&
++				    c3 == 0xf8228800u && a1 == a2) {
++					va[valid++] = a1;
++				} else {
++					bad++;
+ 				}
+-				printf("SWEET GMU: cal ahb=%x %x %x %x %x %x %x %x\n",
+-						av[0], av[1], av[2], av[3], av[4], av[5], av[6], av[7]);
+-				sweet_log_sync();
+-				printf("SWEET GMU: cal cx=%x %x %x %x %x %x %x %x valid=%u/8\n",
+-						cv[0], cv[1], cv[2], cv[3], cv[4], cv[5], cv[6], cv[7], valid);
+-				sweet_log_sync();
++				g_wait(2);
++			}
++			printf("SWEET GMU: cal2 valid=%u bad=%u ahb=%x %x %x %x "
++			    "%x %x %x %x\n", valid, bad, va[0], va[1], va[2], va[3],
++			    va[4], va[5], va[6], va[7]);
++			sweet_log_sync();
+ 		}
+ 		printf("SWEET GMU: rootkeep ahbdiv hub cmd=%#x cfg=%#x "
+ 		    "div=%#x ahb=%#x gmu=%#x\n",
