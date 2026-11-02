@@ -25,8 +25,7 @@ iOS 的音频服务在我们这颗机器上**是活的**，它缺的是**下面�
 | F2 | 它在我们自己的移植上**确实起来了**：`exec mediaserverd` | `work/xnu-gh/logs/ring-h2-dst-tdm.txt:778`；当前音频 ring 也有（如 `ring-nobb.txt:790`） |
 | F3 | 它在当前音频 ring 里**没有崩溃**：只有签名页被放行 | `ring-nobb.txt:1064` `CODE SIGNING: cs_invalid_page(0x1cb834000): p=28[mediaserverd] … allowing (remove VALID) page` |
 | F4 | 历史上 mediaserverd 崩溃**只存在于 GPU 探测期那 24 份 ring**，不是普遍状态 | `grep -l "CRASH mediaserverd" logs/ring-*.txt` → 24 份，全名如 `ring-gpu-m*-…`、`ring-amp8`、`ring-daily-v93-freeze` |
-| F5 | 我们启动的内核里有全套 IOAudio2/AOP 类，**`AppleHDA` 字符串为 0** | `strings work/iphone-x-recon/artifacts/kernel.bin` → `IOAudio2Device` 1 / `IOAudio2DeviceUserClient` 1 / `AppleEmbeddedAudioDevice` 1 / `AppleARMIISAudioDevice` 8 / `AppleAOPAudioController` 1 / `AppleSPUHapticsAudioDriver` 2 |
-| F6 | Apple 的 iOS 侧 HAL 插件认的是 AOP 控制器 | `/System/Library/Audio/Plug-Ins/HAL/AppleAOPAudioPlugin.driver/Info.plist`：`AudioServerPlugIn_LoadingConditions.IOProviderClass = AppleAOPAudioController`，`IOKitUserClients = {AppleAOPAudioUserClient, AppleAOPVoiceTriggerUserClient}`，`MinimumOSVersion 16.7` |
+| F5′ | **订正（我原先把参照物当成了我们自己）**：`iphone-x-recon/artifacts/kernel.bin` 是 **Apple 的 iPhone X 内核缓存**，不是我们启动的那颗。我们真正启动的 `out/kernel.adsp` 里 `IOAudio2Device`=**0**、`IOAudio2DeviceUserClient`=**0**、`AppleAOPAudioController`=**0**、`AppleEmbeddedAudioDevice`=**0**，而 `AppleSPUHapticsAudioDriver`=3、`IOPMPowerSource`=3 只是因为那两个**是我们自己写的**（0196、0062）。⇒ 我们的内核里**没有**任何 Apple 音频类可继承。 || F6 | Apple 的 iOS 侧 HAL 插件认的是 AOP 控制器 | `/System/Library/Audio/Plug-Ins/HAL/AppleAOPAudioPlugin.driver/Info.plist`：`AudioServerPlugIn_LoadingConditions.IOProviderClass = AppleAOPAudioController`，`IOKitUserClients = {AppleAOPAudioUserClient, AppleAOPVoiceTriggerUserClient}`，`MinimumOSVersion 16.7` |
 | F7 | **我们启动的那份 ADT 要求的硬件 marble 没有** | `python3 scripts/adt.py dump …/d22ap.adt` 的行：`1434 audio-codec`、`1597 audio-speaker-top` 且 `1607 compatible = 'audio-control,cs35l26'`、`871 aop-mca { device_type = 'mca' }`、`864-868 spkamp-config_arc/_arc_p1/_btmspk`、`771 aop { role = 'AOP' }` + `790 firmware-name = 'iphone10baop'` |
 | F8 | marble 真实播放拓扑：PA 挂在 **TERTIARY** 那条 TDM 上 | `logs/android-proc-asound-pcm.txt`：`00-31 TDM-LPAIF-RX-TERTIARY multicodec-31 playback`；主后端 `00-00 CODEC_DMA-LPAIF_RXTX-RX-0`；组件名 `aw882xx_smartpa.2-0034` / `…0035` / `wcd938x-codec` / `pm8350b-swr-haptics.1f0170220` |
 | F9 | 我们已经有"发布一个 IOKit 服务 + user client 并把 client 的每一次调用打出来"的可用样板 | `work/ci-src/xnu-xnu-8796.141.3/iokit/Kernel/arm/hid/SweetHaptics.cpp:47 class SweetHapticsUCBase : public IOUserClient`、`:102 externalMethod(uint32_t selector, …)`、`:17` 注释写明"log IOServiceOpen, every externalMethod selector" |
@@ -50,6 +49,18 @@ iOS 的音频服务在我们这颗机器上**是活的**，它缺的是**下面�
 ## 4. 候选路线排序（每条都写清前提与最便宜的判别实验）
 
 **R1（推荐）我们自己发布一个 IOAudio2 形态的设备 + user client，后端把 PCM 灌进已经通的 SHM/GPR 环。**
+**F5 订正带来的两个直接后果（都是我原以为的反面）**：
+1. **没有类冲突风险**：另外单独查了编译树本身 —— `grep -rl "class IOAudio2Device" ci-src/...` 无结果，
+   `grep -in audio iokit/conf/files.arm64` 也无结果 ⇒ 这颗内核根本没编译任何 IOAudio2/音频驱动，
+   我们自己起名叫 `IOAudio2Device`/`AppleAOPAudioController` 不会撞链接符号。
+   顺带记一次方法失败：想用 `strings kernel.bin | grep '^__ZTV<类名>$'` 判断"类是否已链接"，
+   **七个名字全为 0，包括我们自己成功定义过的 `AppleSPUHapticsAudioDriver`** ⇒ 该检查看不到东西，
+   不能拿它的 0 当结论，判据换成上面两条直接查源码/查我们自己的产物。
+2. **R1 的形状因此变了**：不是"给 Apple 的 IOAudio2 类补一个 provider"，而是**照 0196 的样子自己写一个
+   `IOService` + `IOUserClient`**（`SweetHaptics.cpp:47/:102` 已经证明这条路能用、能收 open/selector/map），
+   然后把注册名取成 mediaserverd 会去查的那些字符串。工作量的主体从"逆向 Apple 驱动内部"
+   变成"实现它被查的那组 selector"，这两件事的成本完全不同。
+
 - 成立的前提：`mediaserverd` 会在出现一个匹配的 IOAudio2 服务时来 `IOServiceOpen`。
   **这条今天从"未知"升级为"同类已被验证过一次"**：F11/F12 显示我们发布的
   `AppleSPUHapticsAudioDriver` / `AppleAOPAudioButtonHapticDevice` 这类 Apple 名字的服务，
