@@ -1284,3 +1284,48 @@ D22AP_ADT=/path/to/d22ap.adt ./scripts/mkimage.sh \
 | 七个锚点全零 + 两个对照位零 | — | 与厂商读到的不是同一块东西 ⇒ RX 线彻底收掉 |
 
 `done status=0` 仍然会照常在，**它不算这任何一格的证据**。
+
+## 预先登记：目标 ②（`sweetvcfg2=1`）的开机判据 —— 现在写死，开机后只许按格比对
+
+写在开机之前，是因为这一格**零编译成本**：`SWEET MARK: vcfg2 rc` 这个字面量实测就在
+`out/kernel.adsp`（0237 那版）里，说明 0235 早就进了每一个 kernel；它只是从来没被开机验证过。
+
+代码位置（对 `work/chain-tree/bsd/dev/sweet_glink.c`，182 apply / 49 skip 的重建，行号按本文
+开头那条口径限制读）：vcfg2 重放在 `g_audio_graph_cfg_vp()`（:5934 起，重放块 :6049-6105），
+而它是 `g_apm_graph_bringup()`（:6177）里的一步。于是带着全部开关时，一次开机的顺序是：
+
+```
+clocks va/rx
+  -> rxsnap "pre-stream"                        (0239 锚点)
+  -> ampfirst: probe_amps -> ampread "pre-bitbang" (0240) -> bit-bang
+  -> ampread "pre-stream"                        (0236+0238)
+  -> g_apm_graph_bringup()  == 含 vcfg2 重放      (0235)
+  -> 喂 PCM / done status
+  -> ampread "post-stream"                       (0234+0238)
+  -> rxsnap "post-stream"
+```
+
+⇒ **pre 和 post 之间的唯一新增就是 bringup（含 vcfg2）**，这正是能拿来做差的结构。
+
+| 格 | 判据（事先写死） | 落点含义 |
+|---|---|---|
+| I1 | `vcfg2 rc` 四个数里**任一个 = 0** | 厂商那四个模块（0x40bf/0x40c0/0x40c8/0x4165）在我们这张图里其实是可达的 ⇒ "缺的是配置"而不是"缺图"，下一格才谈得出声 |
+| I2 | 四个 rc 全 ≠ 0（错误码或无应答） | 缺口是结构性的（设备图/后端没拉起）⇒ ②关闭，写进 `docs/open-questions.md` 的第二条，不再在参数侧耗开机 |
+| I3 | `p65` 单独 ≠ 0 而 bf/c0/c8 = 0 | 只有 `0x4165` 那条**端口映射**（data={0x428f}）被拒 ⇒ 正好是"TDM 出口没绑到 PA"的形状，②线升级为下一步主战场 |
+| I4 | `ampread pre-stream` 与 `ampread post-stream` 同地址同寄存器**值不同** | 硬件在我们看不见的地方动过 ⇒ 这是本目标要的独立于 DONE 的正证据（严格讲归因是 bringup+流，不是单 vcfg2；要靠与 anchor3 基线对比才归到 vcfg2） |
+| I5 | `ampread` 两格值相同 | 无运动 ⇒ 不构成证据，不许写成"证明没动"，因为仪器本身可能还是坏的 |
+| I6 | `ampread` 仍然全 `r=-1` | **I4/I5 记为"未运行"**，不许拿它们下任何结论；②这一轮只由 I1–I3 判 |
+
+前置条件（诚实口径）：I4/I5/I6 能不能成立，取决于**这一次 anchor3 开机**里 0238/0240 是否把
+读路修活。anchor3 的判据表在上一节，两件事不混淆：anchor3 只修仪器，② 才第一次把它当证据用。
+
+开机命令（数据面配置仍不动）：
+
+```bash
+D22AP_ADT=... CPUS=8 GPU_PROBE_LEVEL=0 ./scripts/mkimage.sh \
+  sweetgpu=0 sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1 \
+  sweetshmhi=1 sweetshmflag=4 sweets1ap=3 sweetampfirst=1 sweetampverify=1 \
+  sweetreadrx=1 sweetvcfg2=1 sweetbufs=30
+```
+
+`done status=0` 在 I1–I6 里一律不算证据。
