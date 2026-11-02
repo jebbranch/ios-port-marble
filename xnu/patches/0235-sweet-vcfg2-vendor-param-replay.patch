@@ -1,0 +1,70 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5968,6 +5968,67 @@
+ 
+ 	(void)g_apm_set_cfg(src_port, G_VP_AW_IID, 0x10013d2a, aw,
+ 	    sizeof(aw), "vp/aw_cfg");
++
++	{
++		/*
++		 * sweetvcfg2=1 replays the four module configs the vendor sends and
++		 * we never do, byte for byte, from the two kprobe captures
++		 * (docs/audio-closeout.md section 3): param 0x08001008 length 30 to
++		 * 0x40bf and 0x40c0, param 0x08001024 length 14 to 0x40c8, and the
++		 * port map 0x080010C4 = {0x428f} to 0x4165.
++		 *
++		 * Those four instance ids are NOT inside the graph we open - a byte
++		 * search for bf 40 / c0 40 / c8 40 / 65 41 in g_graph_vp_wr returns
++		 * zero hits - so the honest expectation is an error or silence.  The
++		 * point of the boot is precisely that: if any of the four answers
++		 * status 0 then the graph does contain them after all and the fix is
++		 * "send more config"; if all four fail then the gap is structural and
++		 * the only real options are the vendor blob (already judged dead in
++		 * this same permission state) or extending the graph by hand.
++		 *
++		 * No param here is given a name: 0x08001008/0x08001024/0x080010C4 are
++		 * identified only by position and length in the captured packets.
++		 */
++		int vcfg2 = 0;
++		int rc_bf = -1, rc_c0 = -1, rc_c8 = -1, rc_65 = -1;
++		uint8_t conv[30];
++		uint8_t scl[14];
++		uint8_t pmap[4];
++
++		(void)PE_parse_boot_argn("sweetvcfg2", &vcfg2, sizeof(vcfg2));
++		if (vcfg2) {
++			memset(conv, 0, sizeof(conv));
++			g_put32(conv + 0, 1);
++			g_put32(conv + 4, 0x09001000);
++			g_put32(conv + 8, 18);
++			g_put32(conv + 12, 0x00010010);
++			g_put32(conv + 16, 0x000f0010);
++			g_put32(conv + 20, 0x00030001);
++			g_put32(conv + 24, 0x00020000);
++			conv[28] = 0x01;
++			conv[29] = 0x02;
++
++			memset(scl, 0, sizeof(scl));
++			g_put32(scl + 0, 96000);
++			g_put32(scl + 4, 0x00030018);
++			g_put32(scl + 8, 0x00020001);
++			scl[12] = 0x03;
++
++			g_put32(pmap + 0, G_VP_TDM_IID);
++
++			rc_bf = g_apm_set_cfg(src_port, 0x40bfu, 0x08001008u,
++			    conv, sizeof(conv), "vp/cfg_40bf");
++			rc_c0 = g_apm_set_cfg(src_port, 0x40c0u, 0x08001008u,
++			    conv, sizeof(conv), "vp/cfg_40c0");
++			rc_c8 = g_apm_set_cfg(src_port, 0x40c8u, 0x08001024u,
++			    scl, sizeof(scl), "vp/cfg_40c8");
++			rc_65 = g_apm_set_cfg(src_port, 0x4165u, 0x080010c4u,
++			    pmap, sizeof(pmap), "vp/cfg_4165");
++			printf("SWEET MARK: vcfg2 rc bf=%d c0=%d c8=%d "
++			    "p65=%d\n", rc_bf, rc_c0, rc_c8, rc_65);
++			sweet_log_sync();
++		}
++	}
+ }
+ 
+ /* PREPARE / START / STOP take a SUB_GRAPH_LIST {count, id}. */
