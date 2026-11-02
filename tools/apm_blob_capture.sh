@@ -38,6 +38,13 @@ need_dev() {
 case "${1:-}" in
 arm)
 	need_dev
+	# tracefs resets on every boot, so the gpr kprobe has to be (re)installed.
+	# Disable every kprobe event first: `echo > kprobe_events` returns EBUSY while
+	# an event is still enabled, and 99-gpuclk.sh leaves three of them enabled.
+	$ADB shell "su -c 'T=/sys/kernel/tracing
+		for f in \$T/events/kprobes/*/enable; do echo 0 > \$f 2>/dev/null; done
+		echo > \$T/kprobe_events 2>/dev/null || true'"
+	bash "$HERE/gpr_capture.sh" arm | tail -1
 	$ADB shell "su -c 'T=/sys/kernel/tracing
 		for e in rhb rhw kbw; do echo 0 > \$T/events/kprobes/\$e/enable 2>/dev/null; done
 		echo 1 > \$T/events/kprobes/gprsend/enable 2>/dev/null
