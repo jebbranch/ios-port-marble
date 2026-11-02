@@ -242,3 +242,44 @@ arm 前必须先逐个 disable。
 旧的 96 字探针原样留着）。`tools/apm_blob_capture.sh arm` 现在会先把 `rhb/rhw/kbw` disable
 再开新探针。目标里的收尾义务（`99-rpmh.sh`）已删除并核对；`99-gpuclk.sh`/`99-gpuprobe.sh`
 是 GPU 线的工具，保留，但任何音频抓包前必须静音它们。
+
+## 2026-11-02（cold-amp 开机）：AW882xx 这条线彻底收口
+
+`images/audio-coldamp.img`，`sweettime=1793592884`（ring 与镜像一致，已核对），
+boot-args = `… sweetgpu=0 sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1`
+（**故意不带 GPU 探测**，这样它不会在中途复位 SoC；`adb reboot bootloader` 是 warm reboot，
+TLMM 回默认 ⇒ 进入时功放复位线为 0）。归档：`logs/ring-audio-coldamp.txt`。
+
+同一台开机里两条主机的先后证据（行号取自归档）：
+
+```
+170  SWEET I2C: levels before (rstA=0 spksw=0 scl=1 sda=1 rstB=0 irqA=1 irqB=1)   ← 冷态
+173  SWEET I2C: resets released (A=1 B=1)                                        ← 我们自己放的
+174-178 SWEET I2C: sda/scl driven 电平全部正确，bus idle, sda=1
+244  SWEET I2C: released scan found 0 device(s)     ← bit-bang
+311  SWEET I2C: spksw-high scan found 0 device(s)   ← bit-bang
+364  SWEET I2C: asserted scan found 0 device(s)     ← bit-bang
+371/373 SWEET I2C: amp 0x34 / 0x35 no ack           ← bit-bang
+374  SWEET I2C: 0 amplifier(s) answered 0x2032
+2380-2382 SWEET I2C: pin 56/57 cfg=0x87 level=1 → rstA=1 rstB=1 spksw=1 irq=1     ← GENI 前
+2383 SWEET I2C: se15 fw=0x303 proto=3 status=0 tx=0x201029e4 rx=0x20104800 geni=0
+2391-2394 SWEET I2C: geni amp 0x34 r=0 id=0x2032 / profile 44/44
+                   geni amp 0x35 r=0 id=0x2032 / profile 44/44     ← ★ 冷态自放复位也 ACK
+```
+
+结论（把上一节那个"唯一未验证叶子"关掉）：
+
+1. **冷启动由我们自己释放复位，两颗 AW882xx 照样应答并写满 44 条 profile。**
+   之前 80 次成功全部发生在 `rstA=1`（上一次会话留下的复位状态）下，现在这台是
+   `rstA=0 → 我们放复位 → ACK`，语料里第 0 类 → 第 1 类。
+2. `0 amplifier(s) answered` / `no ack` **只属于 GPIO bit-bang 那台主机**，
+   与它同一台开机里 GENI 全绿 ⇒ "AW882xx I2C 无 ACK"从来不是硬件问题，
+   而是 bit-bang 自己不可用（本轮再次 0/235）。既然 GENI 可用，bit-bang 不必再修。
+3. 功放与图都正常，剩下的失败模式没变：
+   `2372 SWEET GLINK: data_buffer: no rsp (dst=0x40bd)`、`2373 buffer probe dst=0x40bd -> -1`
+   —— DSP 对发给 WR 实例的 DATA_BUFFER **连响应都没有**（不是 NACK）。
+   控制面 `graph_open/vp-wr rsp … status=0`、SMMU `ats1pr iova=0x1ffe8000 -> par=0 OK`。
+
+⇒ 音频线现在只剩一个未知量：**那条 APM 级 18 KB SET_CFG 的正文**。
+仪器与解法都已就位（`tools/apm_blob_capture.sh` + `scripts/parse_apm_blob.py`），
+唯一缺的是**一次真实播放**——本机没有任何纯 shell 的播放触发器（见 §3 表）。
