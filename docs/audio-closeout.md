@@ -1042,3 +1042,43 @@ args = 上一格 17:30 的全绿配置 + 只加 `sweetampverify=1`：
 
 另记一条：`sweetvcfg2=1`（②，0235）虽然依赖同样的前提，但它会改 APM 状态，
 所以**单独一次开机，不与读回叠加**。
+
+## 2026-11-02 17:41 读回开机（`sweetampverify=1`）：落在仪器无效格，但失败点是**可定位的**
+
+镜像 `images/ampverify.img`（sweettime 1793612305），ring `logs/ring-ampverify.txt`。
+args = 上一格 + 只加 `sweetampverify=1`；kernel = 含 0233+0234 的 CI 产物
+（marker 实测：`ampfirst` 命中、`ampread` 命中、`pre-stream` 还没有——0236 那版未进这一包）。
+
+数据面侧四格照旧全绿（`:2466/:2479/:2487/:2495 done status=0`、`:2472 buffer probe → 0`、
+`:2429 pre` == `:2465 post` cb5 三字段、`:2556 pcm tone done (30 buffers)`、`:2585` 正常复位），
+**说明读回这件事本身没有扰动数据面**。
+
+读回侧 8 次全部失败，但失败方式**不是**我事先担心的那个：
+
+```
+:2558..:2582  SWEET I2C: se15 timeout st=0x41 irq=0 rx=0 tx=0
+              SWEET MARK: ampread post-stream addr=0x34 reg=0 r=-1 val=0xffff   （8 条同理）
+```
+
+`se15_msg()` 有三条出口，只有第一条会静默：`!se15_ready` **不打日志**；
+`se15_wait_clear` 失败打 `se15 busy`；**传输启动后等不到 SE_DONE 才打 `se15 timeout`**。
+⇒ 所以 `se15_ready` 是**真**的，我事先钉住的那条"没初始化"的借口被排除在日志之外；
+失败发生在**总线层面**：`irq=0`（一点中断都没有）、`tx=0/rx=0`。
+
+同一次开机里同一个函数在前一分钟还好用（`:2319 r=0 id=0x2032`、44 次写全 ACK），
+中间发生了什么，ring 里能看见的只有两段：
+
+1. `:2323-:2348` **bit-bang 那一套**——`sda driven low / scl driven low / released scan /
+   asserted scan / amp no ack`，它会把 `0xf138000 / 0xf139000`（引脚 56/57）的 TLMM
+   `PSEL` 从 GENI 函数切到 GPIO 再切回（`sw_i2c_pins_up/down`，`sweet_i2c.c:889/904/934`）。
+2. `:2473-:2556` 音流本身（30 个 DATA_BUFFER）。
+
+**这条先按"相关"记，不命名机制**。分辨实验已经在路上：0236 的 `pre-stream` 快照
+正好落在 `probe_amps()` 之后、开图之前——
+- 若 `pre-stream` 也超时 ⇒ 是 **bit-bang 那一相**把 SE15/引脚弄坏了，与音流无关；
+  ⇒ 修法是读回前重新 `se15_pins()`（或干脆在读回前重跑 `se15_init()`），0237 就是它；
+- 若 `pre-stream` 正常、`post-stream` 超时 ⇒ 才是音流/ADSP 侧把总线拿走了，
+  那时候 `st=0x41` 这个值本身才有意义。
+
+按事先登记的判据：本格 = **仪器在"流之后"这个位置无效**，
+所以**禁止**用这次 `r=-1` 给"没出声"记分；③ 还需要一次带配对快照的开机。
