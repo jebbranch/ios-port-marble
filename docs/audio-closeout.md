@@ -1535,3 +1535,67 @@ J5 先判（它决定其余格子算不算数）：`graph_start … status=0` ×
 预算口径：目标写的是 ①②③ 三次开机跑完仍无独立于 DONE 的证据就走止损分支。① 已用完（J3 未命中），
 ② 在跑，③ 还欠一个 Android 侧参考值（没它 K3/K4/K5 不许计分）。到 ③ 之前不许提前宣布止损，
 也不许把 J1/J4 这种"仪器修好了"的成果写成"出声了"。
+
+## ② 之后、零开机的两件事：③ 的参考值没拿到（而且原因很具体），以及 mediaserverd 的真实状态
+
+### A. Android 侧想做已知答案，做不到，而且失败的方式本身就是信息
+
+全部只读，没有 flash/erase，没有任何写分区（唯一写入是 `/data/local/tmp` 下的临时文件，用完即删）：
+
+* **`/dev/mem` 在这台机器上不存在** ⇒ `toybox devmem 0x033a40d8` 之类**根本开不了口**
+  （报 `devmem: /dev/mem: No such file or directory`）。三个 muxsel 地址的厂商读数**拿不到**。
+  顺带纠正我自己：`toybox devmem` 的宽度参数是**字节**（1/2/4），不是位数——传 32 会报 `bad width`。
+* `clk_summary` 存在但是 **0 字节空文件**；能用的是 per-clk 目录：
+  `/sys/kernel/debug/clk/audio_lpass_mclk{,2..12}/clk_rate|clk_enable_count|clk_prepare_count`，
+  **空闲态全部为 0**（时钟是关的）。存 `logs/android-audio-mclk-idle.txt`。
+* 同时重新 dump 的 lpass-cdc regmap 与之前那份**逐字节相同**（495 个非零项，
+  `0x088=60 / 0x0a4=0c / 0x0c0..0x0d4=0e / 0x400=04`）。
+* 我试着用**全零 WAV** 做"路径通电但不出声"的扰动（`tinyplay … -d 31`，
+  `logs/android-livecheck.txt`）：tinyplay 报 **`Error playing sample`**，
+  期间 regmap **无一项变化**、mclk enable count **仍为 0**。
+  ⇒ **这次扰动是无效实验，不是"证明硬件没动"**：AudioReach 的 BE 需要 AGM/SPF 先把图建起来，
+  ALSA 层直接 tinyplay 建不起来。所以"regmap 那 495 项到底是缓存还是硬件"**至今未判定**。
+* 因为上面这条，**③ 的 K3/K4/K5（与厂商值相同 / pre≠post / pre==post）没有可用期望值**，
+  按目标里"取不到证据就不做这一格"，**③ 不在参数侧继续耗开机**；
+  而我 ① 判决里当作锚点期望值用的那份 regmap dump，可信度要降级成"驱动侧状态"，
+  不能再当"硬件读数"引用——这条把我自己前面两节的口径往回收了一步，写在这里以免下一个人再踩。
+
+### B. 但 asoc 白送了一张真实拓扑图（对 ② 的结构性结论很关键）
+
+`/proc/asound/pcm`（存 `logs/`，命令在本文末尾）里 **PA 挂在哪条 TDM 上是写死的**：
+
+```
+00-00 CODEC_DMA-LPAIF_RXTX-RX-0        playback   ← 主播放后端（lpass-cdc RX macro）
+00-31 TDM-LPAIF-RX-TERTIARY   multicodec-31  playback  ← tert(mi2s2)：AW882xx 的进料口
+00-33 TDM-LPAIF-TX-TERTIARY   multicodec-33  capture
+card 组件: wcd938x-codec / aw882xx_smartpa.2-0034 / aw882xx_smartpa.2-0035 /
+           pm8350b-swr-haptics.1f0170220 / msm-stub-codec
+```
+
+三件事：① 厂商把 AW882xx 绑在 **TERTIARY** TDM（正是我们 `se15_tdm_pins()` 切到 mi2s2 的
+那四个 pad），② PA 的 I2C 地址 `0x34/0x35` 与机器名 `aw882xx_smartpa.2-0034/0035` **完全一致**
+（我们没认错芯片），③ **震动是 SoundWire 上的 `pm8350b-swr-haptics`**，与喇叭不同一条物理通路
+（但上面仍是同一条 mediaserverd/音频栈）。
+
+### C. 关于 mediaserverd：我先说错了一次，这里是核对后的版本
+
+第二意见说"iOS 侧音频服务是 mediaserverd"——这条我核过成立：rootfs 里有
+`/System/Library/LaunchDaemons/com.apple.mediaserverd.plist` + `/usr/sbin/mediaserverd`，
+而且**它在我们自己的端口上真的起来了**（`logs/ring-h2-dst-tdm.txt:778` `exec mediaserverd`）。
+
+但我一开始从聚合计数（`exec` 1245 / `CRASH` 1100）就下"mediaserverd 在崩溃循环、
+这才是 iOS 出声的真拦路"——**这个说法我收回**。按 ring 分开数才对：
+带 `CRASH mediaserverd` 的只有 **24 份** ring，且全是 **GPU 探测期**那批
+（`ring-gpu-m*-…`、`ring-amp8`、`ring-daily-v93-freeze`）；
+现在这批音频 ring（`ring-ampfirst/ampverify/anchor3/nobb/vgraph`…）里 mediaserverd
+**exec 之后没有 CRASH 行**，只有一条 `CODE SIGNING: cs_invalid_page(…)[mediaserverd] …
+allowing (remove VALID) page`（例如 `ring-nobb.txt:1064`），也就是签名页被放行、进程活着。
+
+⇒ 对交付有用的结论是这两句，不含"崩溃循环"：
+**iOS 的音频服务在本移植里是活的**，缺的是它**下面没有一个它认识的音频设备**；
+而"AppleHDA 兼容层"这条老路线（`docs/sound-plan.md:50`）与实机不符——
+我们启动的 `artifacts/kernel.bin` 里 **`AppleHDA` 字符串计数为 0**，
+而 `IOAudio2Device` 1 / `IOAudio2DeviceUserClient` 1 / `AppleEmbeddedAudioDevice` 1 /
+`AppleARMIISAudioDevice` 8 / `AppleAOPAudioController` 1 / `AppleSPUHapticsAudioDriver` 2
+都在。所以那座桥应当按 **IOAudio2 + AOP 类**来设计，不是 AppleHDA。这条也说明
+`docs/sound-plan.md` 需要订正，我在下一节改它。

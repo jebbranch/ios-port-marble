@@ -1,0 +1,8 @@
+tinyplay_pid=23024 wchan=
+lines: before=495 during=495 after=495
+--- diff before|during ---
+--- clk during vs before ---
+--- tinyplay log ---
+Error playing sample
+Playing sample: 2 ch, 48000 hz, 16 bit 384000 bytes
+Draining... Wait 85333 us

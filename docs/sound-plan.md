@@ -42,6 +42,14 @@ iOS 的音频栈是闭源的：
 - 在 iOS 用户态放一个自定义 HAL/守护进程，直接 mmap LPASS DMA + 控制 codec（内核只提供 IOMMU/寄存器映射）
 - 优点：绕开 AppleHDA 的私有 ABI；音频算法可放用户态
 - 难点：需要绕过 mediaserverd 的音频会话管理；系统音效/媒体播放仍走 AppleHDA，除非替换 HAL
+- **2026-11-02 订正（实测，别再按 AppleHDA 规划）**：我们启动的 `work/iphone-x-recon/artifacts/kernel.bin`
+  里 `AppleHDA` 字符串计数为 **0**，而 `IOAudio2Device`(1)、`IOAudio2DeviceUserClient`(1)、
+  `AppleEmbeddedAudioDevice`(1)、`AppleARMIISAudioDevice`(8)、`AppleAOPAudioController`(1)、
+  `AppleSPUHapticsAudioDriver`(2) 都在；rootfs 的 HAL 驱动
+  `/System/Library/Audio/Plug-Ins/HAL/AppleAOPAudioPlugin.driver` 的
+  `AudioServerPlugIn_LoadingConditions.IOProviderClass = AppleAOPAudioController`。
+  ⇒ 桥的对象是 **IOAudio2 + AOP 类**。另：mediaserverd 在本移植里**能起来**
+  （`logs/ring-h2-dst-tdm.txt:778`），当前音频 ring 里它**没有** CRASH 行，缺的是它下面没有设备。
 - 工作量：与 A 相当，且更"脏"
 
 ## 建议
