@@ -1,0 +1,37 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -499,7 +499,12 @@
+ 	static const uint32_t pa[2] = { 0x0f138000u, 0x0f139000u };
+ 
+ 	for (int i = 0; i < 2; i++) {
+-		vm_offset_t v = ml_io_map(pa[i], 0x1000u);
++		/*
++		 * 0238: sw_pad_map() caches one mapping per pad; ml_io_map() here
++		 * leaked a kernel_map entry on every call, and this function is
++		 * now also called from the read-back path.
++		 */
++		vm_offset_t v = sw_pad_map(pa[i]);
+ 		uint32_t cfg;
+ 
+ 		if (!v) {
+@@ -782,6 +787,20 @@
+ 	static const uint8_t addrs[2] = { 0x34, 0x35 };
+ 	static const uint8_t regs[4] = { 0x00, 0x03, 0x04, 0x05 };
+ 
++	/*
++	 * 0238: put pads 56/57 back on the GENI function before reading.  The
++	 * first boot that tried a read-back (ring-ampverify.txt:2558) saw all
++	 * eight reads time out with irq=0, while the very same call had
++	 * succeeded moments earlier - the only thing between those two moments
++	 * is our own bit-bang phase, which switches exactly these two pads to
++	 * GPIO.  If the reads answer now, that is the proof of who broke it;
++	 * if they still time out, something else owns the bus and the read-back
++	 * stays unusable from the AP.
++	 */
++	se15_pins();
++	printf("SWEET MARK: ampread pins re-applied\n");
++	sweet_log_sync();
++
+ 	for (int i = 0; i < 2; i++) {
+ 		for (int r = 0; r < 4; r++) {
+ 			uint16_t v = 0xffff;

@@ -1,0 +1,31 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -855,6 +855,28 @@ sweet_i2c_probe_amps(void)
+ 					(void)se15_aw_init(addrs[i]);
+ 				}
+ 			}
++		/*
++		 * 0240: read the PA back at the last moment GENI is still usable.
++		 * The 0237 boot proved the ordering: this same se15_aw_read()
++		 * returned id=0x2032 a few lines above (ring-rxsnap.txt:2313), and
++		 * the identical call forty log lines later timed out with irq=0
++		 * (ibid.:2358).  Between them sits only our own bit-bang phase,
++		 * which switches exactly these two pads to GPIO
++		 * (sw_gpio_cfg(SW_I2C_SCL/SDA, 0, false) below), i.e. off the QUP.
++		 * So "post-stream read-back fails" was never about the stream.
++		 * This call is placed before that phase to keep one window where
++		 * the instrument is known-good; gated by sweetampverify so no boot
++		 * changes unless the flag is given.
++		 */
++		{
++			int ampverify = 0;
++
++			(void)PE_parse_boot_argn("sweetampverify", &ampverify,
++			    sizeof(ampverify));
++			if (ampverify) {
++				sweet_i2c_amp_readback("pre-bitbang");
++			}
++		}
+ 		}
+ 	}
+ 

@@ -98,6 +98,11 @@ SWEET I2C: geni amp 0x34 r=0 id=0x2032 … profile 44/44   # 必须早于 pcm to
 SWEET GLINK: data_buffer: dst=0x40bd done status=0        # 槽位字段跟着 ping-pong 走
 ```
 
+已知坏仪器（0237 定位到机制，别重复推一遍）：`sweetampverify=1` 的 GENI **读回**现在全
+`r=-1`，不是 PA 也不是流——是 `sweet_i2c.c:873-874` 的 bit-bang 段把 SCL/SDA 两个 pad 的 mux
+切回 GPIO，把 SE15 从总线上摘了下来。修法在 0238（读回前重新 `se15_pins()`）+ 0240（读回插到
+bit-bang 之前），三个仪器的开机前期望表在 `docs/audio-closeout.md` 最后一节。
+
 三个开关的来历（不要凭印象改）：`sweetshmhi=1` 把 SHM_MAP 地址高字当 **stream index**
 发（不是地址位）；`sweetshmflag=4` 是厂商的 offset 模式，**只有在 `sweets1ap=3` 下才会被
 DSP 真正读通**；`sweetampfirst=1` 把 PA 的配置挪到开图之前——历史上顺序是反的，

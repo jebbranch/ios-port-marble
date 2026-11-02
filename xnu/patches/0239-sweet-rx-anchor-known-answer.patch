@@ -1,0 +1,56 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1728,14 +1728,45 @@ g_rx_snapshot(const char *tag)
+ 	}
+ 	printf("SWEET MARK: rxsnap %s reading %#x\n", tag, G_LPASS_RX_PA);
+ 	sweet_log_sync();
+-	rx = g_win_map(win, G_LPASS_RX_PA, 64);
+-	for (int i = 0; i < 16; i += 4) {
+-		printf("SWEET MARK: rxsnap %s +%02x %08x %08x %08x %08x\n",
+-		    tag, i * 4, *(volatile uint32_t *)(rx + (i * 4)),
+-		    *(volatile uint32_t *)(rx + (i * 4) + 4),
+-		    *(volatile uint32_t *)(rx + (i * 4) + 8),
+-		    *(volatile uint32_t *)(rx + (i * 4) + 12));
+-		sweet_log_sync();
++	rx = g_win_map(win, G_LPASS_RX_PA, 0x800);
++	/*
++	 * 0239: turn the RX window into a known-answer test.  0237 read
++	 * base+0x00..0x3c twice in one boot and both dumps were zero
++	 * (logs/ring-rxsnap.txt:2291 pre, :2612 post), and the Android regmap dump
++	 * logs/android-lpass-cdc-regmap.txt shows those same offsets as zero on a
++	 * *working* system - so that range carries no information at all, and
++	 * repeating it would only re-measure our own ignorance.
++	 *
++	 * The nine offsets below are instead the ones the vendor regmap shows as
++	 * non-zero while Android's audio stack is up and silent (0x088=0x60,
++	 * 0x0a4=0x0c, 0x0c0/0x0c4=0x0e, 0x400=0x04, 0x404=0x10, 0x418=0x01), plus
++	 * the two it shows as zero (0x000, 0x004) kept as an alignment control:
++	 * those catch a window based somewhere other than where we think.
++	 *
++	 * What this can decide, and nothing more: if the non-zero anchors come back
++	 * non-zero, our AP-side read of the macro is real and a later pre/post
++	 * difference at those offsets becomes evidence.  If they come back zero
++	 * while the controls also read zero, the read is not reaching what Android
++	 * reads - a dead instrument, and this window closes for good.  Either way
++	 * it measures our read path, not whether anything made a sound.
++	 */
++	{
++		static const uint32_t aoff[9] = {
++		    0x000u, 0x004u, 0x088u, 0x0a4u, 0x0c0u,
++		    0x0c4u, 0x400u, 0x404u, 0x418u
++		};
++		static const uint32_t aexp[9] = {
++		    0x00u, 0x00u, 0x60u, 0x0cu, 0x0eu,
++		    0x0eu, 0x04u, 0x10u, 0x01u
++		};
++
++		for (int i = 0; i < 9; i++) {
++			uint32_t v = *(volatile uint32_t *)(rx + aoff[i]);
++
++			printf("SWEET MARK: rxsnap %s @%#05x = %08x exp=%08x\n",
++			    tag, aoff[i], v, aexp[i]);
++			sweet_log_sync();
++		}
+ 	}
+ 	g_win_free(win, 0x8000);
+ }
