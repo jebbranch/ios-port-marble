@@ -30,6 +30,9 @@ iOS 的音频服务在我们这颗机器上**是活的**，它缺的是**下面�
 | F7 | **我们启动的那份 ADT 要求的硬件 marble 没有** | `python3 scripts/adt.py dump …/d22ap.adt` 的行：`1434 audio-codec`、`1597 audio-speaker-top` 且 `1607 compatible = 'audio-control,cs35l26'`、`871 aop-mca { device_type = 'mca' }`、`864-868 spkamp-config_arc/_arc_p1/_btmspk`、`771 aop { role = 'AOP' }` + `790 firmware-name = 'iphone10baop'` |
 | F8 | marble 真实播放拓扑：PA 挂在 **TERTIARY** 那条 TDM 上 | `logs/android-proc-asound-pcm.txt`：`00-31 TDM-LPAIF-RX-TERTIARY multicodec-31 playback`；主后端 `00-00 CODEC_DMA-LPAIF_RXTX-RX-0`；组件名 `aw882xx_smartpa.2-0034` / `…0035` / `wcd938x-codec` / `pm8350b-swr-haptics.1f0170220` |
 | F9 | 我们已经有"发布一个 IOKit 服务 + user client 并把 client 的每一次调用打出来"的可用样板 | `work/ci-src/xnu-xnu-8796.141.3/iokit/Kernel/arm/hid/SweetHaptics.cpp:47 class SweetHapticsUCBase : public IOUserClient`、`:102 externalMethod(uint32_t selector, …)`、`:17` 注释写明"log IOServiceOpen, every externalMethod selector" |
+| F11 | **"发布一个 Apple 名字的驱动，iOS 用户态真会来 open"这件事在本移植上已经被证明过一次**——不是推测 | `grep -rh "SWEET HAPTICS" logs/ring-*.txt` 聚合计数：`AppleSPUHapticsAudioUC open by pid 57 type 0` ×99、`AppleAOPButtonHapticsServiceUserClient open by pid 57` ×90、`… sel=1` ×90、`… map type=0 options=0` ×88、`AppleSPUHapticsAudioDriver setProperties count=1` ×92、`SWEET HAPTICS: asset count 18` ×72，还有 `closed (pid 57)` / `died (pid 57)` |
+| F12 | 那个 pid 57 是 **backboardd** | 同一批 ring 里 `CODE SIGNING: cs_invalid_page(…): p=57[backboardd] … allowing` |
+| F13 | **电池电流遥测已经在打印带符号的 mA，且会真的变**（一条现成的时变量） | `grep -rh "SWEET BATT: tick" logs/ring-*.txt`：159 行是 `ok=5/5`，例 `tick 7 ok=5/5 cap=99% 4396mV -367mA status=1 usb=1`、`tick 7 … -156mA`、`tick 25 … 0mA`；另有 887 行 `ok=0/5`（读失败的那批不能用作证据） |
 | F10 | 内核侧那条路本身已通到底层一步：DSP 真收我们的 PCM | `docs/START-HERE.md` §三 与 `docs/audio-closeout.md`：`sweets1ap=3` → `0x7c1` → `DATA_BUFFER done status=0`，1200 buffer 正常复位 |
 
 ## 3. 两侧对照：为什么"补 DT 就行"不成立
@@ -47,8 +50,16 @@ iOS 的音频服务在我们这颗机器上**是活的**，它缺的是**下面�
 ## 4. 候选路线排序（每条都写清前提与最便宜的判别实验）
 
 **R1（推荐）我们自己发布一个 IOAudio2 形态的设备 + user client，后端把 PCM 灌进已经通的 SHM/GPR 环。**
-- 成立的前提：`mediaserverd` 会在出现一个匹配的 IOAudio2 服务时来 `IOServiceOpen`。这条**现在未知**。
-- 最便宜的判别实验（一次开机，零 ABI 工作量）：照 F9 的样板先发一个**空壳**设备
+- 成立的前提：`mediaserverd` 会在出现一个匹配的 IOAudio2 服务时来 `IOServiceOpen`。
+  **这条今天从"未知"升级为"同类已被验证过一次"**：F11/F12 显示我们发布的
+  `AppleSPUHapticsAudioDriver` / `AppleAOPAudioButtonHapticDevice` 这类 Apple 名字的服务，
+  被 backboardd(pid 57) 真实 `open` → `map` 缓冲区 → 发 `sel=1` → `setProperties` →
+  最后 `closed/died` 走完整流程（99/90/88/92 次计数）。所以"发服务就有人来"在本移植上不是赌。
+  仍未验证的是 **mediaserverd 会不会**（它是另一个进程、另一套查找逻辑），别把 F11 直接当成 R1 成立。
+- 最便宜的判别实验（一次开机，零 ABI 工作量；**不需要先做注册表普查**——
+  0196 已经把三件套形状给全了：新 `.cpp` + `iokit/KernelConfigTables.cpp` 注册 +
+  `iokit/conf/files.arm64` 编译项，服务在自己的 `start()` 里 `publishNamed`，
+  user client 把 `open/selector/map/close` 全打进 ring）：照 F9/F11 的样板发一个**空壳**设备
   （类名 `IOAudio2Device` 形态、名字 `"Speaker"`）+ 一个 `IOUserClient` 子类，
   把所有 `externalMethod` 的 selector 与标量参数原样打进 ring。
   开机只看两行：**有没有 `IOServiceOpen`**，以及**第一条 selector 是几号**。
@@ -112,3 +123,37 @@ iOS 的音频服务在我们这颗机器上**是活的**，它缺的是**下面�
   PMIC 通道），而喇叭是 WCD938x + AW882xx。所以**内核侧把喇叭打通并不会自动让马达到**；
   它买到的是"用户态那半条路终于有人调我们"，那正是震动 10-30 记录的
   "每条内核路径都看到 zero IPC"的反面。
+
+---
+
+## 8. 候选见证 #5：电池电流——**一条已经存在、且是唯一时变的通道**（今天新发现）
+
+`docs/audio-closeout.md` 里 ①②③ 用的全是**静态快照**，而 ① 的 J3 未命中已经把静态快照这条路
+压到很窄：四个寄存器在流前后逐位相同。第二意见给的批评我接受——静态读数原理上分不清
+"配置过"与"在驱动"。按这个方向查现有日志，发现我们**早就在打一条时变量**（F13）：
+
+```
+SWEET BATT: tick 7   ok=5/5 cap=99%  4396mV -367mA status=1 usb=1
+SWEET BATT: tick 7   ok=5/5 cap=100% 4412mV -156mA status=4 usb=1
+SWEET BATT: tick 25  ok=5/5 cap=100% 4413mV    0mA status=4 usb=1
+```
+
+为什么它比寄存器更值钱：**功放真的在推喇叭时，唯一无法伪造的就是能量**。
+它不需要新补丁、不需要新寄存器、不需要厂商参考值（③ 就是死在参考值上）。
+
+但有三条必须先钉死，否则它和 ①②③ 一样会退化成不能证伪的仪器：
+
+1. **`ok=0/5` 的那 887 行一律作废**。只有 `ok=5/5`（159 行）才是有效读数；
+   写判据时要把"这一格有没有 ok=5/5 的行"当成前置有效性检查，就像 ② 的 I5/J5。
+2. **符号与口径没核**。`-367mA` 是放电还是充电方向？`status=1 usb=1` 时 654mA 明显被充电路径
+   主导。**在没有核清符号含义之前，不许把任何一次差值读成"喇叭在推"**——这条是待办，不是结论。
+3. **信噪比是最可能判死的地方**：现在这枚音是 1/16 幅度、`sweetbufs=30`（≈180 ms），
+   而 tick 周期看起来是秒级平均。所以判据必须写成"能不能测到"而不是假设测得到：
+   - 前置：拔掉 USB（去掉充电电流的支配项），仍然要 `ok=5/5`；
+   - 单变量对照：**同一张图、同一段流，只切 PA 使能/静音**（一路喇叭、一路不接喇叭/静音），
+     看两次电流差；差值出现且可复现 ⇒ 这才是"能量确实被喇叭吃掉了"的证据；
+   - 若两次电流在 `ok=5/5` 下无可测差异 ⇒ 说明这条仪器也判不动，
+     那"独立于 DONE 的正证据"在内核侧就只能承认拿不到，按止损走 §5 的桥清单。
+
+第 2、3 点合起来意味着：**这条仪器值得一次开机，但它的前提是"能测到"，
+所以它的判据里必须写死一条否证格**——否则又会变成 ① 那种"修好了仪器、没拿到证据"的一轮。
