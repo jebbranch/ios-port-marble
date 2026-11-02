@@ -23,9 +23,13 @@ GSL=/vendor/lib64/libar-gsl.so
 # If the blob is fetched from ACDB into a heap struct, the logged entry args are
 # pointers into ordinary heap pages - and those ARE readable through
 # /proc/<pid>/mem (the /dmabuf: mapping is not, see docs/audio-closeout.md).
-PROBES="ugwr:0x333d8 ugrw:0x334b0 udpw:0x337c8 umap:0x33580 umeta:0x33588 \
+# SAFETY: ugwr/ugrw/udpw (gsl_write family) sit on the PCM hot path - 12295 hits in
+# 100 s once, and the phone self-rebooted inside that window (uptime went from 2111 s
+# to 0; cause not proven, but do not run them for long).  Set PROBES from the caller
+# to a cold-only list for long recordings; that is what apm_harvest.py now does.
+PROBES="${PROBES:-ugwr:0x333d8 ugrw:0x334b0 udpw:0x337c8 umap:0x33580 umeta:0x33588 \
 ucald:0x33400 usetcal:0x33390 usetcfg:0x33398 ugrcal:0x334c8 ugrcfg:0x33498 \
-uioctl:0x333c8 ushmal:0x33558"
+uioctl:0x333c8 ushmal:0x33558}"
 
 case "${1:-}" in
 arm)

@@ -30,6 +30,7 @@ TLV = (0x08001008, 0x080010C4, 0x0800100C, 0x08001001, 0x08001002)
 OPS = {0x01001006: "SET_CFG", 0x0100100C: "SHM_MAP", 0x0100100D: "SHM_UNMAP"}
 UPROBES = ("ugwr", "ugrw", "udpw", "umap", "umeta", "ucald", "usetcal",
            "usetcfg", "ugrcal", "ugrcfg", "uioctl", "ushmal")
+# which thread/proc ids show up is boot-dependent; the parse keys on names only.
 
 
 def sh(devcmd, timeout=120):
@@ -69,11 +70,21 @@ def main():
     ap.add_argument("--want", type=int, default=18128)
     ap.add_argument("--dump", type=int, default=0x2000,
                     help="bytes to read at each pointer when the trace gives no size")
+    ap.add_argument("--hot", action="store_true",
+                    help="also probe gsl_write/graph_write/dp_write (PCM hot path; the phone "
+                         "self-rebooted once inside a 100 s window with them on)")
     a = ap.parse_args()
 
-    sh("T=/sys/kernel/tracing; for e in rhb rhw kbw; do echo 0 > $T/events/kprobes/$e/enable 2>/dev/null; done; "
-       f"echo 1 > $T/events/kprobes/gprsend/enable 2>/dev/null; echo > $T/trace; echo 1 > $T/tracing_on; "
-       f"timeout {a.secs} {a.cmd} >/dev/null 2>&1; echo 0 > $T/tracing_on; echo triggered")
+    # --- (re)install the probes.  tracefs resets every boot, and clearing
+    # kprobe_events needs the existing events disabled first (else EBUSY).
+    cold = ("umap:0x33580 umeta:0x33588 ucald:0x33400 usetcal:0x33390 "
+            "usetcfg:0x33398 ugrcal:0x334c8 ugrcfg:0x33498 uioctl:0x333c8 ushmal:0x33558")
+    full = "ugwr:0x333d8 ugrw:0x334b0 udpw:0x337c8 " + cold
+    print(sh("T=/sys/kernel/tracing; for f in $T/events/kprobes/*/enable; do echo 0 > $f 2>/dev/null; done; "
+             "echo > $T/kprobe_events 2>/dev/null; sh /data/local/tmp/gpr_capture_dev.sh setup 384"))
+    print(sh(f"PROBES='{full if a.hot else cold}' sh /data/local/tmp/apm_blob_dev.sh arm | tail -1"))
+    sh(f"echo > /sys/kernel/tracing/trace; echo 1 > /sys/kernel/tracing/tracing_on; "
+       f"timeout {a.secs} {a.cmd} >/dev/null 2>&1; echo 0 > /sys/kernel/tracing/tracing_on; echo triggered")
     time.sleep(0.5)
     trace = sh("cat /sys/kernel/tracing/trace", timeout=300)
     apm, ups = parse(trace)
@@ -96,10 +107,15 @@ def main():
             v = d.get("a" + str(i), 0)
             # Android arm64 user VAs live above 4 GiB (heap/mmap base), so a
             # small integer here is a length/thread-id, not a pointer.
-            if not (0x1_0000_0000 < v < 0x800000000000):
+            if not (0x1_0000_0000 < v < 0x8000_00000000):
                 continue
-            if (v >> 40) & 0xFF in (0x00, 0xb4) and (v & 3) == 0:
-                dumps.append((n, i, pid, v))
+            tag = (v >> 40) & 0xFF
+            if tag not in (0x00, 0xb4) or (v & 3):
+                continue
+            # dump the untagged form too: /proc/pid/mem rejects a tagged VA
+            dumps.append((n, i, pid, v))
+            if tag:
+                dumps.append((n, i, pid, v & 0x00FF_FFFFFFFF))
     seen = set()
     dumps = dumps[:40]           # round-trips are ~0.2 s each; the buffer must be dumped fast
     for n, i, pid, v in dumps:
