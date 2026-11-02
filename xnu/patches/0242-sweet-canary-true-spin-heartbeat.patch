@@ -1,0 +1,121 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -3059,6 +3059,55 @@ static uint32_t g_canary_scratch[64];
+ #define G_CANARY_SCRATCH_N (sizeof(g_canary_scratch) / sizeof(g_canary_scratch[0]))
+ #define G_CANARY_TICK_US	   20000u	/* 20 ms; 100 ticks = 2 s window */
+ 
++/*
++ * SWEET: preemption control lives in the core kernel, not in a header
++ * this file includes, so declare it here (same pattern as the
++ * sweet_cpu_busy/tid prototypes above the canary).  XNU builds with
++ * implicit function declarations as an error.
++ */
++extern void disable_preemption(void);
++extern void enable_preemption(void);
++
++/*
++ * True spin on the virtual counter.  delay() and g_wait() block on a
++ * timer deadline in this port: cpu_idle_latency is 0, so
++ * ml_delay_should_spin() returns FALSE and both sleep instead of
++ * spinning.  A heartbeat paced by either one cannot tell "the machine
++ * stopped" from "no timer interrupt arrived" -- the exact ambiguity
++ * that retired the G3/G4 conclusions on 2026-11-02.  Spinning on
++ * CNTVCT_EL0 with preemption raised needs neither the scheduler nor
++ * interrupt delivery; the spin itself is zero MMIO and zero memory
++ * writes.  Only the pacing is spun: the prints between ticks still use
++ * the normal log path.
++ */
++static uint64_t
++g_cntvct(void)
++{
++	uint64_t v;
++
++	__asm__ volatile("mrs %0, cntvct_el0" : "=r" (v));
++	return v;
++}
++
++static void
++g_spin_us(uint64_t us)
++{
++	uint64_t freq, start, ticks;
++
++	__asm__ volatile("mrs %0, cntfrq_el0" : "=r" (freq));
++	if (freq == 0u) {
++		/* Period only; the exact rate is not load-bearing. */
++		freq = 62500000u;
++	}
++	start = g_cntvct();
++	ticks = (us * freq) / 1000000u;
++	disable_preemption();
++	while ((g_cntvct() - start) < ticks) {
++		__asm__ volatile("" ::: "memory");
++	}
++	enable_preemption();
++}
++
+ static unsigned int
+ g_canary_selftest(void)
+ {
+@@ -3131,16 +3180,17 @@ g_canary_thread(void *arg, wait_result_t wr)
+ 		uint64_t tv[4] = { 0, 0, 0, 0 };
+ 
+ 		/*
+-		 * v2: busy-wait instead of blocking on a deadline.  The v1 thread
+-		 * slept 100 ms before its first tick and printed nothing, while the
+-		 * log lock was provably free (the releasing core had just finished a
+-		 * printf+sync pair).  That leaves "never scheduled" and "timer
+-		 * interrupt never arrived" and v1 cannot tell them apart.  delay()
+-		 * polls, so a heartbeat here proves scheduling without depending on
+-		 * interrupt delivery at all.
++		 * v3: spin on CNTVCT_EL0 instead of blocking on a deadline.
++		 * v2 claimed delay() polls; it does not in this port (see
++		 * g_spin_us above), so the v2 heartbeat still depended on
++		 * timer interrupt delivery.  A tick here now proves this CPU
++		 * executed 20 ms of counter spins and reached the log path
++		 * without any help from the scheduler or the timer.
++		 * Tick 0 still prints immediately: it proves the thread was
++		 * scheduled at all.
+ 		 */
+ 		if (n > 0u) {
+-			delay(G_CANARY_TICK_US);
++			g_spin_us(G_CANARY_TICK_US);
+ 		}
+ 		if (!g_canary_go) {
+ 			continue;
+@@ -3209,7 +3259,7 @@ g_rel_thread(void *arg, wait_result_t wr)
+ 
+ 	(void)arg;
+ 	(void)wr;
+-	delay(60000);
++	g_spin_us(60000u);
+ 	gm = g_map_win_wimg(GMUREG_PA, 0x40000, VM_WIMG_POSTED);
+ 	if (!gm) {
+ 		printf("SWEET REL2: gm map failed\n");
+@@ -3222,7 +3272,7 @@ g_rel_thread(void *arg, wait_result_t wr)
+ 	printf("SWEET REL2: releaser returned\n");
+ 	sweet_log_sync();
+ 	for (;;) {
+-		delay(100000);
++		g_spin_us(100000u);
+ 		printf("SWEET REL2: releaser alive\n");
+ 		sweet_log_sync();
+ 	}
+@@ -3696,6 +3746,9 @@ g_gmu_boot(void)
+ 			 * that the machine still runs after the store; moving write
+ 			 * index is the first piece of evidence that the CM3 consumes
+ 			 * the queues, without reading a single GPU register.
++			 * Samples are paced by the counter spin (g_spin_us),
++			 * not by a timer sleep, so a dead timer cannot
++			 * masquerade as a dead machine.
+ 			 */
+ 			unsigned int t;
+ 			thread_t th;
+@@ -3711,7 +3764,7 @@ g_gmu_boot(void)
+ 				sweet_log_sync();
+ 			}
+ 			for (t = 0; t < 60u; t++) {
+-				delay(20000);
++				g_spin_us(20000u);
+ 				g_hfi_dump(hfi, t);
+ 			}
+ 			goto gmu_done;
