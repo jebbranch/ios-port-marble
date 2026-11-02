@@ -930,6 +930,40 @@ SWEET MARK: vcfg2 rc bf=<int> c0=<int> c8=<int> p65=<int>
 新增块在 `-Wall -Wextra -Wformat=2 -Werror` 下编译通过；无行尾空白；
 marker `SWEET MARK: vcfg2 rc ` 已同批进 workflow 校验列表。
 
+## 第三个仪器（零编译，但要等人到手机旁边）：`sweetreadrx=1` 读 RX macro
+
+`g_lpass_probe()`（全链树 `:1641`）本来就能读 codec macro 寄存器，
+`sweetreadrx=1` 打开它，读的是 `G_LPASS_RX_PA = 0x03200000`（`:59`），打印
+`reading rx_macro 0x3200000` → `rx_macro %08x %08x %08x %08x`。
+它比 PA 的 I2C 读回更靠近"出声"的下游：**TDM→macro** 这一段唯一可观测的面。
+
+两个前提已经核对，不是猜的：
+
+1. **门是开的**：`ring-s1ap3.txt:2297 clocks va=0 rx=0` ⇒ `g_prm_vote_clock(RX_CORE_MCLK)`
+   返回 0，`g_lpass_probe(va_clk==0, rx_clk==0)` 的 `clk_rx_ok` 为真，所以给了
+   `sweetreadrx=1` 就会真的去读，不会打印 `rx read skipped (clock vote)`。
+2. **对照面存在**：Android 侧厂商抓包里能看到健康播放的动作
+   `lpass_cdc_rx_macro_mclk_enable: mclk_enable = 1, dapm = 1`
+   （`logs/apm-blob-20261102-115548.txt:476`），也就是"macro 被拉起来"是有参照的。
+
+**风险与门禁（这条决定了什么时候允许开）**：源码第 21 行写着"fault 在那里会 panic"，
+这正是它默认关着的原因。我们的 cmdline 带 `wdt=-1`，panic 之后**不会自动复位**，
+设备会一直停在原地等人长按电源。所以：
+
+- **不在人旁边时不开**（现在手机在宿舍、人在教室）。
+- 要开就单独一次开机，args 只加 `sweetreadrx=1`，其余用已知-good baseline；
+  一次最多读 16 字节窗口，不扩。
+- 期望读数事先写死：
+  - `rx_macro` 四个非零字 ⇒ 拿到 macro 状态，与"是否在收 TDM"做关联还需要第二次对照开机
+    （一次喂 buffer、一次不喂），**单次读数不许命名机制**；
+  - 打印了 `reading rx_macro` 但没有 `rx_macro …` 那行 ⇒ 读的过程里挂死 ⇒ 这条仪器作废，
+    并且要当作"AP 不能碰 LPASS macro"的证据记下来（与 hypervisor 门控一致）；
+  - `rx read skipped (clock vote)` ⇒ 前提 1 在本次开机不成立，仪器没运行，不计判决。
+
+顺带把这条仪器的位置说清楚：它和 0234 的 PA 读回是**互补**的——
+PA 读回证明"放大器那头收到了我们的配置/或被动过"，macro 读证明"codec 那头活着"；
+两者都不等于听到声音，但都比 `done status=0` 更接近喇叭。
+
 ### 一条方法学订正：我引用的"行号"是什么性质的
 
 `/tmp/chain` 这类重建树是把 `xnu/patches/*.patch` 逐个
