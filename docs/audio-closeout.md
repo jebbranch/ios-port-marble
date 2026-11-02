@@ -340,3 +340,48 @@ AGM 堆是 **SCudo/HWASan 带标签指针**（高字节 `0xb4`），做指针过
 开机里；届时 `python3 scripts/apm_harvest.py --want 18128 --secs 20 --cmd '<框架播放的替代触发器>'`
 或直接让它默认跑一次 agmplay，再对照 `dst=1 size=18128` 那一行。工厂命令开不出这个设备，
 是目前唯一的缺口——不是方法缺口。
+
+## 2026-11-02（闹钟实验）：18 KB 那一类报文在 shell 驱动下重现，实测大小是 **18504**
+
+新触发器（开的是**主 media 输出设备**，工厂 agmplay 开的是 TDM VIRT 组设备）：
+
+```bash
+settings put system volume_alarm 10
+am start --user 0 -a android.intent.action.SET_ALARM \
+  --ei android.intent.extra.alarm.HOUR <H> --ei android.intent.extra.alarm.MINUTES <M> \
+  --ez android.intent.extra.alarm.SKIP_UI true
+```
+闹钟响 = 框架级播放 = AGM 主输出 + 功放链真开。抓到的原始序列
+（`logs/apm-18504-evidence.txt`，发送者是 AGM(pid 1707) 的 binder 线程 7209/7210）：
+
+```
+966.400755  SET_CFG   dst=1  tok=47 handle=0xb0d5f2c8 size=496
+966.402396  SET_CFG   dst=1  tok=48 handle=0xb0d5f2c8 size=264
+966.408117  SET_CFG   dst=1  tok=53 handle=0xb0d5f2c8 size=2872
+966.411748  SHM_MAP   dst=1  tok=54 p6=0x10003 p7=4 p8=0x20010000 p9=1 p10=20480
+966.412217  SET_CFG   dst=1  tok=55 handle=0xb0d8e7c8 size=18504      ← ★ 就是这一类
+966.413385  SHM_UNMAP dst=1  tok=56 p6=0xb0d8e7c8
+966.414512  SET_CFG   dst=1  tok=57 handle=0xb0d5f2c8 size=112
+966.415052  SET_CFG   dst=1  tok=58 (inline) size=64
+```
+三条结论（都推翻/收窄了此前的说法）：
+
+1. **"18128"不是常数**：同一条报文这一轮是 **18504**（+376）。结合 §2（不是文件、不是 ACDB 长度字段），
+   现在可以确定它是**运行期拼装**的 ⇒ 移植目标从"抠出那 18128 字节"改成"**复刻结构**"，
+   把厂商某一次的字节固化进固件是错的路线（哪怕抠到了也不能直接抄）。
+2. **SHM region 大小恒定 20480**（两轮都是 `p10=20480`），18504+40=18544 < 20480 自洽；
+   `p8` 是 DSP 侧地址（本轮 0x20010000，Oct-27 是 0x1ffd0000）⇒ 这块区是 **APM 配置专用区**。
+3. 一次会话里有**两个 handle**：`0xb0d5f2c8` 承载小的（264/496/2872/112），
+   `0xb0d8e7c8` 只承载大的（18504）⇒ 大正文单独一次映射、用完立刻 unmap（1.2 ms）。
+
+`gsl_write` 的 12295 次命中说明主写入路径就是它，`a2/a3(=a2-4)` 是描述符结构、`a4` 是被拷贝的缓冲区；
+`a3` 处那个 u32 **应该**是长度，但用户态解引用 fetcharg 在这台内核上取不到值（`ugwrL` 命中 0 次 ⇒
+长度要靠配对时间戳从 `gprsend` 的 `p9` 拿，不能靠 deref）。
+
+## 事故记录：设备在插桩后掉离 USB 总线（原因未定，需要人眼确认）
+约 04:35，`adb devices`、`fastboot devices` 与 `system_profiler SPUSBDataType` **同时看不到任何
+USB 设备**（两条 USB 3.1 总线皆空）。此前 100 s 内我开着 12 个 gsl uprobe（其中 `gsl_write` 是热路径，
+12295 次命中）并临时挂过一个带用户态解引用+过滤器的探针。候选原因两种，**我无法从这台 Mac 区分**：
+(a) 插桩把 AGM/内核带死（没有 panic 日志，adb 已断）；(b) 掉电/线松。
+工具侧安全默认已记下：热路径 uprobe 只在短窗口开；不要给 `+off(%reg)` 的用户态解引用加过滤器
+（取不到值时静默丢事件，会让人把"仪器不行"误读成"没有调用"）。

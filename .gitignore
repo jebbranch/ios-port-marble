@@ -10,3 +10,7 @@ __pycache__/
 shim/splash.bgra
 dumps/audio/
 logs/apm-blob-*.txt
+logs/apm-blob-alarm.txt
+logs/harvest*.txt
+logs/arm-*.txt
+logs/boot-*.txt

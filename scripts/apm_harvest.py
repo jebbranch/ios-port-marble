@@ -101,8 +101,9 @@ def main():
             if (v >> 40) & 0xFF in (0x00, 0xb4) and (v & 3) == 0:
                 dumps.append((n, i, pid, v))
     seen = set()
+    dumps = dumps[:40]           # round-trips are ~0.2 s each; the buffer must be dumped fast
     for n, i, pid, v in dumps:
-        key = (pid, v >> 12)
+        key = (pid, v)          # exact pointer: the same page can hold 2 buffers
         if key in seen:
             continue
         seen.add(key)
@@ -124,10 +125,10 @@ def main():
         for t in TLV:
             p = struct.pack("<I", t)
             hits += [f"TLV{t:#010x}@{o:#x}" for o in range(len(b) - 3) if b[o:o + 4] == p]
+        head = b[:32].hex(" ")
+        print(f"  {name} ({len(b)} B) head={head}")
         if hits:
-            print(f"  {name} ({len(b)} B): " + " ".join(hits[:10]))
-        else:
-            print(f"  {name} ({len(b)} B): no size/TLV marker")
+            print("     markers: " + " ".join(hits[:10]))
     return 0
 
 

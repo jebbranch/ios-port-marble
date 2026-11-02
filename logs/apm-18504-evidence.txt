@@ -1,0 +1,40 @@
+# tracer: nop
+#
+# entries-in-buffer/entries-written: 67452/67452   #P:8
+#
+#                                _-----=> irqs-off
+#                               / _----=> need-resched
+#                              | / _---=> hardirq/softirq
+#                              || / _--=> preempt-depth
+#                              ||| /     delay
+#           TASK-PID     CPU#  ||||   TIMESTAMP  FUNCTION
+#              | |         |   ||||      |         |
+ HwBinder:1707_1-2338    [005] d..1   966.399350: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=19552 p1=770 p2=7 p3=2 p4=0 p5=16781327 p6=0 p7=0 p8=0 p9=36 p10=2 p11=134221868 p12=20 p13=0 p14=1 p15=516 p16=
+ HwBinder:1707_1-2338    [005] d..1   966.400755: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=10336 p1=770 p2=8208 p3=1 p4=47 p5=16781312 p6=0 p7=0 p8=2966982856 p9=496 p10=0 p11=0 p12=0 p13=0 p14=0 p15=0 p
+ HwBinder:1707_1-2338    [007] d..1   966.402396: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=10336 p1=770 p2=8208 p3=1 p4=48 p5=16781318 p6=1024 p7=0 p8=2966982856 p9=264 p10=0 p11=0 p12=0 p13=0 p14=0 p15=
+ HwBinder:1707_5-7210    [005] d..1   966.403425: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=18528 p1=770 p2=8208 p3=17160 p4=49 p5=16781318 p6=0 p7=0 p8=0 p9=32 p10=17160 p11=134221847 p12=12 p13=0 p14=96
+ HwBinder:1707_5-7210    [005] d..1   966.403799: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=22624 p1=770 p2=8208 p3=17160 p4=50 p5=16781318 p6=0 p7=0 p8=0 p9=48 p10=17160 p11=134221851 p12=28 p13=0 p14=0 
+ HwBinder:1707_5-7210    [006] ....   966.404137: uioctl: (0x7dc387b3c8) a0=0x47534c a1=0x1 a2=0x0 a3=0x0 a4=0xffffffffffffff a5=0x41932
+ HwBinder:1707_5-7210    [006] d..1   966.404156: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=16480 p1=770 p2=8208 p3=1 p4=51 p5=16781313 p6=0 p7=0 p8=0 p9=24 p10=1 p11=134221829 p12=8 p13=0 p14=1 p15=29527
+ HwBinder:1707_4-7209    [006] ....   966.404816: uioctl: (0x7dc387b3c8) a0=0x47534c a1=0x0 a2=0x0 a3=0x0 a4=0xffffffffffffff a5=0x41932
+ HwBinder:1707_4-7209    [006] d..1   966.404835: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=16480 p1=770 p2=8208 p3=1 p4=52 p5=16781314 p6=0 p7=0 p8=0 p9=24 p10=1 p11=134221829 p12=8 p13=0 p14=1 p15=29527
+ HwBinder:1707_4-7209    [004] d..1   966.408117: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=10336 p1=770 p2=8209 p3=1 p4=53 p5=16781312 p6=0 p7=0 p8=2966982856 p9=2872 p10=0 p11=0 p12=0 p13=0 p14=0 p15=0 
+ HwBinder:1707_4-7209    [004] d..1   966.411748: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=11360 p1=66306 p2=8194 p3=1 p4=54 p5=16781324 p6=65539 p7=4 p8=536805376 p9=1 p10=20480 p11=0 p12=0 p13=0 p14=0 
+ HwBinder:1707_4-7209    [006] d..1   966.412217: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=10336 p1=770 p2=8209 p3=1 p4=55 p5=16781318 p6=0 p7=0 p8=2967005128 p9=18504 p10=0 p11=0 p12=0 p13=0 p14=0 p15=0
+ HwBinder:1707_4-7209    [005] d..1   966.413385: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=7264 p1=770 p2=8194 p3=1 p4=56 p5=16781325 p6=2967005128 p7=0 p8=0 p9=0 p10=0 p11=0 p12=0 p13=0 p14=0 p15=0 p16=
+ HwBinder:1707_1-2338    [006] ....   966.414462: usetcfg: (0x7dc387b398) a0=0x147534c a1=0xb400007d35414840 a2=0xc0000040 a3=0x7d31f00d30 a4=0xb400007d38b42158 a5=0xb400007d3540d080
+ HwBinder:1707_1-2338    [006] d..1   966.414512: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=10336 p1=770 p2=8209 p3=1 p4=57 p5=16781318 p6=0 p7=0 p8=2966982856 p9=112 p10=0 p11=0 p12=0 p13=0 p14=0 p15=0 p
+ HwBinder:1707_5-7210    [006] d..1   966.415052: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=26720 p1=770 p2=8209 p3=1 p4=58 p5=16781318 p6=0 p7=0 p8=0 p9=64 p10=16586 p11=134221860 p12=12 p13=0 p14=48000 
+ AGMIPC@1.0-serv-1707    [004] d..1   966.415484: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=22624 p1=770 p2=8209 p3=17107 p4=59 p5=16781318 p6=0 p7=0 p8=0 p9=48 p10=17107 p11=268516650 p12=28 p13=0 p14=0 
+ HwBinder:1707_5-7210    [007] d..1   966.416036: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=22624 p1=770 p2=8209 p3=17107 p4=60 p5=16781318 p6=0 p7=0 p8=0 p9=48 p10=17107 p11=268516650 p12=28 p13=0 p14=0 
+ AGMIPC@1.0-serv-1707    [004] d..1   966.416705: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=22624 p1=770 p2=8209 p3=16573 p4=61 p5=16781318 p6=0 p7=0 p8=0 p9=48 p10=16573 p11=134221836 p12=30 p13=0 p14=1 
+ AGMIPC@1.0-serv-1707    [004] d..1   966.417024: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=18528 p1=770 p2=8209 p3=17039 p4=62 p5=16781318 p6=0 p7=0 p8=0 p9=32 p10=17039 p11=134221847 p12=12 p13=0 p14=96
+ AGMIPC@1.0-serv-1707    [006] d..1   966.417387: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=22624 p1=770 p2=8209 p3=17039 p4=63 p5=16781318 p6=0 p7=0 p8=0 p9=48 p10=17039 p11=134221851 p12=28 p13=0 p14=0 
+ AGMIPC@1.0-serv-1707    [005] d..1   966.417719: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=22624 p1=770 p2=8209 p3=16575 p4=64 p5=16781318 p6=0 p7=0 p8=0 p9=48 p10=16575 p11=134221832 p12=30 p13=0 p14=1 
+ AGMIPC@1.0-serv-1707    [005] d..1   966.417930: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=22624 p1=770 p2=8209 p3=16576 p4=65 p5=16781318 p6=0 p7=0 p8=0 p9=48 p10=16576 p11=134221832 p12=30 p13=0 p14=1 
+ AGMIPC@1.0-serv-1707    [005] d..1   966.418225: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=16480 p1=770 p2=8209 p3=16741 p4=66 p5=16781318 p6=0 p7=0 p8=0 p9=24 p10=16741 p11=134222020 p12=4 p13=0 p14=170
+ AGMIPC@1.0-serv-1707    [005] ....   966.418459: uioctl: (0x7dc387b3c8) a0=0x147534c a1=0xa a2=0x7fd9e558b0 a3=0x20 a4=0xffffffffffffff a5=0x4193a
+ AGMIPC@1.0-serv-1707    [005] ....   966.418479: uioctl: (0x7dc387b3c8) a0=0x147534c a1=0x1 a2=0x0 a3=0x0 a4=0xffffffffffffff a5=0x4193a
+ AGMIPC@1.0-serv-1707    [005] d..1   966.418487: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=20576 p1=770 p2=8209 p3=1 p4=67 p5=16781313 p6=0 p7=0 p8=0 p9=40 p10=1 p11=134221829 p12=20 p13=0 p14=4 p15=2952
+ HwBinder:1707_5-7210    [006] ....   966.434186: uioctl: (0x7dc387b3c8) a0=0x147534c a1=0x0 a2=0x0 a3=0x0 a4=0xffffffffffffff a5=0x41942
+ HwBinder:1707_5-7210    [006] d..1   966.434213: gprsend: (gpr_send_pkt+0x0/0x1a0 [gpr_dlkm]) p0=20576 p1=770 p2=8209 p3=1 p4=68 p5=16781314 p6=0 p7=0 p8=0 p9=40 p10=1 p11=134221829 p12=20 p13=0 p14=4 p15=2952
