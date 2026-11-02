@@ -1,0 +1,74 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1696,6 +1696,50 @@
+ 	}
+ }
+ 
++/*
++ * 0237: paired RX-macro snapshot.  A single read of the macro window cannot be
++ * interpreted at all - all-zero is equally consistent with "the macro is off",
++ * "these twelve bytes are reserved", and "the read never reached the device".
++ * Reading the same 64 bytes before the graph is opened and again after the
++ * stream is the cheapest thing that can turn it into evidence: a pre/post
++ * difference is attributable to the stream, and two identical dumps tell us to
++ * stop spending boots on this window.
++ *
++ * Gated by the same sweetreadrx=1 that arms g_lpass_probe(), and it keeps
++ * g_lpass_probe's own four-word line running as a cross-check of the first
++ * words against a code path that already worked.
++ */
++static void
++g_rx_snapshot(const char *tag)
++{
++	int do_rx = 0;
++	vm_offset_t win;
++	vm_offset_t rx;
++
++	(void)PE_parse_boot_argn("sweetreadrx", &do_rx, sizeof(do_rx));
++	if (!do_rx) {
++		return;
++	}
++	win = g_win_alloc(0x8000);
++	if (win == 0) {
++		printf("SWEET MARK: rxsnap %s no window\n", tag);
++		sweet_log_sync();
++		return;
++	}
++	printf("SWEET MARK: rxsnap %s reading %#x\n", tag, G_LPASS_RX_PA);
++	sweet_log_sync();
++	rx = g_win_map(win, G_LPASS_RX_PA, 64);
++	for (int i = 0; i < 16; i += 4) {
++		printf("SWEET MARK: rxsnap %s +%02x %08x %08x %08x %08x\n",
++		    tag, i * 4, *(volatile uint32_t *)(rx + (i * 4)),
++		    *(volatile uint32_t *)(rx + (i * 4) + 4),
++		    *(volatile uint32_t *)(rx + (i * 4) + 8),
++		    *(volatile uint32_t *)(rx + (i * 4) + 12));
++		sweet_log_sync();
++	}
++	g_win_free(win, 0x8000);
++}
++
+ /* ---- AudioReach playback graph ------------------------------------------
+  * Two definitions are used.  g_graph_open_payload is the smallest playback
+  * graph in the AGM service's table (subgraph 0xb000013d, container
+@@ -6837,6 +6881,10 @@
+ 
+ 		g_drain(100);
+ 		printf("SWEET GLINK: clocks va=%d rx=%d\n", va_clk, rx_clk);
++		/* 0237: the pre-stream half of the paired RX-macro read. */
++		if (rx_clk == 0) {
++			g_rx_snapshot("pre-stream");
++		}
+ 		/*
+ 		 * sweetampfirst=1 configures the AW882xx PAs BEFORE the graph is
+ 		 * opened and the tone is fed.  In every run so far the order was
+@@ -6898,6 +6946,9 @@
+ 				sweet_i2c_amp_readback("post-stream");
+ 			}
+ 		}
++		if (rx_clk == 0) {
++			g_rx_snapshot("post-stream");
++		}
+ 		g_lpass_probe(va_clk == 0, rx_clk == 0);
+ 	}
+ 
