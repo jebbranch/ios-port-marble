@@ -1410,3 +1410,47 @@ marker 门控第一趟就过（0238=1 0239=1 0240=1），所以这一版 kernel 
 带 `sweetampfirst=1` 的已知-good 配置正好走这条路（0124 的早期探针是第 1 次调用，
 ampfirst 那次是第 2 次）；若哪天 `se15_init()` 失败，bit-bang 仍会跑，
 那时 `bitbang skipped` 不出现就是**预期内**，不能当回归读。
+
+## ③ 的可行性先测了一遍：AP 的 DT 里没有 TDM 控制器节点，但厂商写死了时钟寄存器的绝对地址
+
+（趁 ① 开机之前做的零成本准备，来源是 `logs/fdt/marble-live.dts` —— 真机 adb 抓的活动 DT，
+不是抄的 upstream dts。）
+
+1. **macro 基址从此不用推断**（`lpass-cdc` 子节点，`marble-live.dts:21266` 起）：
+
+   | macro | DT 节点名 | reg | 相对 rx |
+   |---|---|---|---|
+   | rx | `rx-macro@3200000` | `0x03200000` | +0（与我们的 `G_LPASS_RX_PA` 逐位相同） |
+   | tx | `tx-macro@3220000` | `0x03220000` | +0x2000 |
+   | wsa | `wsa-macro@3240000` | `0x03240000` | +0x4000 |
+   | wsa2 | — | `0x031e0000` | −0x2000 |
+   | va | `va-macro@33F0000` | `0x033f0000` | +0x1f0000 |
+
+   ⇒ 上一节"regmap 的 offset 0 很可能就是 RX 基址"那条算术，现在**差值全部来自 DT**，
+   不再是我自己减出来的：regmap 里恰好出现的 `0 / 2000 / 4000` 三块与 rx/tx/wsa 对应，
+   wsa2（负）与 va（远）该没有也确实没有。这仍是支撑，不是证明——证明要等 ③ 读到带已知答案的值。
+
+2. **`mi2s/tdm` 控制器节点：AP 的 DT 里不存在。** 全文只有 pinctrl 组名
+   （`tert_tdm_clk/ws/din/dout`、`pri_tdm_*`、`pri_mi2s_*`，`:1425-1710`）和 `qcom,lpass-cdc`
+   那一族，没有任何带 `reg` 的 TDM 端口节点。⇒ ③ 原句"读 mi2s2 端口的使能/状态寄存器"
+   **按字面做不出来**，AP 侧没有这个基址可依据。先记下来，免得拿一个猜出来的地址去开机。
+
+3. **做得出来的版本**：`lpass-cdc-clk-rsc-mngr`（`:21272`）里厂商直接写了绝对地址：
+
+   ```
+   qcom,rx_mclk_mode_muxsel   = <0x33a40d8>
+   qcom,wsa_mclk_mode_muxsel  = <0x33a20e0>
+   qcom,va_mclk_mode_muxsel   = <0x3420000>
+   qcom,fs-gen-sequence       = <0x3000 0x1 0x1  0x3004 0x3 0x3  0x3004 0x3 0x1  0x3080 0x2 0x2>
+   ```
+
+   前三个是"该 macro 的 MCLK 从哪个源取"的 muxsel 寄存器，地址绝对、可直接读，而且厂商在旁边
+   留了可对照的线索（`qcom,va-clk-mux-select = <0x1>`）。`fs-gen-sequence` 那四个数是**偏移不是
+   地址**，而 clk-rsc 节点自己没有 `reg` ⇒ 没有可靠基址，**这一条不许用来读数**，除非哪天从 `.ko`
+   里挖出基址（`work/audio-vendor/modules/` 现有 `audio_prm_dlkm.ko`、`spf_core_dlkm.ko`、
+   `machine_dlkm.ko`、`q6_dlkm.ko`、`aw882xx_dlkm.ko`、`lpass_cdc_{rx,va}_macro_dlkm.ko`，
+   是可挖的地方）。
+
+4. 所以 ③ 的形态定为：**读三个 muxsel 寄存器 + 与厂商线索对照**，一个补丁、一次开机、不需要新基址。
+   它回答的是"我们投票要的时钟，到底有没有把 macro 的 MCLK 切过去"——比 `done status=0` 离喇叭近，
+   但仍然不等于出声，也不许写成等于。
