@@ -102,3 +102,32 @@ GPU_PROBE_LEVEL=0 ./scripts/mkimage.sh \
 #   SWEET GLINK: data_buffer: no rsp (dst=0x40bd)
 #   SWEET GLINK: ===== done =====
 ```
+
+## 2026-11-02：18 KB 的说法第一次在原始报文里核对（附包字段布局）
+
+`logs/gpr-20261027-090802.txt:15` 就是那条 APM 级 `SET_CFG`：
+
+```
+p0=10336 p1=770 p2=8208 p3=1 p4=280 p5=16781318 p6=0 p7=0
+p8=2967693416 (= 0xb0e36868, mem_map_handle)
+p9=18128      (= payload_size，此前只在文档里被引用，未对过原始行)
+p10..p31=0
+```
+第 16 行是同 handle 的后续包（`p4=281`、handle 落在 `p6`）；第 13 行是**已经拿到过的 2712 B 图 blob**
+（`p8=2966982840 p9=2712`）——同一种"按 handle 去抠 buffer"的做法在厂商身上成功过一次，
+这条路线不是猜测。第 14 行的 `p10=20480` 像 SHM 区域大小，`p8=536674304`(`0x1ffe0000`)
+与我们 XNU 侧用的 IOVA `0x1FFE8000` 同一区域。
+
+两条否证式结论：
+1. `grep -c b0e36868 docs/traces/trace_ui.txt logs/gpr-20261027-090802.txt` → 前者 0、后者 2，
+   且两处都只出现在**包头字段**；两份 trace 都不含 18128 字节正文（kprobe 每包只打 96 个字）。
+   ⇒ "18 KB 可能已经在仓库里"这个可能性排除，必须重抓一次。
+2. 此前 `handle=0xb0e36868 / payload_size=18128` 只被文档转引，没人对过原始行；现在对上了，
+   数字没错。
+
+### 抓正文的方法学要点（下一步）
+包里没有正文，只有 `{offset, handle, size}`。要拿到 18128 字节，必须走
+handle → 该 handle 对应的已映射区域：厂商的 SHM_MAP 报文给出区域大小/IOVA，
+而同一块 buffer 在用户态 HAL 进程里有映射，root 下可读 `/proc/<pid>/mem`。
+两条都要在**同一次开机窗口**里抓：kprobe `gpr_send_pkt`（现有脚本
+`gprpkt`/`gprsend` 两种格式，后者字段更多）+ 记录发该包的进程与它的映射。
