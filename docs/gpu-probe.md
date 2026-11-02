@@ -1123,7 +1123,7 @@ GP_STAGE=1`，`GP_SMPREL=0`），只换内核补丁与 boot-args。ring 都按
 |---|---|---|---|---|
 | Run A | `d669e45`(0218) | `sweetgmuboot=1 sweetgmunorel=1` | 1793578399 | `logs/ring-gpu-pwr-runA-1793578399.txt` |
 | Run C | `bcc091b`(0218+0220+0221) | 同上 | 1793579842 | `logs/ring-gpu-pwr-runC-1793579842.txt` |
-| Run D | `bcc091b` | `sweetgmuboot=1 sweetgcanary=1` | 1793580437 | `logs/ring-gpu-pwr.txt` |
+| Run D | `bcc091b` | `sweetgmuboot=1 sweetgcanary=1` | 1793580437 | `logs/ring-gpu-pwr-runD-1793580437.txt` |
 
 ```
 Run C  2067 ahbdiv witness gdscr=0xf8228800 cxgmu=0x2221 hubcx=0x1 cmd=0x2 cfg=0x100001
