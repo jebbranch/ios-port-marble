@@ -1,0 +1,43 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -6754,7 +6754,7 @@
+ 
+ 	/* Clocks the AP needs before it may read inside those macros. */
+ 	{
+-		int va_clk, rx_clk;
++		int va_clk, rx_clk, ampfirst = 0;
+ 
+ 		sweet_log_sync();
+ 		va_clk = g_prm_vote_clock(0x307, 19200000, 2);   /* VA_CORE_MCLK */
+@@ -6763,9 +6763,30 @@
+ 
+ 		g_drain(100);
+ 		printf("SWEET GLINK: clocks va=%d rx=%d\n", va_clk, rx_clk);
++		/*
++		 * sweetampfirst=1 configures the AW882xx PAs BEFORE the graph is
++		 * opened and the tone is fed.  In every run so far the order was
++		 * g_apm_graph_bringup() -> sweet_i2c_probe_amps(): by the time the PA
++		 * got its vendor Music profile the tone loop had already sent all of
++		 * its buffers, so no boot could have produced sound no matter which
++		 * graph opened.  The GENI branch inside probe_amps() only runs on the
++		 * SECOND call (patch 0124's early probe is call 1 and deliberately
++		 * skips GENI before UFS is mounted), so this call is the one that
++		 * actually programs the PA; the later call is skipped to keep the
++		 * number of GENI passes at one.
++		 */
++		(void)PE_parse_boot_argn("sweetampfirst", &ampfirst,
++		    sizeof(ampfirst));
++		if (ampfirst) {
++			printf("SWEET MARK: ampfirst before bringup\n");
++			sweet_log_sync();
++			sweet_i2c_probe_amps();
++		}
+ 		g_apm_graph_bringup();
+ 		sweet_log_sync();
+-		sweet_i2c_probe_amps();
++		if (!ampfirst) {
++			sweet_i2c_probe_amps();
++		}
+ 		g_lpass_probe(va_clk == 0, rx_clk == 0);
+ 	}
+ 
