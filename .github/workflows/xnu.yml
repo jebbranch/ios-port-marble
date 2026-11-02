@@ -173,6 +173,7 @@ jobs:
                    "pre-bitbang" \
                    "SWEET MARK: ampread pins re-applied" \
                    "SWEET MARK: bitbang skipped" \
+                   "SWEET MARK: ibat " \
                    "SWEET MARK: clkwit " \
                    "SWEET MARK: vcfg2 rc " \
                    "SWEET MARK: s1ap leaf=" \
