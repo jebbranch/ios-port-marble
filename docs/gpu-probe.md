@@ -1178,3 +1178,33 @@ Run D  2120 ahb armed=0
 （cmd-db 的 `vrm.gfx=0x40600`/`vrm.cx=0x42900` regulator 对象，厂商那次上电里我们
 没复刻的 3 次 `regulator_enable`，以及 BCM/HLOS 投票）。
 止损：连续 3 轮上机 canary 心跳仍不出现就停止加仪器（Run D 是第 1 轮）。
+
+### Run E（canary v2 / 0222，sweettime 1793582007）：心跳仍未出现，且死亡更早
+
+```
+2058 ahbdiv witness gdscr=0xf8228800 cxgmu=0x2221 hubcx=0x1 cmd=0x2 cfg=0x100001
+2059 rootkeep ahbdiv hub cmd=0x2 cfg=0x100001 div=0x1 ahb=0 gmu=0x2
+2060 ahbdiv neigh=0 0                     ← Run C 同一处是 0x2 0x2：间歇性再次复现
+2067 ahb pre-release=0x1                  ← 连续第二轮在这里读到 1
+2068 ahb armed=0
+2069 SWEET CANARY: armed                  ← ring 的最后一行
+```
+
+`SWEET CANARY: n=` 命中 0，而且**连 `start v2` 那一行都没有**。v2 的第一件事就是打
+`start`、紧接着不打任何延时就打第 0 拍，所以这一次不能用"线程在等 timer 中断"解释：
+**canary 线程在放复位那一刻之前从未被调度过，之后也没有。** 而从 `armed` 到放复位写之间
+还夹了一次 `sweet_log_sync()`（UFS 写，毫秒级），期间任何空闲核都有机会接手。
+
+同时主线程这一轮死得更早：Run D 是 `release written` 打出来之后卡在第一个放复位后的读；
+Run E 连 `release written` 都没打出来，也就是**卡在 `CM3_SYSRESET=0` 那次存储本身**。
+两轮合起来的形状是：放复位那一刻，不是"发起写的核被钉住、别的核继续"，而是**其它核也不再
+取得进展**。这就是 ② 分支的证据，不是 ①。
+
+`ahb` 的行为在两轮里独立重复了同一个模式：孤立时刻读 0，在 `fw loaded`/SMMU/预启动表这一
+大串总线流量之后再读就是 1（2067），紧接着写完立刻读又回 0（2068）。配合 `neigh` 在
+Run C 是 `0x2 0x2`、Run E 是 `0 0`，"这片寄存器的回读跟随当下是否有在途访问（自门控）"
+这个模型拿到两条正证据，而**过去所有 `ahb=0` 都不能再当作"写不进去"的证明**。
+
+计数与选择：Run D=第 1 次、Run E=第 2 次无心跳。第 3 次几乎必然仍是同一形状，所以不再
+为同一件仪器花开机，转 ② ——先跑 burst 回读（0223，已在树上）把"门控期读 0"钉死，再动
+`vrm.*`/BCM 投票方向。
