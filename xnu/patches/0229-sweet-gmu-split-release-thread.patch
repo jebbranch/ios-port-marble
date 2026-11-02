@@ -1,0 +1,92 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -3112,10 +3112,56 @@
+ 		printf("SWEET CANARY: armed\n");
+ 	} else {
+ 		printf("SWEET CANARY: arm failed\n");
++	}
++	sweet_log_sync();
++}
++
++
++/*
++ * The releasing core and the observing core have to be different threads.
++ * Runs D and E both lost the log at the release because the thread that
++ * wrote CM3_SYSRESET was also the one that tried to look at the result, so
++ * "no output" could not be told apart from "no machine".  This thread only
++ * performs the release store; the caller keeps running and reads nothing but
++ * our own DRAM.  If the release pins a core, that is this thread, and the
++ * observer's lines still reach the ring.
++ */
++static void
++g_rel_thread(void *arg, wait_result_t wr)
++{
++	vm_offset_t gm;
++
++	(void)arg;
++	(void)wr;
++	delay(60000);
++	gm = g_map_win_wimg(GMUREG_PA, 0x40000, VM_WIMG_POSTED);
++	if (!gm) {
++		printf("SWEET REL2: gm map failed\n");
++		sweet_log_sync();
++		return;
+ 	}
++	printf("SWEET REL2: releaser storing\n");
+ 	sweet_log_sync();
++	gm_wr(gm, GMU_OFF(0x1f800u), 0u);
++	printf("SWEET REL2: releaser returned\n");
++	sweet_log_sync();
++	for (;;) {
++		delay(100000);
++		printf("SWEET REL2: releaser alive\n");
++		sweet_log_sync();
++	}
+ }
+ 
++static void
++g_hfi_dump(vm_offset_t hfi, unsigned int t)
++{
++	printf("SWEET REL2: t=%u hfi=%u/%u msg=%u/%u\n", t,
++	    *(volatile uint32_t *)(hfi + 0x40u),
++	    *(volatile uint32_t *)(hfi + 0x44u),
++	    *(volatile uint32_t *)(hfi + 0x70u),
++	    *(volatile uint32_t *)(hfi + 0x74u));
++	sweet_log_sync();
++}
+ 
+ static void
+ g_gmu_boot(void)
+@@ -3522,6 +3568,32 @@
+ 		int rel = 0;
+ 
+ 		(void)PE_parse_boot_argn("sweetgmurel", &rel, sizeof(rel));
++		if (rel == 2) {
++			/*
++			 * sweetgmurel=2: release from the thread above and watch from
++			 * here.  Sixty DDR-only samples at 20 ms is 1.2 s of proof
++			 * that the machine still runs after the store; moving write
++			 * index is the first piece of evidence that the CM3 consumes
++			 * the queues, without reading a single GPU register.
++			 */
++			unsigned int t;
++			thread_t th;
++
++			g_hfi_dump(hfi, 60000u);
++			if (kernel_thread_start((thread_continue_t)g_rel_thread,
++			    NULL, &th) == KERN_SUCCESS) {
++				thread_deallocate(th);
++			} else {
++				printf("SWEET REL2: no releaser thread\n");
++				sweet_log_sync();
++			}
++			for (t = 0; t < 60u; t++) {
++				delay(20000);
++				g_hfi_dump(hfi, t);
++			}
++			goto gmu_done;
++		}
++
+ 		if (rel) {
+ 			/*
+ 			 * The shim's secondary CPU releases the CM3 (the core

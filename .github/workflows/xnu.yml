@@ -160,6 +160,7 @@ jobs:
                    "SWEET GMU: rootkeep ahbdiv hub cmd=" \
                    "SWEET GMU: gap ahb=" \
                    "SWEET GMU: cal2 valid=" \
+                   "SWEET REL2: t=" \
                    "SWEET GMU: ahbdiv witness gdscr=" \
                    "SWEET CANARY: n=" \
                    "SWEET CANARY: start v2 nc=" \
