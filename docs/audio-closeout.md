@@ -1454,3 +1454,48 @@ ampfirst 那次是第 2 次）；若哪天 `se15_init()` 失败，bit-bang 仍�
 4. 所以 ③ 的形态定为：**读三个 muxsel 寄存器 + 与厂商线索对照**，一个补丁、一次开机、不需要新基址。
    它回答的是"我们投票要的时钟，到底有没有把 macro 的 MCLK 切过去"——比 `done status=0` 离喇叭近，
    但仍然不等于出声，也不许写成等于。
+
+## 0242 已写好并校验：③ 的具体读法，以及它缺的那一半（Android 侧的期望值）
+
+补丁 `xnu/patches/0242-sweet-clk-witness-muxsel.patch`：新函数 `g_clk_witness(tag)`，
+读厂商 DT 直接给出的三个绝对地址 `0x033a40d8`(rx) / `0x033a20e0`(wsa) / `0x03420000`(va)，
+`sweetclkwit=1` 才生效，调用点在 `clocks va=%d rx=%d` 之后（pre）和 `g_lpass_probe()` 之前（post）。
+
+三条设计上的安全约束，都写进了代码注释：
+
+1. **每个地址在碰内存之前先把地址打出来并 sync 日志**。这块区域我们从来没从这个 kernel 读过，
+   万一某一格挂死，ring 会直接点名是哪个地址杀了这次开机，而不是整段丢日志。
+2. **窗口按 16 KB 页算**。`G_PFN_MASK = 0x3fff`（不是 0xfff！），`0x033a40d8` 落在它那个
+   16 KB 页里的偏移是 `0x40d8` ⇒ 若按 `PAGE_SIZE` 开窗口再映射就会映射到分配之外。
+   现在是一次性开 `0x8000` 复用（`g_win_map` 自己 `pmap_remove`），末尾一次 `g_win_free`。
+   这一条是我在写的时候差点踩的坑，先记下来。
+3. 校验三条全过：`git apply --check` 对**已提交的链基线**（`work/chain-tree` 里
+   `db56069 chain through 0241`，先 commit 再 diff，就是 0241 那次编炸换来的规矩）；
+   函数括号 6/6 平衡；单函数 stub 在 `-Wall -Wextra -Wformat=2 -Werror` 下**零诊断**。
+
+### ③ 开机前必须先拿到的一半：Android 在这三个地址上的读数
+
+诚实口径：**现在还不能给 ③ 贴"期望读数"**，因为我们没有厂商健康态下这三个 muxsel 的值。
+没有它，K 格只能测"读路活着没有"和"pre 与 post 有没有动"，测不出"切对了没有"。
+所以下面这条抓法（只读，不开机）是 ③ 的前置：
+
+```bash
+# 手机回到 Android 之后（一次设备一个会话，别和开机链抢）
+adb -s 2aa26095 shell 'su 0 mount -t debugfs nodev /sys/kernel/debug 2>/dev/null;   grep -iE "rx_swr_clk_src|wsa|va_core|rx_afe|wsa_macro|core_clk" /sys/kernel/debug/clk/clk_summary'   > logs/android-clk-summary.txt
+adb -s 2aa26095 shell 'su 0 toybox devmem 0x033a40d8 32; su 0 toybox devmem 0x033a20e0 32;   su 0 toybox devmem 0x03420000 32' > logs/android-muxsel.txt
+```
+
+`devmem` 大概率被 SELinux 挡（挡了就记"读不到"，不许把"没读到"写成"没有值"）；
+`clk_summary` 是我们以前抓 regmap 时验证过能起来的那条路。两边都拿不到，③ 就按
+"无已知答案，只测 pre/post 差异"来做，判据要照这个降级重写。
+
+### 预先登记：③ 的判据（K 格）
+
+| 格 | 判据 | 落点含义 |
+|---|---|---|
+| K1 | 三行 `clkwit pre …=` 都打印完并带回值 | 这块新区域 AP 可读，仪器成立（这本身就是信息：RX macro 那条读路此前只在一个锚点上被证明过） |
+| K2 | 某一行的地址打印了但**没有值** | 那一格挂死，日志点名是哪个地址；其余两格读数作废（同一次开机不能再用），并把它记成"hypervisor/供电门控"证据 |
+| K3 | 三个值与 Android 侧读到的**完全相同** | 时钟源选择与厂商健康态没差别 ⇒ "时钟没切"这条嫌疑**排除**，③ 收掉，剩下的只有设备图/后端绑定（②） |
+| K4 | 值不同，且 `pre` 与 `post` 也不同 | 我们投票要的时钟在流跑起来时确实动了 mux ⇒ 拿到一条不经过 GLINK、不经过 DONE 的硬件运动读数 |
+| K5 | 值不同但 `pre == post` | 时钟配置不一样但流没去动它 ⇒ 缺口在"谁去切它"（厂商是 ADSP 侧切的），③ 转成一条待办而不是读数 |
+| K6 | `done status=0` 缺失 | 整次开机作废，K1–K5 一律记未运行 |

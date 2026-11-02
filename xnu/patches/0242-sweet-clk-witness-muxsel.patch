@@ -1,0 +1,77 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1771,6 +1771,56 @@ g_rx_snapshot(const char *tag)
+ 	g_win_free(win, 0x8000);
+ }
+ 
++/*
++ * 0242: read the clock-mode muxsel registers that the vendor's own live device
++ * tree names outright - logs/fdt/marble-live.dts:21272, node
++ * lpass-cdc-clk-rsc-mngr: rx_mclk_mode_muxsel 0x033a40d8,
++ * wsa_mclk_mode_muxsel 0x033a20e0, va_mclk_mode_muxsel 0x03420000.  These are
++ * absolute addresses the DT hands us, so nothing here is a datasheet guess.  The
++ * obvious target ("read the mi2s2 port's status register") is NOT available: the
++ * AP device tree has no TDM controller node with a reg at all, only pinctrl
++ * group names - the muxsel is the clock register the vendor actually points the
++ * AP at.
++ *
++ * Two deliberate safety choices, because this region has never been read from
++ * this kernel:
++ *  - each read prints its address and syncs the log BEFORE touching memory, so a
++ *    fault or hang names the address that killed it instead of losing the boot;
++ *  - one 0x8000 window is allocated and reused (g_win_map does its own
++ *    pmap_remove), which matters here because G_PFN_MASK is 0x3fff: 0x033a40d8
++ *    sits at offset 0x40d8 inside its 16 KB page, so a PAGE_SIZE window would be
++ *    mapped past its end.
++ */
++static void
++g_clk_witness(const char *tag)
++{
++	int wit = 0;
++	vm_offset_t win;
++	vm_offset_t reg;
++	static const uint32_t addr[3] = { 0x033a40d8u, 0x033a20e0u, 0x03420000u };
++	static const char *const name[3] = { "rx", "wsa", "va" };
++
++	(void)PE_parse_boot_argn("sweetclkwit", &wit, sizeof(wit));
++	if (!wit) {
++		return;
++	}
++	win = g_win_alloc(0x8000);
++	if (win == 0) {
++		printf("SWEET MARK: clkwit %s no window\n", tag);
++		sweet_log_sync();
++		return;
++	}
++	for (int i = 0; i < 3; i++) {
++		printf("SWEET MARK: clkwit %s %s @%#x =", tag, name[i], addr[i]);
++		sweet_log_sync();
++		reg = g_win_map(win, (uint64_t)addr[i], 4);
++		printf(" %#010x\n", *(volatile uint32_t *)reg);
++		sweet_log_sync();
++	}
++	g_win_free(win, 0x8000);
++}
++
++
+ /* ---- AudioReach playback graph ------------------------------------------
+  * Two definitions are used.  g_graph_open_payload is the smallest playback
+  * graph in the AGM service's table (subgraph 0xb000013d, container
+@@ -6912,6 +6962,8 @@ sweet_glink_probe(void)
+ 
+ 		g_drain(100);
+ 		printf("SWEET GLINK: clocks va=%d rx=%d\n", va_clk, rx_clk);
++		/* 0242: pre-stream half of the clock-path witness. */
++		g_clk_witness("pre");
+ 		/* 0237: the pre-stream half of the paired RX-macro read. */
+ 		if (rx_clk == 0) {
+ 			g_rx_snapshot("pre-stream");
+@@ -6980,6 +7032,8 @@ sweet_glink_probe(void)
+ 		if (rx_clk == 0) {
+ 			g_rx_snapshot("post-stream");
+ 		}
++		/* 0242: did the clock path move once the stream ran? */
++		g_clk_witness("post");
+ 		g_lpass_probe(va_clk == 0, rx_clk == 0);
+ 	}
+ 
