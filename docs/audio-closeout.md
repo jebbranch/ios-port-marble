@@ -769,3 +769,34 @@ D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PRO
   sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 sweets1ap=3
 # 期望：s1ap leaf=0x7c1 / cb5 FSR 三字段 post==pre / buffer probe -> 0 / done status=0
 ```
+
+## 事先登记（下一格）：`sweetvgraph=1` —— 目标从"数据面"换成"出声"
+
+基线 = 上面那条已知-good 配置，**唯一新变量** = `sweetvgraph=1`；
+噪声控制 = `sweetbufs=30`（30 × 6 ms ≈ 180 ms，音幅本来就是 1/16 满量程，
+`g_fill_tone()` 里 `>>3`），这是仪器限制、不是待测变量。
+kernel 不变（0232 那版，marker 已核对），所以这一格**不需要编译**。
+
+代码路径（全链树 `:6072-6110`）：`g_pcm_prepare()` → `g_apm_graph_open_shm(port,
+g_graph_vendor4+12, 2712, 0, "graph_open/vendor4")` → `g_audio_graph_cfg_vp()` →
+`g_apm_graph_start_list(port, g_vendor4_sgs, 4)` → `g_audio_tone(port, G_VP_WR_IID)`。
+默认 `sweetvgoff=12 sweetvglen=2712`，`12+2712=2724 == sizeof(g_graph_vendor4)`，
+范围检查应**通过**（若不通过会先打 `vgraph off/len out of range`，那是仪器故障）。
+
+历史结论"厂商 4 子图 blob 在 `msw=1` 下 GRAPH_OPEN 无应答"（`:51` 一节）是在
+**S1 权限还没修**的时候测的，从那次以后没重测过。这一格就是重测它。
+
+六种读数与各自的结论（先看表，不许事后改）：
+
+| 打印 | 结论 | 下一步 |
+|---|---|---|
+| `graph_open/vendor4 … status=0` 且 `vendor4 graph started` 且 `done status=0` | 厂商图可用，转换器/设备端口映射都进来了 | 才允许谈"出声"，去做 PA 状态读回 |
+| `graph_open/vendor4` **无应答** | blob 的偏移/长度疑点仍活着（12 字节头） | 只扫 `sweetvgoff=0`，一次一个值 |
+| `graph_open/vendor4 … status!=0` | DSP 读了但拒收这个定义 | 读 `w` 字段与 handle，再决定 |
+| 开图成功但 `vendor4 graph did not start` | 4 子图 START 的形式不对（我们发的是合并 sg） | 查 `g_vendor4_sgs` 与厂商 `0xb0000002/81/24/23` |
+| `vgraph: no shared memory` | `g_pcm_prepare()` 失败 | 仪器故障，不计入判决 |
+| 无 `===== done =====`（停在某条 `sweet_log_sync()`） | 挂死 | 只认最后一条带 `sweet_log_sync()` 的输出定位置 |
+
+注意：即使这一格全绿，也**不等于听到声音**——它只证明厂商那张图能开、能收 buffer。
+"PA 真在驱动"的正证据要靠 ③（GENI 读回 AW882xx 状态/故障寄存器），
+`bit-bang` 那条链是坏仪器，禁止拿它下结论。
