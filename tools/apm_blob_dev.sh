@@ -14,9 +14,18 @@
 set -u
 T=/sys/kernel/tracing
 GSL=/vendor/lib64/libar-gsl.so
-# gsl_write=0x333d8 gsl_graph_write=0x334b0 gsl_dp_write=0x337c8
-# gsl_shmem_map_allocation=0x33580 gsl_shmem_get_metadata=0x33588
-PROBES="ugwr:0x333d8 ugrw:0x334b0 udpw:0x337c8 umap:0x33580 umeta:0x33588"
+# write-into-shm family: gsl_write=0x333d8 gsl_graph_write=0x334b0
+# gsl_dp_write=0x337c8 gsl_shmem_map_allocation=0x33580 gsl_shmem_get_metadata=0x33588
+# source-of-payload family (exported by name in libar-gsl.so):
+# gsl_get_cal_data_from_acdb=0x33400 gsl_set_cal=0x33390 gsl_set_config=0x33398
+# gsl_graph_set_cal=0x334c8 gsl_graph_set_config=0x33498 gsl_ioctl=0x333c8
+# gsl_shmem_alloc=0x33558
+# If the blob is fetched from ACDB into a heap struct, the logged entry args are
+# pointers into ordinary heap pages - and those ARE readable through
+# /proc/<pid>/mem (the /dmabuf: mapping is not, see docs/audio-closeout.md).
+PROBES="ugwr:0x333d8 ugrw:0x334b0 udpw:0x337c8 umap:0x33580 umeta:0x33588 \
+ucald:0x33400 usetcal:0x33390 usetcfg:0x33398 ugrcal:0x334c8 ugrcfg:0x33498 \
+uioctl:0x333c8 ushmal:0x33558"
 
 case "${1:-}" in
 arm)
