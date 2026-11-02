@@ -1381,3 +1381,32 @@ marker 门控第一趟就过（0238=1 0239=1 0240=1），所以这一版 kernel 
 | J6 | RX 锚点 | 本轮**不计分**：预期与 anchor3 相同（同一开机内静态），RX 只在 J1/J2 落定之后才排 |
 
 `done status=0` 在 J1–J6 里同样不算证据。
+
+## 0241 第一次推送把 CI 编炸了：原因、机制、以及是哪道闸拦住的
+
+现象：`af65301` 那次 run 失败，release 上出现 `build-error.txt`（head-1 `commit:` 就是
+`af65301`），而 `kernel.development.sweet` 仍是上一版——所以开机链在 marker 门控处
+`0241=0` 停住，**一次开机都没浪费**。
+
+原因不是代码问题，是我生成补丁的方式错了：`work/chain-tree-i2c` 里我只 commit 过
+"base"，没有把重放后的状态提交，于是 `git diff` 给出的是 **base → (0234+0236+0238+0240+0241)**
+的全部差异。生成的 `0241.patch` 里因此混进了 0238 的 `se15_pins()` hunk 和 0234 的整个
+`sweet_i2c_amp_readback`。dxb 应用补丁是**整补丁原子**的（任何一个 hunk 失败就整片跳过，
+见 `docs/status-log.md` 2026-10-27 22:3x 那条），CI 的树里 0238 早就生效了，那个
+`ml_io_map(pa[i], 0x1000u)` 的前镜像自然找不到 ⇒ 0241 整片被跳过 ⇒ marker 缺失 ⇒
+`::error::missing kernel marker: SWEET MARK: bitbang skipped`。
+
+也就是说：**marker 列表第一次真的当了闸**。它 20 分钟前还是我给 workflow 加的，
+加它的理由正是"补丁被静默跳过会白开一次机"。这次它把一次白开机换成了一次 CI 红。
+
+修正（已重做，`0241` 现在是 2 hunk、+40/-1）：基线必须先提交再改。
+新流程在 `/tmp/i5`：`cp 基线 → commit base → 重放全部补丁 → commit "chain at 0240" →
+编辑 → git diff`，这样 diff 里只可能有我自己的两个 hunk。校验三条：
+`git apply --check` 通过；`probe_amps` 括号 22/22 平衡；`return` 确实在 `probe_amps` 内。
+
+顺便把 0241 的**生效范围**写清楚，免得下次误读日志：那个 gate 插在
+`if (se15_probe_calls++ > 0)` → `if (se15_init())` 里面，所以
+`sweetnobb=1` 只在"第二次调用 probe_amps 且 GENI 初始化成功"时才跳过 bit-bang。
+带 `sweetampfirst=1` 的已知-good 配置正好走这条路（0124 的早期探针是第 1 次调用，
+ampfirst 那次是第 2 次）；若哪天 `se15_init()` 失败，bit-bang 仍会跑，
+那时 `bitbang skipped` 不出现就是**预期内**，不能当回归读。
