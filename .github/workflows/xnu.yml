@@ -156,6 +156,7 @@ jobs:
                    "SWEET SNAP: cx_gdscr" \
                    "SWEET RAIL: done blocks" \
                    "SWEET GMU: rootkeep ahbdiv hub cmd=" \
+                   "SWEET GMU: ahbdiv witness gdscr=" \
                    "SWEET CANARY: n="; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"

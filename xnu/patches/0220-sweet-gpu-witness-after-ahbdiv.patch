@@ -1,0 +1,21 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -3199,6 +3199,18 @@
+ 		 * untried item on the hub clock chain.
+ 		 */
+ 		gm_wr(gc, 0x9430u, gm_rd(gc, 0x9430u) | 1u);	/* hub_ahb_div */
++		/*
++		 * Witness: the 23:25 run read hub cmd=0x2 / cfg=0x100001 with no
++		 * hub_ahb_div write, and this run read cmd=0 cfg=0 / neigh=0 0 with
++		 * it.  Re-read the registers that were known good *before* the ahb
++		 * branch write so one boot says whether the 0x9430 write alone
++		 * darkened GPUCC, or whether the ahb write that follows did.
++		 */
++		printf("SWEET GMU: ahbdiv witness gdscr=%#x cxgmu=%#x hubcx=%#x "
++		    "cmd=%#x cfg=%#x\n",
++		    gm_rd(gc, 0x9108u), gm_rd(gc, 0x913cu), gm_rd(gc, 0x9148u),
++		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x93f0u));
++		sweet_log_sync();
+ 		gm_wr(gc, 0x911cu, gm_rd(gc, 0x911cu) | 1u);	/* gpu_cc_ahb */
+ 		printf("SWEET GMU: rootkeep ahbdiv hub cmd=%#x cfg=%#x "
+ 		    "div=%#x ahb=%#x gmu=%#x\n",
