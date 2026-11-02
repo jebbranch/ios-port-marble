@@ -145,8 +145,16 @@ SWEET BATT: tick 25  ok=5/5 cap=100% 4413mV    0mA status=4 usb=1
 
 1. **`ok=0/5` 的那 887 行一律作废**。只有 `ok=5/5`（159 行）才是有效读数；
    写判据时要把"这一格有没有 ok=5/5 的行"当成前置有效性检查，就像 ② 的 I5/J5。
-2. **符号与口径没核**。`-367mA` 是放电还是充电方向？`status=1 usb=1` 时 654mA 明显被充电路径
-   主导。**在没有核清符号含义之前，不许把任何一次差值读成"喇叭在推"**——这条是待办，不是结论。
+2. **符号已核（读源码，不是猜）**：`iokit/Kernel/arm/SweetBattery.cpp:266-270` 转 mA 的那行
+   注释写着 `Linux: negative=charging; IOPMPowerSource: positive=charging`，代码是
+   `ma = -(signedRaw * scale)/1e6` ⇒ **打印的正数=充电、负数=放电**，`-367mA` 就是放电 367 mA。
+   但更要紧的是**有两条不同的电流来源**，我先前指错了那条：ring 里的 `SWEET BATT: tick …`
+   出自 `sweet_glink.c` 的 **pmic_glink** 通道（`g_batt_req(0x30, 9, "ibat")`，ADSP 电量计缓存，
+   **3 秒轮询、每 6 tick≈30 秒才印一行**，见 `xnu/patches/0181-…patch:3592-3606`）；
+   直接读 PMIC 的是 `SweetBattery.cpp`（SPMI `0x4805` subtype∈{3,4}、`0x48c2` 裸值、
+   `0x8000`=无数据、scale 152588/305176）。30 秒的打印周期对上 180 ms 的音，
+   命中概率约 0.6%，**这条统计上不可能测到**——#5 必须走 SPMI 直读的密集突发
+   （规格在 `docs/audio-closeout.md` 的 0243 一节），不能拿现有 tick 行当仪器。
 3. **信噪比是最可能判死的地方**：现在这枚音是 1/16 幅度、`sweetbufs=30`（≈180 ms），
    而 tick 周期看起来是秒级平均。所以判据必须写成"能不能测到"而不是假设测得到：
    - 前置：拔掉 USB（去掉充电电流的支配项），仍然要 `ok=5/5`；
