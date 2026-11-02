@@ -1,0 +1,40 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -3328,6 +3328,37 @@
+ 			sweet_log_sync();
+ 		}
+ 		}
++		/*
++		 * Calibration reads.  Six boots of this same site showed the witness
++		 * taken *before* writing 0x911c is byte-identical every time, while most
++		 * samples taken after it come back zeroed or holding another register's
++		 * value.  So sample gpu_cc_ahb eight times and put a calibration read of
++		 * CX_GDSCR after each one: this function wrote 0x228800 with PWR_ON and
++		 * the witness confirms 0xf8228800 in every boot that has one.  A pair
++		 * counts only when the calibration word is exact, which turns the
++		 * artifact into filtered-out samples instead of a source of conclusions.
++		 * Only then can "does bit 0 of gpu_cc_ahb ever latch" be answered.
++		 */
++		{
++				uint32_t av[8];
++				uint32_t cv[8];
++				unsigned int t, valid = 0;
++
++				for (t = 0; t < 8u; t++) {
++						av[t] = gm_rd(gc, 0x911cu);
++						cv[t] = gm_rd(gc, 0x9108u);
++						if (cv[t] == 0xf8228800u) {
++								valid++;
++						}
++						g_wait(2);
++				}
++				printf("SWEET GMU: cal ahb=%x %x %x %x %x %x %x %x\n",
++						av[0], av[1], av[2], av[3], av[4], av[5], av[6], av[7]);
++				sweet_log_sync();
++				printf("SWEET GMU: cal cx=%x %x %x %x %x %x %x %x valid=%u/8\n",
++						cv[0], cv[1], cv[2], cv[3], cv[4], cv[5], cv[6], cv[7], valid);
++				sweet_log_sync();
++		}
+ 		printf("SWEET GMU: rootkeep ahbdiv hub cmd=%#x cfg=%#x "
+ 		    "div=%#x ahb=%#x gmu=%#x\n",
+ 		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x93f0u),
