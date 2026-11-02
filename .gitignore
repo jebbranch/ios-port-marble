@@ -8,3 +8,5 @@ shim/out-*/
 __pycache__/
 *.pyc
 shim/splash.bgra
+dumps/audio/
+logs/apm-blob-*.txt

@@ -131,3 +131,100 @@ handle → 该 handle 对应的已映射区域：厂商的 SHM_MAP 报文给出�
 而同一块 buffer 在用户态 HAL 进程里有映射，root 下可读 `/proc/<pid>/mem`。
 两条都要在**同一次开机窗口**里抓：kprobe `gpr_send_pkt`（现有脚本
 `gprpkt`/`gprsend` 两种格式，后者字段更多）+ 记录发该包的进程与它的映射。
+
+## 2026-11-02（下午）：§128 那条"读厂商 shm"的路判死；正文只剩一个前置条件
+
+全部只读，设备 2aa26095，Android 会话 uptime ≈2100 s。
+
+### 1. shm 读不出来 —— 不是权限，是映射类型
+AGM 服务（`vendor.qti.hardware.AGMIPC@1.0-service`，pid 1700）里唯一的共享映射：
+
+```
+723c97a000-723c982000 rw-s 00000000 00:09 266   /dmabuf:     ← 0x8000 = 32768 B
+/proc/1700/fd/23 -> /dmabuf:   ino: 266          ← 同一个 buffer
+```
+三条读法全部失败，且失败方式各不相同：
+
+| 尝试 | 结果 |
+|---|---|
+| `dd if=/proc/1700/mem bs=4096 skip=… count=8` | `read error: I/O error`（0 字节） |
+| `PTRACE_ATTACH` + `PTRACE_PEEKDATA` | attach **成功**，peek 第一字即 `I/O error` |
+| `dd if=/proc/1700/fd/23` | `No such device or address`（dma-buf 的 anon_inode 不支持 reopen） |
+
+对照组（同一进程、同一工具、换一个普通 anon `rw-p` 页 `71abfcc000`）：
+`read via /proc/pid/mem` **成功拿到 64 B**。⇒ EIO 不是 SELinux、不是 uid，
+而是这块 VMA 是 **VM_PFNMAP/special pte**（`dma_buf_mmap` 用 `remap_pfn_range`），
+`__access_remote_vm()` 拿不到 page 引用。**任何基于 VA 的用户态读接口都拿不到它**，
+§128 的"root 下读 /proc/<pid>/mem"作废；`/dev/mem`、`/dev/kmem`、`/proc/kcore` 在本机都不存在，
+所以也换不到"从物理页侧读"的替代路。
+
+### 2. 文件路线与 ACDB 路线都排除
+- `aw882xx_acf.bin` = **2672 B**（`/vendor/firmware/`，需 root 才能取，`adb pull` 直接 Permission denied）。
+  2712 = 2672 + 40（24 B GPR 头 + 16 B `apm_cmd_hdr`）——**此前标为"未验证"的那条算式，
+  第一次由文件大小本身证实**，也说明厂商是把整个文件当正文塞进 shm。
+- 全量按尺寸筛 `/vendor{,/etc,/firmware} /odm /apex /data/vendor`（18050..18200 B）：
+  只有 `libplatformconfig.so`(18132) 和两个 vndk `.so`(18164)，**无音频件**。
+- 正在用的 ACDB = `/vendor/etc/acdbdata/Forte/Forte_acdb_cal.acdb`（1634478 B，AGM fd 11）
+  + `/data/vendor/audio/acdbdata/delta/Forte_acdb_cal.acdbdelta`（**0 字节**，没有 delta 校准）。
+  整文件按 u32 LE 扫（`tools/acdb_size_scan.py`）：18128 / 18088 / 18112 / 2712 / 2672 **各 0 次命中**，
+  只有 20480 命中 1 次（`0x17c8e4`）。⇒ 正文不是 ACDB 里一条"以长度为键"的现成切片。
+  （顺带修正 §119：第 14 行 `p8=536674304` = **0x1FFD0000**，不是 0x1ffe0000。）
+
+### 3. 真正的卡点是"触发一次真实播放"
+| 触发方式 | `gpr_send_pkt` 命中 | 结果 |
+|---|---|---|
+| `tinyplay tone.wav` | **0** | dmesg `check_userspace_service_state: pcm_id 0 state 0` → 90 ms 内 `msm_common_snd_shutdown`，tinyplay 报 `Error playing sample`。本机 ASoC 把 PCM 让给userspace 服务，**tinyplay 不是有效触发器** |
+| `ctl.restart audioserver` | 15 | 解码后全是小包：`SET_CFG` 只有 dst=模块、size=24/32/48 的内联包，**没有 dst=1 的 18128** |
+| `ctl.restart vendor.audio-hal` | 15 | 同上，只到 core/register 层 |
+| `input keyevent 24/25`（root 和 shell 两种 uid） | **0** | 没有产生 device open |
+| `cmd notification post` | 0 | shell 通道 `sound=null`，本来就不响 |
+| `agmplay -i 3` | 0 | `smartpa_type = Entry not found` → `Invalid input, entry not found for : 3`；它查的是 `/vendor/etc/backend_conf.xml`（只有 `name/rate/ch/bits`，没有 id），Mi 的 AGM 表对不上 |
+
+⇒ 18 KB 那条报文只在**真实播放**时出现，而本机没有纯 shell 的播放触发器。
+
+### 4. 仪器自检：uprobe 是好的，"0 命中"是真的没被调用
+`tools/uprobe_selftest.c`（`-static`，`probe_me` 的文件偏移 = 0x171cc）挂 uprobe 后
+运行：**5/5 命中**且 `%x0` 参数正确带出（`a0=0x0/0x1/0x2…`）。
+所以 `gsl_write / gsl_graph_write / gsl_dp_write / gsl_shmem_map_allocation /
+gsl_shmem_get_metadata` 的 0 命中是**真的没被调用**，不是仪器坏。
+另：这台内核 **不接受 `$argN`**（`Invalid $-valiable specified`），必须写 `%x0..%x5`；
+且 `echo > uprobe_events` 在事件仍 enable 时返回 **EBUSY**（和 kprobe_events 同一个坑），
+arm 前必须先逐个 disable。
+
+新增工具（都只读）：`tools/apm_blob_dev.sh`、`tools/apm_blob_capture.sh arm|pull|clean`、
+`scripts/parse_apm_blob.py`（拿 20261027 那条老 trace 自测，正确点出
+`dst=1 tok=280 handle=0xb0e36868 size=18128 <== TARGET`）、`tools/apm_shm_read.c`、
+`tools/acdb_size_scan.py`。
+
+### 5. AW882xx 收口：判定树（用已有 ring 收口，不是新功能）
+语料 = `logs/ring-*`（155 个归档，含 `levels before` 的行全部取出）：
+
+```
+所有出现过的功放行只有两种，且都是成功：
+  80 × "geni amp 0x34 r=0 id=0x2032"   80 × "geni amp 0x34 profile 44/44"
+  80 × "geni amp 0x35 r=0 id=0x2032"   80 × "geni amp 0x35 profile 44/44"
+整个语料里没有任何一条 NACK / r!=0 / "no amp"。
+```
+再看复位状态，语料**整齐地分成两组**：
+
+| 组 | `levels before (rstA=…)` | 有没有"我们放复位"那行 | ACK |
+|---|---|---|---|
+| A（80 次成功里全部） | **rstA=1 rstB=1 spksw=1** | 有 `rstA=1 rstB=1 spksw=1 irq=1` | 2/2 |
+| B（`ring-amp8`、`ring-b*/c*/d*/e*/f*/g*` 等 GPU 时代的跑） | **rstA=0 rstB=0 spksw=0** | **没有**（根本没走到） | 0（未到探测点） |
+
+判定树（每条都对应一个可直接读的证据，不需要新代码）：
+
+1. `levels before` 里 rstA/rstB 已经是 1 ⇒ 复位是**上一次会话留下的**，
+   本次只是"接着用一个已经出复位的芯片"。**今天所有 80 次成功都属于这一类。**
+2. rstA/rstB = 0 且日志里**没有** `rstA=1 rstB=1 spksw=1 irq=1` ⇒ 这台根本没走到功放探测
+   （GPU 实验跑或提前死机），**不能**记为"功放不 ACK"。
+   → `docs/status-log.md:722`（run67"0 个功放"）属于这一类，"I2C 无 ACK"这个前提在语料里**没有证据**。
+3. 只有当日志里**同时**出现"我们放复位那行"和 `r!=0` 时，才是真的电气/时序问题，
+   此时按顺序查：`scl/sda` 空闲电平（是否被拉低）→ 复位低电平保持时间 →
+   先写 `0x00=0x55aa` 软复位再读 ID → 地址 7 位/8 位写法。
+
+⇒ **唯一还没被任何一次开机验证过的叶子**：真正冷启动（rstA=0）由我们自己放复位之后，
+功放到底 ACK 不 ACK。验证成本 = 1 次开机：长按电源彻底断电（或拔插电池/静置到 rst 线回到 0），
+再 `fastboot boot`，只看三行——`levels before (rstA=0…)` → `rstA=1 rstB=1 spksw=1 irq=1` →
+`geni amp 0x34 r=?`。出现 `r=0 id=0x2032` 即"冷启动也能自己拉起"，这条彻底收口；
+出现 `r!=0` 才进入上面第 3 步。
