@@ -78,6 +78,31 @@ KEEPALIVE=1 CPUS=8 ./scripts/mkimage.sh \
   sweetsmp=1 sweetsmpn=20 sweetsmpms=1000 sweetglink=0
 ```
 
+### 音频（数据面已知-good，2026-11-02 实机确认）
+
+```bash
+# kernel 需要 >= 0232（S1 叶子的 AP 由 sweets1ap 控制）；0233 起可把 PA 提前配置
+D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PROBE_LEVEL=0 \
+  ./scripts/mkimage.sh sweetgpu=0 sweetpcm=1 sweets1=1 sweetiova=1 \
+  sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 \
+  sweets1ap=3 sweetampfirst=1 sweetbufs=30
+./scripts/boot_one.sh images/shim-iosroot-adsp.img audio
+```
+
+必须同时看到的四条才算这一配置成立（少一条就别当基线用）：
+
+```
+SWEET MARK: s1ap leaf=0x7c1                  # 叶子只改了 AP[7:6]，[1:0] 仍是 block
+SWEET GLINK: graph_start rsp … status=0
+SWEET I2C: geni amp 0x34 r=0 id=0x2032 … profile 44/44   # 必须早于 pcm tone start
+SWEET GLINK: data_buffer: dst=0x40bd done status=0        # 槽位字段跟着 ping-pong 走
+```
+
+三个开关的来历（不要凭印象改）：`sweetshmhi=1` 把 SHM_MAP 地址高字当 **stream index**
+发（不是地址位）；`sweetshmflag=4` 是厂商的 offset 模式，**只有在 `sweets1ap=3` 下才会被
+DSP 真正读通**；`sweetampfirst=1` 把 PA 的配置挪到开图之前——历史上顺序是反的，
+所以任何"没出声"的观测在 0233 之前都不成立。
+
 **注意**：`sweetsmp=1` 是测试开关，采样 20 秒后主动复位；**默认 cmdline
 里没有它**，正常启动不会自己重启。
 
@@ -86,7 +111,7 @@ KEEPALIVE=1 CPUS=8 ./scripts/mkimage.sh \
 | 文件 | 内容 |
 |---|---|
 | `docs/status-log.md` | 按时间追加的完整实验日志（最新结论先看这里） |
-| `docs/audio-closeout.md` | 音频收尾：SHM_MAP 高字、剩余 18 KB 缺口 |
+| `docs/audio-closeout.md` | 音频收尾：SHM_MAP 高字、报文/模块对表、S1 叶子 AP 与 PA 排序（18 KB 缺口已撤销，见 2026-11-02 各节） |
 | `docs/smmu-dead-ends.md` | apps-smmu 的寄存器地图与已证伪/已修正的路线 |
 | `docs/gpu-probe.md` | kgsl-smmu 探针、组合扫描结果、CB 页墙 |
 | `docs/speaker-path.md` | 扬声器 = TERTIARY TDM + 2×AW882xx（无 WSA） |
