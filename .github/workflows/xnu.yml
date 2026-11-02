@@ -166,6 +166,7 @@ jobs:
                    "SWEET CANARY: start v2 nc=" \
                    "SWEET GMU: ahb burst ahb=" \
                    "SWEET MARK: ampfirst before bringup" \
+                   "SWEET MARK: ampread " \
                    "SWEET MARK: s1ap leaf=" \
                    "SWEET MARK: dbraw dst="; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then

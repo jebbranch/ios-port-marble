@@ -1,0 +1,76 @@
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -764,7 +764,36 @@
+ 	printf("SWEET I2C: geni amp %#x profile %u/%u\n", addr, n - bad, n);
+ 	return bad ? -1 : 0;
+ }
++
++/*
++ * Read-back over the same GENI transfer path that already produces
++ * "geni amp %#x r=0 id=%#x".  The register list is taken from the vendor ACF
++ * table itself (0x00 device id / soft-reset, 0x03 and 0x04 SYSCTRL - 0x04 is
++ * written as 0xb440 by aw882xx_music_a, 0x05 next to it), so nothing here is
++ * a guessed datasheet offset.  This exists to turn the "44/44" line into
++ * something stronger than a transmit count, and to give the amplifier side a
++ * witness that does not run through GLINK.
++ */
++void sweet_i2c_amp_readback(const char *tag);
+ 
++void
++sweet_i2c_amp_readback(const char *tag)
++{
++	static const uint8_t addrs[2] = { 0x34, 0x35 };
++	static const uint8_t regs[4] = { 0x00, 0x03, 0x04, 0x05 };
++
++	for (int i = 0; i < 2; i++) {
++		for (int r = 0; r < 4; r++) {
++			uint16_t v = 0xffff;
++			int rc = se15_aw_read(addrs[i], regs[r], &v);
++
++			printf("SWEET MARK: ampread %s addr=%#x reg=%#x "
++			    "r=%d val=%#x\n", tag, addrs[i], regs[r], rc, v);
++		}
++	}
++	sweet_log_sync();
++}
++
+ void sweet_i2c_probe_amps(void);
+ 
+ void
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -62,6 +62,7 @@
+ /* Force the console ring out to disk before a step that may panic. */
+ extern void sweet_log_sync(void);       /* bsd/dev/sweet_ufs.c */
+ extern void sweet_i2c_probe_amps(void);  /* bsd/dev/sweet_i2c.c */
++extern void sweet_i2c_amp_readback(const char *tag);
+ 
+ /* GLINK commands */
+ #define CMD_VERSION             0
+@@ -6787,6 +6788,26 @@
+ 		if (!ampfirst) {
+ 			sweet_i2c_probe_amps();
+ 		}
++		/*
++		 * sweetampverify=1 reads the PA back over the same GENI path that
++		 * already reads its device id.  Two reasons this is the witness to
++		 * chase: it does not depend on the GLINK reply at all, and
++		 * "profile 44/44" up in sweet_i2c.c is only a transmit count - a
++		 * read-back is the first real proof the PA holds what we wrote.
++		 * Run AFTER bringup(), so the graph is started and the DATA_BUFFER
++		 * loop has been fed: a value that differs from the ACF table then
++		 * says something drove the PA, which is not the same as saying it
++		 * made sound.
++		 */
++		{
++			int ampverify = 0;
++
++			(void)PE_parse_boot_argn("sweetampverify", &ampverify,
++			    sizeof(ampverify));
++			if (ampverify) {
++				sweet_i2c_amp_readback("post-stream");
++			}
++		}
+ 		g_lpass_probe(va_clk == 0, rx_clk == 0);
+ 	}
+ 
