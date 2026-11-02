@@ -1,0 +1,36 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -3229,6 +3229,33 @@
+ 		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x93f0u));
+ 		sweet_log_sync();
+ 		gm_wr(gc, 0x911cu, gm_rd(gc, 0x911cu) | 1u);	/* gpu_cc_ahb */
++		/*
++		 * Gated-read test for this branch.  The page self-gates when idle
++		 * (the release path already notes gpu_cc_ahb closes itself without
++		 * traffic), and Run D read hub CMD/CFG as 0x2/0x100001 in one print
++		 * and all-zero two lines later in the same boot with no write in
++		 * between.  A single readback after a write may therefore be sampling
++		 * a clock that is off rather than a bit that did not take.  Burst-read
++		 * the branch just written and cx_gmu(0x913c) as the control that is
++		 * known to latch, then read both again after a gap.
++		 */
++		{
++			uint32_t bv[4];
++			uint32_t cv[4];
++			unsigned int s;
++
++			for (s = 0; s < 4u; s++) {
++				bv[s] = gm_rd(gc, 0x911cu);
++				cv[s] = gm_rd(gc, 0x913cu);
++			}
++			printf("SWEET GMU: ahb burst ahb=%x %x %x %x cxgmu=%x %x %x %x\n",
++			    bv[0], bv[1], bv[2], bv[3], cv[0], cv[1], cv[2], cv[3]);
++			sweet_log_sync();
++			g_wait(20);
++			printf("SWEET GMU: ahb burst after20ms ahb=%x cxgmu=%x\n",
++			    gm_rd(gc, 0x911cu), gm_rd(gc, 0x913cu));
++			sweet_log_sync();
++		}
+ 		printf("SWEET GMU: rootkeep ahbdiv hub cmd=%#x cfg=%#x "
+ 		    "div=%#x ahb=%#x gmu=%#x\n",
+ 		    gm_rd(gc, 0x93ecu), gm_rd(gc, 0x93f0u),

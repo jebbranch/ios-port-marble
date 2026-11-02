@@ -158,7 +158,8 @@ jobs:
                    "SWEET GMU: rootkeep ahbdiv hub cmd=" \
                    "SWEET GMU: ahbdiv witness gdscr=" \
                    "SWEET CANARY: n=" \
-                   "SWEET CANARY: start v2 nc="; do
+                   "SWEET CANARY: start v2 nc=" \
+                   "SWEET GMU: ahb burst ahb="; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"
               exit 1
