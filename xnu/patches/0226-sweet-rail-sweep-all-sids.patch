@@ -1,0 +1,78 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -2832,42 +2832,49 @@
+ 		}
+ 	}
+ 	/*
+-	 * cmd-db names the four GPU rails and all four sit on SID 4:
+-	 *   vrm.cx=0x42900 (SMPC6)   vrm.gfx=0x40600 (SMPB5)
+-	 *   vrm.lcx=0x42000 (LDOB8)  vrm.mxc=0x42700 (SMPC2)
+-	 * The sweep above only walks SID 0..3, so these blocks have never been
+-	 * read on this device: "the rails are up" was only ever inferred from
+-	 * RPMh returning COMPLETE, never observed.  Read the first eight
+-	 * registers of each, plus nothing else -- this is read-only and does not
+-	 * touch any voltage or configuration bit, deliberately: writing a SMPC
+-	 * enable is not symmetric in risk and we have not even shown the rail is
+-	 * the reason gpu_cc_ahb looks off.
+-	 * A voted / not-voted pair on the same boot is directly comparable here.
++	 * G1 read these four cmd-db blocks on SID 4 alone and only one of
++	 * them answered: vrm_gfx@0x0600 returned eight registers (00 03 00
++	 * 00 0b 05 00 01) while vrm_cx@0x2900, vrm_lcx@0x2000 and
++	 * vrm_mxc@0x2700 came back all-0xff, which is what SPMI gives when
++	 * no slave lives there.  The Android regulator names explain it: the
++	 * rails sit on two different PMICs (pm8350 S5 for gfx, pm8350c S2/S6
++	 * for the gfx/mmcx voters), so the high nibble of the cmd-db value
++	 * cannot be the SID for all four.  Walk every SID with the same four
++	 * offsets and print only the blocks that answer.  Still read-only:
++	 * eight registers per hit, no enable or voltage bit touched.
+ 	 */
+ 	{
+ 		static const unsigned int vr[4] = {
+ 			0x2900u, 0x0600u, 0x2000u, 0x2700u
+ 		};
+ 		static const char *vn[4] = { "cx", "gfx", "lcx", "mxc" };
+-		unsigned int i, j;
++		unsigned int s, i, j, hits = 0;
+ 
+-		for (i = 0; i < 4u; i++) {
+-			uint8_t b[8];
+-			int ok = 0;
++		for (s = 0; s <= 15u; s++) {
++			for (i = 0; i < 4u; i++) {
++				uint8_t b[8];
++				int ok = 0;
+ 
+-			for (j = 0; j < 8u; j++) {
+-				b[j] = 0xff;
+-				if (sweet_spmi_read_any(4u, vr[i] + j,
+-				    &b[j]) == 0) {
+-					ok++;
++				for (j = 0; j < 8u; j++) {
++					b[j] = 0xff;
++					if (sweet_spmi_read_any(s, vr[i] + j,
++						    &b[j]) == 0) {
++							ok++;
++						}
+ 				}
+-			}
+-			printf("SWEET RAIL: vrm_%s@4:%04x ok=%d %02x %02x %02x %02x "
+-			    "%02x %02x %02x %02x\n",
+-			    vn[i], vr[i], ok, b[0], b[1], b[2], b[3], b[4], b[5],
+-			    b[6], b[7]);
+-			sweet_log_sync();
++				if (ok == 0) {
++					continue;
++				}
++				hits++;
++				printf("SWEET RAIL: vrm_%s@%u:%04x ok=%d %02x %02x "
++					"%02x %02x %02x %02x %02x %02x\n", vn[i], s, vr[i],
++					ok, b[0], b[1], b[2], b[3], b[4], b[5], b[6],
++					b[7]);
++				sweet_log_sync();
++			}
+ 		}
++		printf("SWEET RAIL: vrm hits=%u\n", hits);
++		sweet_log_sync();
+ 	}
+ 
+ 	printf("SWEET RAIL: done blocks=%u\n", seen);
