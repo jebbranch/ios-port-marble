@@ -1,0 +1,66 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -2928,7 +2928,6 @@
+  * counter and the tid columns are what separate the two cases -- a lock
+  * wait leaves the other CPUs' tids changing in the ring lines we do get.
+  */
+-static int g_canary_chan;
+ static volatile int g_canary_go;
+ static vm_offset_t g_canary_ao;
+ static vm_offset_t g_canary_rs;
+@@ -2936,6 +2935,7 @@
+ static uint32_t g_canary_scratch[64];
+ 
+ #define G_CANARY_SCRATCH_N (sizeof(g_canary_scratch) / sizeof(g_canary_scratch[0]))
++#define G_CANARY_TICK_US	   20000u	/* 20 ms; 100 ticks = 2 s window */
+ 
+ static unsigned int
+ g_canary_selftest(void)
+@@ -2997,22 +2997,29 @@
+ 	g_canary_ao = g_map_win_wimg(0x3d40000ull, 0x1000u, VM_WIMG_IO);
+ 	g_canary_rs = g_map_win_wimg(0x3d50000ull, 0x2000u, VM_WIMG_IO);
+ 	g_canary_hfi = g_map_win(GMU_HFI_PA, 0x1000u);
+-	printf("SWEET CANARY: start nc=%u ao=%#llx rs=%#llx hfi=%#llx\n", nc,
++	printf("SWEET CANARY: start v2 nc=%u ao=%#llx rs=%#llx hfi=%#llx\n", nc,
+ 	    (unsigned long long)g_canary_ao, (unsigned long long)g_canary_rs,
+ 	    (unsigned long long)g_canary_hfi);
+ 	sweet_log_sync();
+ 
+-	for (n = 0; n < 40u; n++) {
+-		uint64_t deadline;
++	for (n = 0; n < 100u; n++) {
+ 		unsigned int mask = 0;
+ 		unsigned int i;
+ 		unsigned int bad;
+ 		uint64_t tv[4] = { 0, 0, 0, 0 };
+ 
+-		clock_interval_to_deadline(100, NSEC_PER_MSEC, &deadline);
+-		(void)assert_wait_deadline(&g_canary_chan, THREAD_UNINT,
+-		    deadline);
+-		(void)thread_block(THREAD_CONTINUE_NULL);
++		/*
++		 * v2: busy-wait instead of blocking on a deadline.  The v1 thread
++		 * slept 100 ms before its first tick and printed nothing, while the
++		 * log lock was provably free (the releasing core had just finished a
++		 * printf+sync pair).  That leaves "never scheduled" and "timer
++		 * interrupt never arrived" and v1 cannot tell them apart.  delay()
++		 * polls, so a heartbeat here proves scheduling without depending on
++		 * interrupt delivery at all.
++		 */
++		if (n > 0u) {
++			delay(G_CANARY_TICK_US);
++		}
+ 		if (!g_canary_go) {
+ 			continue;
+ 		}
+@@ -3034,8 +3041,8 @@
+ 		 * after the release before spending a probe on a target that
+ 		 * may pin this core as well.
+ 		 */
+-		if (n >= 2u) {
+-			g_canary_probe((n - 2u) % 3u);
++		if (n >= 3u) {
++			g_canary_probe((n - 3u) % 3u);
+ 		}
+ 	}
+ 	printf("SWEET CANARY: done\n");
