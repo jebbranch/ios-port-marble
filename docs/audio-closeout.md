@@ -2288,3 +2288,60 @@ D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PRO
 
 安全线：`sweetbufs=30` 不动、不加音、不放长音、纯 RAM `fastboot boot`；
 beat 最多 5 行，SMMU 见证只在 vgraph 分支两次调用，不进热路径。
+
+
+## E-2960 判决（2026-11-03 22:0x，`logs/ring-v2960.txt` 2640 行，sweettime 见 ring）
+
+### 一、先记我自己的判据缺陷（不许把这写成实验失败的原因）
+X0 要求"同版必须带数据面基线四行"。这条**在设计上就不可能满足**：
+`audio-closeout:823` 早就记过——SHM 形态的 GRAPH_OPEN 一旦发出，**之后连 `status=0` 的
+`vp-wr` 也不再被应答**。这次一模一样：
+
+```
+2457 SWEET GLINK: vgraph 2 open failed
+2458 SWEET GLINK: APM graph_open/vp-wr src=0x2010 dst=0x1 (800 bytes)
+2470 SWEET GLINK: graph_open/vp-wr: no response
+2541 ... tdm-inline ... 2557: no response
+2637 SWEET GLINK: graph_open failed on every payload
+2639 SWEET GLINK: ===== done =====   → 随后 PSCI SYSTEM_RESET（内核自己复位，没挂死）
+```
+
+所以基线三条缺失是**这个形态的开图把 APM 之后都不答**造成的，不是参数没送达，
+也不是仪器没生效。X0 作为门是错的，这条按实测改判据；下面只用**不依赖基线**的证据。
+
+### 二、这次真正买到的两条（都不依赖 X0）
+**1）X3 成立，X4 排除。** `poll beat` 从 195 一路打到 **4995**（25 拍走满），
+`rsp=0` 全程，然后才 `no response`；环还在继续跑后面的开图尝试、`===== done =====`、
+并走到我们自己的 `PSCI SYSTEM_RESET`。
+⇒ 之前五次"发出后就没日志"的那种**挂死读法，在这一次被明确分开**：
+**AP 活着、DSP 不回**，不是机器锁死。
+
+**2）X5 命中，而且不是正文问题。** 见证把尝试前后夹住了：
+
+| | cb5 FSR | cb5 FAR | FSYNR0 |
+|---|---|---|---|
+| `vgraph-pre` | 0x400 | 0x22140410 | 0x40c5f |
+| `vgraph-post` | **0x408** | **0x1ffe8000** | 0x40012 |
+
+`0x1ffe8000` 正是 `sweets1va=` 的区域基址 ⇒ **DSP 在尝试读我们给它的正文时，在 cb5 上
+对**我们这片区域本身**产生了故障**（GFSR=0，所以是 cb 级而非全局）。
+
+但接下来这条对照把它定性改了——我扫了全部 170 个 ring：
+**同样 `cb5 FSR=0x408 FAR=0x1ffe8000` 在盘上一共 6 次**，另外 5 次是
+`audio-coldamp / audio-hi1 / audio-pace-hi1 / rtc-batt / s1ap11`，
+而那 5 次**根本没跑 vgraph**，只发了我们自己的 `graph_open/vp-wr`（`s1ap11` 那次是
+`FSR=0x402`，即 FSR 随我们改的 AP 变、FAR 不动）。
+反过来，`tone done` 正常的好开机（b2、ep9 等）里这个 FAR **0 次**。
+
+⇒ 结论落在机制上，而不是内容上：
+**"把正文放在 SHM 区域里、只发描述符"这种形态，DSP 侧的读会在区域基址上故障；
+与我们发的是 2712 的旧正文还是 2944 的新正文无关。**
+所以 ② 里"正文变体/图不同代"这些**都不是解释**（它们各自仍是事实，但解释不了不响应）；
+而未闭合的是：**为什么 DATA_BUFFER 读同一区域能成（`done status=0`），GRAPH_OPEN 读同一区域就故障**。
+候选差别是句柄/池不同（我们 `0xb0d7f408` vs 厂商 `0xb0d890e8`）、区域偏移语义（`w6`）、
+或读发生在建表之前——**这三条都还没测，不许当结论**。
+
+### 三、这轮的净结果与止损
+- 用户授权的那一次开机**已用掉**，产出是上面两条判读，其中 X5 把 ② 从"正文"转向
+  **"SHM 正文读路径"**。按我自己 X5 那格的预定动作：**不再动正文**。
+- `docs/START-HERE.md` 里"② 结构缺口"的措辞需要按此收窄（见下）。
