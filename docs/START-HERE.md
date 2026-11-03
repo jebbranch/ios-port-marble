@@ -150,20 +150,28 @@ DSP 真正读通**；`sweetampfirst=1` 把 PA 的配置挪到开图之前——�
 没有 `PSCI SYSTEM_RESET`、没有 panic ⇒ "自己重启"不是我们的复位路径。
 ⇒ 主攻按预登记转 ②（不依赖 iOS 行为），判决表在 `docs/audio-closeout.md` 末尾。
 
-② 的下一条不是新代码，而是**从没试过的 framing**：
-`g_graph_vendor4[2724]` 自己声明 `graph_size=2724`，可盘上 6 条实机记录全是
-`graph_open/vendor4 … len=2712`（每次都把 12 字节图头剥掉了）。
-镜像已构建并在产物里核过（cmdline 582 字节）：
+② 现在按预登记**止损关闭**，写下的是那句话本身：
 
-```bash
-D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PROBE_LEVEL=0 \
-  ./scripts/mkimage.sh sweetbufs=30 sweetpcm=1 sweets1=1 sweetiova=1 \
-  sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 \
-  sweets1ap=3 sweetampfirst=1 sweetvgraph=1 sweetvgoff=0 sweetvglen=2724
-./scripts/boot_one.sh images/e1-vgraph2724.img e1
-```
+> **内核侧（数据面 / SHM / GPR / 图开-准备-启动的厂商帧形）与 iOS 侧（mediaserverd 常驻、
+> 开我们的壳、`GetControlValue` 在问）都已经在场，"手机真的出声"仍未证。**
 
-判据 W0–W5（含 W0 有效性门和 W5 仪器缺口）在 `docs/audio-closeout.md` "E1" 一节，开机前已写死。
+理由是逐条回源读出来的（细节与撤回记录在 `docs/audio-closeout.md` 末尾两节）：
+厂商自己的 GRAPH_OPEN 包声明的长度就是 **2712**（10-27 抓包 `p9=0xa98`），所以
+"把 12 字节图头剥掉是我们的 bug"这个说法**作废**；`sweetvgoff=0/len=2712` 也早跑过
+（`ring-o3-vgraph0` 的 cmdline 里有）。五次 vendor4 开机里 **一次打印 `no response`、
+三次在发出那一行之后日志就结束了**（没有 rsp）——那是 `sweet_glink.c:6260` 注释里的
+run115 挂死形态，不是被拒。`images/e1-vgraph2724.img` 留着但**不启动**（它的先验来自
+我已撤回的那条前提，失败模式又是要长按电源才恢复）。
+
+还有一条把"再抓一次厂商正文"也堵上的实测：这台 ROM 的 root **装不上 tracefs**
+（`kprobe_events` 读写全 EACCES，连 `setenforce 0` 都被拒，`CapEff` 是全能力位、
+`u:r:su:s0`；`uname -r=5.10.226-android12-9`，`ro.soc.model=SM7475` 确认是 marble 这颗，
+`ro.build.fingerprint=OnePlus/PKG110/…:15` 是改过的 props，别当型号判据）。
+替代办法 `scripts/apm_harvest.py --heapscan`（不开探针、不放音，按
+`{graph_size, num_subgraphs}` 头 + 体内 GRAPH_SIG 个数**验真**，先用已知-good 正文当正对照验过）
+扫了 5 个音频域进程共 50 MiB 堆，**一个经验证的图头都没有**——包含刚跑完 agmplay
+真会话之后。诚实边界：这个检法认的是 48 字节（`size=0x30`）那种子图属性块，
+若当前图换了小节长度会漏，这一条没测，不许写成"堆里确实没有"。
 
 **注意**：`sweetsmp=1` 是测试开关，采样 20 秒后主动复位；**默认 cmdline
 里没有它**，正常启动不会自己重启。

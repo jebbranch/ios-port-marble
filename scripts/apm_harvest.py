@@ -18,6 +18,7 @@ usage:
   python3 scripts/apm_harvest.py --cmd '<agmplay ...>' --want 18128
 """
 import argparse
+import os
 import re
 import struct
 import subprocess
@@ -35,8 +36,12 @@ OPS = {0x01001006: "SET_CFG", 0x0100100C: "SHM_MAP", 0x0100100D: "SHM_UNMAP",
 # same 12-byte signature found in the AGM heap (docs/vendor-graph.md).
 GRAPH_SIG = struct.pack("<III", 1, 0x08001001, 0x30)
 # The two payload sizes the vendor actually opens: 0x1f0 stream graph,
-# 0xb38 device graph (docs/traces/trace_ui.txt).
+# 0xb38 device graph (work/sweet-audio/traces/trace_ui.txt).
 GRAPH_SIZES = (0x1f0, 0xb38)
+# A graph body starts with its own header {graph_size, num_subgraphs}; g_graph_vendor4
+# proves the framing (0xaa4 = 2724 = the array length).  So a heap candidate is only
+# accepted if `count` is small AND [8, size) actually holds that many GRAPH_SIG hits -
+# a bare u32==size search matches pointer tables and is worthless.
 UPROBES = ("ugwr", "ugrw", "udpw", "umap", "umeta", "ucald", "usetcal",
            "usetcfg", "ugrcal", "ugrcfg", "uioctl", "ushmal")
 # which thread/proc ids show up is boot-dependent; the parse keys on names only.
@@ -71,34 +76,138 @@ def parse(trace):
     return apm, ups
 
 
+def offsets(b, pat):
+    """All offsets of pat via bytes.find - the per-byte range() equivalent here
+    would cost minutes over a 2 MiB heap region."""
+    out, i = [], b.find(pat)
+    while i >= 0:
+        out.append(i)
+        i = b.find(pat, i + 1)
+    return out
+
+
+def graph_headers(b):
+    """Verified graph bodies: {graph_size, num_subgraphs} followed by at least
+    num_subgraphs GRAPH_SIG headers inside the declared size."""
+    out = []
+    for o in range(0, len(b) - 8, 4):
+        size, count = struct.unpack_from("<II", b, o)
+        if not (0x100 <= size <= 0x4000) or not (1 <= count <= 8) or o + size > len(b):
+            continue
+        inner = [i for i in offsets(b[o + 8:o + size], GRAPH_SIG)]
+        if len(inner) < count:
+            continue
+        sgs = [struct.unpack_from("<I", b, o + 8 + i + 16)[0] for i in inner[:count]]
+        out.append((o, size, count, sgs))
+    return out
+
+
 def scan_bytes(b, sizes):
     """Body-detection over one blob: sizes seen in the trace + the vendor graph
     sizes, the subgraph-config TLV, and the GRAPH_OPEN body signature."""
     hits = []
     for want in sorted(sizes | set(GRAPH_SIZES)):
-        p = struct.pack("<I", want)
-        hits += [f"size={want}@{o:#x}" for o in range(len(b) - 3) if b[o:o + 4] == p]
+        hits += [f"size={want}@{o:#x}" for o in offsets(b, struct.pack("<I", want))]
     for t in TLV:
-        p = struct.pack("<I", t)
-        hits += [f"TLV{t:#010x}@{o:#x}" for o in range(len(b) - 3) if b[o:o + 4] == p]
-    for o in range(len(b) - len(GRAPH_SIG) + 1):
-        if b[o:o + len(GRAPH_SIG)] == GRAPH_SIG:
-            hits.append(f"GRAPH_SIG@{o:#x}")
+        hits += [f"TLV{t:#010x}@{o:#x}" for o in offsets(b, struct.pack("<I", t))]
+    hits += [f"GRAPH_SIG@{o:#x}" for o in offsets(b, GRAPH_SIG)]
     return hits
 
 
-def scan_files(paths, sizes):
+def save_body(b, o, size, out_dir):
+    """Write one verified body out as both raw bytes and a C array, so a patch can
+    take it without a hex re-parse."""
+    os.makedirs(out_dir, exist_ok=True)
+    raw = os.path.join(out_dir, f"graph-body-{size:#x}.bin")
+    src = os.path.join(out_dir, f"graph-body-{size:#x}.carray")
+    open(raw, "wb").write(b[o:o + size])
+    with open(src, "w") as f:
+        f.write(f"static const uint8_t g_graph_vendor_dev[{size}] = {{\n")
+        chunk = b[o:o + size]
+        for i in range(0, size, 12):
+            f.write("\t" + " ".join(f"0x{v:02x}," for v in chunk[i:i + 12]) + "\n")
+        f.write("};\n")
+    print(f"     saved {raw} + {src}")
+
+
+def scan_files(paths, sizes, out_dir="logs"):
     """Offline mode: run the same detector over dumps already on disk."""
+    found = 0
     for p in paths:
         try:
             b = open(p, "rb").read()
         except OSError as e:
             print(f"  {p}: unreadable ({e})")
             continue
+        heads = graph_headers(b)
         hits = scan_bytes(b, sizes)
         print(f"  {p} ({len(b)} B) head={b[:32].hex(' ')}")
-        if hits:
+        for o, size, count, sgs in heads:
+            found += 1
+            print(f"     GRAPH BODY @{o:#x} size={size}({size:#x}) count={count} "
+                  f"subgraphs={' '.join(hex(s) for s in sgs)}")
+            if size in GRAPH_SIZES:
+                save_body(b, o, size, out_dir)
+        if hits and not heads:
             print("     markers: " + " ".join(hits[:12]))
+    if not found:
+        print("  no verified graph body in these files")
+    return 0
+
+
+def find_agm_pid():
+    for tok in sh("ps -A -o PID= -o NAME= | grep -i AGMIPC").split():
+        if tok.isdigit():
+            return int(tok)
+    return 0
+
+
+def heap_regions(pid, cap=8 << 20):
+    """Writable allocator regions of a process - where graph bodies live.  File-backed
+    rw maps (.bss/.data) are excluded; so are stacks, which is why the name has to
+    say malloc."""
+    rows = []
+    for line in sh(f"cat /proc/{pid}/maps").splitlines():
+        f = line.split()
+        if len(f) < 5 or not f[1].startswith("rw") or (len(f) > 5 and "malloc" not in " ".join(f[5:])):
+            continue
+        a, b = f[0].split("-")
+        size = int(b, 16) - int(a, 16)
+        if 0x1000 <= size <= cap:
+            rows.append((int(a, 16), size))
+    return rows
+
+
+def heapscan(pids, out_dir="logs", max_regions=48):
+    """No tracefs, no probes, no tone needed: find graph bodies in a process heap by
+    their own header.  This ROM's root cannot even setenforce, so the kprobe route in
+    main() is dead here (verified 2026-11-03)."""
+    found = {}
+    for pid in pids:
+        regions = heap_regions(pid)[:max_regions]
+        comm = sh(f"cat /proc/{pid}/comm").strip()
+        print(f"== pid={pid} ({comm}): {len(regions)} malloc regions, "
+              f"{sum(s for _, s in regions) / 1e6:.1f} MiB")
+        for i, (va, size) in enumerate(regions):
+            name = f"hs-{pid}-{i}-{va:x}.bin"
+            sh(f"{DEV}/apm_shm_read {pid} {va:#x} {size} {DEV}/{name} >/dev/null 2>&1")
+            subprocess.run(ADB + ["pull", f"{DEV}/{name}", f"/tmp/{name}"],
+                           capture_output=True, timeout=300)
+            sh(f"rm -f {DEV}/{name}")
+            try:
+                b = open(f"/tmp/{name}", "rb").read()
+            except OSError:
+                continue
+            os.remove(f"/tmp/{name}")
+            for o, sz, count, sgs in graph_headers(b):
+                mark = "  <== WANTED" if sz in GRAPH_SIZES else ""
+                print(f"     body @{o:#x} size={sz}({sz:#x}) count={count} "
+                      f"sgs={' '.join(hex(s) for s in sgs)}{mark}")
+                if sz in GRAPH_SIZES and sz not in found:
+                    found[sz] = True
+                    save_body(b, o, sz, out_dir)
+    print("== wanted sizes still missing: "
+          f"{[hex(s) for s in GRAPH_SIZES if s not in found] or 'none'}")
     return 0
 
 
@@ -115,8 +224,17 @@ def main():
                          "self-rebooted once inside a 100 s window with them on)")
     ap.add_argument("--scan", nargs="*", default=[],
                     help="offline mode: run the body detector over these local files and exit")
+    ap.add_argument("--pid", default="",
+                    help="comma-separated pids for --heapscan (default: the AGMIPC service)")
+    ap.add_argument("--heapscan", action="store_true",
+                    help="no probes, no tone: read the AGM heap and find graph bodies by their "
+                         "own {graph_size, num_subgraphs} header (the only route left on this ROM)")
     a = ap.parse_args()
 
+    if a.heapscan:
+        pids = ([int(x) for x in a.pid.split(",")] if a.pid else
+                [p for p in find_agm_pid() and [find_agm_pid()] or []])
+        return heapscan(pids)
     if a.scan:
         return scan_files(a.scan, set())
 
