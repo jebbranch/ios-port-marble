@@ -408,4 +408,89 @@ pm8350b@3 / pmr735a@4 / pm8450@7 / pm8010-debug@8,9 / pm8008i@8,9 / pm8008j@c,d`
 | Q' | `IOServiceFirstMatch` 那行不再截断，`IOUserClass` 全名可读 | 仍截断 ⇒ 600 不够，再加宽 |
 | Q'' | `path` 分布里 `/product/audio -> none` 仍在（尚未补节点） | 只作对照，不判成败 |
 
+---
+
+## 12. 2026-11-03 下午：ep3/ep4 把候选重排了，而且判死了我原本的头号方向
+
+### 12.1 ep3：两块 region 都给，它还是走（N2 被否证）
+
+```
+940  map requested type=0   941  map type=0 handed
+942  map requested type=1   943  map type=1 handed
+944  closed (pid 28)        945  died (pid 28)      ← 没有 type=2，也没有新 selector
+1464 IOAudio2Device map requested type=0 → 1465 handed → 1468 notify port type=0 ref=0x21（到此为止）
+```
+
+⇒ 我上一轮写的候选"缺第二块 region 导致离开"**被否证**：它要的两块都拿到之后，行为与只拿到一块时完全一致。
+另外差点被聚合计数骗过去：`sel= attempts` 报了两条 `sel=1`，拆开按类看才发现那是
+**haptics 的** `AppleAOPButtonHapticsServiceUserClient`（pid 57），不是音频。聚合要按文件拆，也得按**类/pid**拆。
+
+### 12.2 分块打印挖出的名字，以及它在真机上根本不存在
+
+`IOServiceFirstMatch` 那条 309 字节的字典拼出来了：
+
+```
+IOPropertyMatch → IOUserAudioDriverUserClientProperties →
+    { IOClass = IOUserUserClient, IOUserClass = IOUserAudioDriverUserClient }
+```
+
+我一度把它当成桥的真正门槛（要起 DriverKit 宿主），**但真机对照把它判死了**：
+`work/iphone-x-recon/dyld/ioservice.txt` 是**一台会出声的 iPhone X** 上抓的，里面
+`IOUserAudioDriverUserClient` 出现 **0 次**（而 `IOUserServer` 有 97 次，说明这机器上 user-server
+机制本身是活的）。⇒  mediaserverd 注册这个 FirstMatch 是**例行的"将来出现再说"**，
+不是出声的前提。**这条判断省下的是"搭用户态驱动宿主"这一整座山。**
+同理 `AppleEFINVRAM` 在真机上也是 0——它查这个名字本身正常；
+但 `IODTNVRAM` 真机有 5 处、我们这边查询回 `none`（镜像里有 6 处字符串，即类在、服务没发布）⇒
+**NVRAM 这一条是真缺口**，与 DriverKit 那一条要分开对待。
+
+### 12.3 ep4：`/product/audio` 是**我们自己的遗漏**，补上后被证明不是门槛
+
+单变量：只加 ADT 里的一个节点（`MARBLE_ADT_AUDIO`，`=0` 逐字节复现 ep3 镜像），
+boot 前先在**已打包的 ADT** 里确认节点在里面。
+
+| 格 | ep3 | ep4 | 判读 |
+|---|---|---|---|
+| T1 | `/product/audio -> none` ×3 | **`-> IOService` ×3** | 节点确实进了 registry（仪器自证，所以后面的"无变化"是真负结果） |
+| T2 AOP | open→sel0→map0→map1→closed | **完全相同** | 不是这个节点 |
+| T3 IOAudio2 | map0→notify→停 | **完全相同** | 同上 |
+| T4 | 音频 open 2 | 音频 open 2 | 无新增 |
+| T5 | — | haptics 12 registered / 4 次 pid57 open，无回归 | 没有变差；旧注释担心的"advertise 了我们没有的能力"这次没发生 |
+
+⇒ `/product/audio` 该补（真机有、iOS 会查），但它**不是**握手卡住的原因。
+
+### 12.4 重排后的候选清单（每条都有"真机有、我们没有"的对照）
+
+真机上 `mediaserverd`（pid 34）拥有 **17 个 user client**，按类分布：
+
+| 类 | 真机 | 我们这几台 |
+|---|---|---|
+| `IOAudio2DeviceUserClient` | **8** | **1** |
+| `AppleKeyStoreUserClient` | 2 | 0（但 `AppleKeyStore(UserClient)` 字符串在我们的镜像里有 4/3 处 ⇒ 类在、没发布服务） |
+| `AppleSPUHapticsAudioUC`/`AppleSPUHIDDriverUserClient` | 2 | 4 次 open（震动那半边是通的） |
+| `AppleAOPAudioUserClient` | 1 | 1 ✓ |
+| `AppleAOPVoiceTriggerUserClient` | 1 | 0（我们没发 `AppleAOPVoiceTriggerController`，而它注册过 FirstPublish） |
+| `IOGPUDeviceUserClient` | 2 | 0（GPU 线，冻结中，不算音频前提） |
+
+而真机的音频设备**是一组**（11 个 `IOAudio2Device` 节点，5 个带 `device UID`）：
+
+```
+Speaker / Codec  = IOService:IOAudio2Device:AppleARMDMAAudioDevice:AppleARMIISAudioDevice:AppleEmbeddedAudioDevice
+Actuator / Hawking / Loopback / Baseband Voice / Mikeybus Secondary / DSP Debug1,2 = …:AppleSecondaryAudio[:AppleActuatorSecondaryAudio]
+AppleUSBMike ×2
+```
+
+⇒ ep5 的下一个仪器：**把这一组设备名发齐**（`device UID` 逐个对应，仍旧全惰性、仍旧吃 0 字节参数），
+判据是"它是逐个 open 还是不 open"，以及"open 变多之后是否出现 `sel=1+`"。
+形状上沿用已经编译通过的静态类 + KernelConfigTables 条目（每台设备一个类），
+**不新写对象生命周期代码**——那是把这机器搞死机的最短路径，而一次死机要你长按电源。
+次一等的靶子是 `AppleKeyStoreUserClient` 与 `IODTNVRAM`：两者都是"真机有、我们没有"。
+
+### 12.5 这四台开机在目标里的位置
+
+- A2 / E 组：**由测量关闭**（六个 SPMI SID 全 `rc=-1`、哨兵 `0xa5` 未被覆盖；电量在 `qcom,pmic-glink` 上，5 s 一采样），
+  按 A3 如实写"内核侧拿不到独立于 DONE 的正证据"。
+- B1：**已答**（会 open，且按抄来的表发 selector 0）。
+- B2：**部分**（sel 0 + 两次 map + notify 已实测；`sel≥1` 仍未在音频路上出现 ⇒ ABI 复原还缺原料）。
+- 下一步的主力从"发一个名字"变成"发一组设备 + 补两个真机有的服务"，判据继续单变量。
+
 
