@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..bcc0cb3
+index 0000000..2aca64b
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,621 @@
+@@ -0,0 +1,628 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -523,7 +523,14 @@ index 0000000..bcc0cb3
 +SweetAudioDevice::start(IOService *provider)
 +{
 +	const char *uid = sweetDeviceUID();
-+	const char *cname = GetMetaClass()->getClassName();
++	/*
++	 * getName(), not GetMetaClass()->getClassName(): the latter does not exist in
++	 * this IOKit (CI: "use of undeclared identifier 'GetMetaClass'" at this line),
++	 * and getName() is what the haptics stubs already print with - IOService's
++	 * registry name falls back to the class name, which is the distinction the
++	 * five nodes need here.
++	 */
++	const char *cname = getName();
 +
 +	/*
 +	 * Unconditional, ahead of the gate, and carrying both the class and the UID:
