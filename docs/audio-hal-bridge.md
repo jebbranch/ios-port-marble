@@ -320,4 +320,92 @@ banner 我本地读到的是 `Darwin Kernel Version 22.3.0 … root:xnu-8792.82.
   但 §10.3 那 ~100 行是 v6 才加的，**这个产物里没有**（`aop sel=`、`legacy trap[%u]` 均 0 命中），
   所以 v6 仍是"未过编译器"的状态，等下一次 CI。
 
+---
+
+## 11. 2026-11-03 中午：第一次真答案——mediaserverd 来了（`work/xnu-gh/logs/ring-ep.txt`）
+
+有效性先摆出来，后面每一条都以此为前提：cmdline 584 字节、内核回显也是 584 字节
+（**没被切，六个参数逐个 ARRIVED**）、`graph_start status=0` ×1、`done status=0` ×4、
+`pcm tone done (30 buffers)`（`sweetbufs` 这次真的生效）、ring 以
+`SWEET GLINK: PSCI SYSTEM_RESET` 结束（日志完整）。设备干净复位，全程只 `fastboot boot`。
+
+### 11.1 头条：空壳被 open，selector 被调用，v6 的方法表是活的
+
+```
+  79  AppleAOPAudioController start          81  AppleAOPAudioController registered
+  80  gate flag=1 exp=0x3                    83  IOAudio2Device Speaker registered
+ 954  AppleAOPAudioUserClient open by pid 28 type 0
+ 956  AppleAOPAudioUserClient sel=0 sin=0 sout=0 struct_in=0 struct_out=0
+ 957  aop sel=0 ran in=0 out=0 sin=0
+ 958  AppleAOPAudioUserClient map refused type=0
+ 959  AppleAOPAudioUserClient closed (pid 28)
+ 960  AppleAOPAudioUserClient died (pid 28)
+1367  IOAudio2DeviceUserClient open by pid 28 type 0
+1368  IOAudio2DeviceUserClient map refused type=0
+```
+
+pid 归属按 P4 的规矩在**同一 ring 内**核验：`1681: CODE SIGNING: … p=28[mediaserverd]`，
+且 `797: exec mediaserverd`。⇒ **B1 那个二元问题的答案是"会"**：发一个 Apple 名字的音频服务，
+iOS 的音频服务器就来 open，并按 §10.2 那张表发出 selector 0（`method_Open`）。
+`aop sel=0 ran` 同时证明"抄来的方法表 + 交还基类校验"这条路真的在跑。
+
+### 11.2 它止步的位置（顺序是事实，因果不是结论）
+
+两个客户端都在 **`clientMemoryForType(type=0)` 被拒**之后结束。一次开机不授权机制结论，
+所以做法是把它变成**可否证**的：0244 v7 改为**给**一段 0x10000 零页缓冲区
+（用 0197/0211 在 haptics 客户端上已跑通的同一个 `withCapacity(...)` 写法，
+引用交给调用方、不额外 release），其它 type 继续拒。
+若给了之后仍然只到 map 就 closed ⇒ "拒绝映射导致离开"这条候选被自己否证，线索转 §11.3。
+
+### 11.3 0049 埋点第一次跑起来就撞到的三样东西
+
+`IOK` 共 **396** 行；`mediaserverd` **288**、对照 `backboardd` **108 > 0 ⇒ Q0c 成立**，
+所以任何"为 0"都算真负结果。mediaserverd 的查询分布：
+
+| 次数 | 查询 | 结果 |
+|---|---|---|
+| 270 | `path IODeviceTree:/product` | `IOPlatformDevice`（成功） |
+| **3** | **`path IODeviceTree:/product/audio`** | **`none`** |
+| 6 | `matching1` | `AppleEFINVRAM -> none`、`IODTNVRAM -> none`、`IONameMatch bluetooth -> none`、`IOPlatformExpertDevice` ×3 成功 |
+| 4 | `IOServiceFirstPublish` | `IOAudio2Device`、`AppleAOPAudioController` ×2、**`AppleAOPVoiceTriggerController`（我们没发）** |
+| 3 | `IOServiceFirstMatch` | 嵌套 `IOPropertyMatch → IOUserAudioDriverUserClientProperties → {IOClass=IOUserUserClient, IOUserClass=…}`，**在 240 字符处被截断** |
+| 1 | `open AppleAOPAudioController` | `0x0` |
+
+⇒ 三条候选阻塞点，都与 IOKit 名字无关：**(a) 平台设备树缺 `/product/audio`；
+(b) 它要 NVRAM（`AppleEFINVRAM`/`IODTNVRAM`），我们两个都没有；
+(c) 它在等一个 driverkit 式的 user-client 类**，而那个类名正好被截断 ⇒ 0245 把 240 放到 600。
+
+`P7 legacy = 0 行`，而 `SWEET AUDPROBE: legacy ` 这条 marker 确实在镜像里（门禁 c=2）
+⇒ 这个 0 是有意义的：客户端不走 legacy `IOConnectMethod*`/trap，全靠 selector。
+
+### 11.4 E 组这次知道自己为什么不行，而且是我的仪器先违规
+
+三段全 `flag=1 exp=0x3`（送达自证）但 `invalid subtype=255 ok=0/12`。
+同一 ring 里 SPMI 本身是好的：`1725 SWEET SPMI: rtc sid=0 base=0x6100: …`、
+`1728 SWEET SPMI: hap sid=3 base=0xf000 … rc=0` ⇒ 错的是我选的 `sid=0 / 0x4805`。
+
+查实时 Android 设备树：SPMI 上声明的 PMIC 是 `pmk8350@0 / pm8350@1 / pm8350c@2 /
+pm8350b@3 / pmr735a@4 / pm8450@7 / pm8010-debug@8,9 / pm8008i@8,9 / pm8008j@c,d`
+（`logs/fdt/marble-live.dts:8007,8400,8441,8673,8842,8891`），**没有任何燃油计兼容节点**；
+`qcom,battery_charger` 挂在 `compatible = "qcom,pmic-glink"` 之下（`:9007,9013,9019`）。
+⇒ 预测：这颗板的燃油计根本不在 SPMI 上，电量只能经 pmic_glink（5 s 一采样），
+而 130 ms 的音在 5 s 的源上原理性看不见。
+
+同时承认我自己的仪器违规：旧代码 `if (read() != 0 || (subtype != 3 && subtype != 4))`
+把"读失败"与"读到不认识的数值"合成一行——正是我这一天反复在拆的失效模式。
+0243 v3 拆开 `rc`/`val`，读前写 `0xa5` 哨兵，并在 pre 阶段扫 6 个 SID，
+把"设备树推断"变成"同一次开机内的测量"，不多花一次 boot。
+
+### 11.5 ep2 的判据（开机前写死，事后不许改）
+
+| 格 | 期望（成立） | 不成立时怎么判 |
+|---|---|---|
+| 前置 | 六参数在回显里；`tone done (30 buffers`；`done status=0`；ring 以 SYSTEM_RESET 结束 | 缺 ⇒ 依赖格记未运行 |
+| **M1** | `map requested type=0` 之后紧跟 `map type=0 handed 0x10000 zeros` | 没有 handed ⇒ v7 没进镜像（门禁已含此 marker，本不该发生） |
+| **M2（否证格）** | handed 之后出现**新的** `sel=`（预期 sel=1/4/5）或 `setProperties` | **若仍只到 map 就 closed/died ⇒ "拒绝映射导致离开"被否证**，主攻转 `/product/audio` 与 NVRAM |
+| M3 | `IOAudio2DeviceUserClient` 在 handed 之后至少发一个 selector | 仍 0 selector ⇒ 那一路门槛不在此（它连 sel 都没发过） |
+| E' | `ibat pre gauge sid=0 … rc=? val=?` + 六行 `ibat sweep sid=…` | 全 `rc!=0` ⇒ "SPMI 上没有燃油计"由测量确认，能量侧按止损关闭；任一 sid `rc=0` 且数值合理 ⇒ 下一版把突发挪过去 |
+| Q' | `IOServiceFirstMatch` 那行不再截断，`IOUserClass` 全名可读 | 仍截断 ⇒ 600 不够，再加宽 |
+| Q'' | `path` 分布里 `/product/audio -> none` 仍在（尚未补节点） | 只作对照，不判成败 |
+
 
