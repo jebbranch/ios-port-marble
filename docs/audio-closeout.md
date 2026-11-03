@@ -1983,3 +1983,57 @@ D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PRO
 
 安全线：不加音、不放长音、`sweetbufs=30` 一字不动；纯 RAM `fastboot boot`；
 vgraph 的 1000×`g_wait(5)` 最多阻塞 5 s，比一轮 tone 短。
+
+## 撤回（同日 18:0x，紧接上一节）：E1 的前提是我自己读反的，② 按预登记止损关闭
+
+上一节写完后我按"先把断言回源"的规矩去查 2712 的出处，三条实测把它打穿了：
+
+1. **厂商自己声明的长度就是 2712。** 10-27 那次抓包（`logs/gpr-20261027-090802.txt`）里
+   GRAPH_OPEN 是 `src=0x2010 p4=0x116 p5=0x01001000 p8=0xb0d890b8 p9=0xa98`，
+   `0xa98 = 2712`。所以"我们把 12 字节图头剥掉 = bug"不成立——`off=12/len=2712`
+   和 `off=0/len=2712` 两种读法里，厂商的长度 2712 与堆里那份 2724 的差**正好**是 12，
+   最自然的解释是**图头本来就不上线**（`g_graph_vendor4` 的注释写的就是这个选择）。
+2. **`off=0 / len=2712` 已经跑过。** `logs/ring-o3-vgraph0.txt` 回显的 cmdline 里
+   就有 `sweetvgoff=0`，日志行仍是 `len=2712`。上一节说"从没试过"是错的。
+3. **② 的真实结局不是"被拒"，是"发出去之后就没有日志"。** 五次 vendor4 开机逐条读：
+   `ring-vgraph` 打印 `graph_open/vendor4: no response` + `vendor4 graph open failed`；
+   `ring-o2-vgraph12` / `ring-o3-vgraph0` / `ring-o4-vgraph-pace` 三次的
+   `graph_open/vendor4` 那行**就是最后一条音频域日志**，之后 ring 里没有 rsp、
+   没有 no response、也没有 failed——而 `no response` 是跑完 1000×`g_wait(5)` 才打印的，
+   所以那三次**根本没走到轮询结束**。这正是 `sweet_glink.c:6260-6266` 注释里
+   run115 的那个现象（这个形态会让 DSP 去读区域，GUI 之前把 SoC 挂住）。
+   ⇒ 之前把 ② 记成"原字节重放被 DSP 拒绝"，措辞过强：更准的是
+   **"五种形态全都没拿到过任何 rsp，其中三种以挂死收场"**。
+
+因此 **E1（`off=0/len=2724`）不跑**：它的先验来自我读反的那条前提，
+而且它的失败模式是挂死（要长按电源才出来），不是安静失败。
+镜像 `images/e1-vgraph2724.img` 留着但不启动。
+
+按 goal 里预登记的止损（"B3 若在 ② 上两轮仍无进展 ⇒ 明确写'内核侧与 iOS 侧都常驻、
+出声仍未证'，不刷开机次数"）：② 已经用掉 5 次开机，**止损条件成立**。
+现在写下的就是那句话本身，不把它包装成headline进展：
+
+> **内核侧（数据面、SHM、GPR、图开-准备-启动的厂商帧形）与 iOS 侧（mediaserverd 常驻、
+> 开我们的壳、GetControlValue 在问）都已经在场，"手机真的出声"仍未证。**
+
+### 顺带一条把"再抓一次厂商正文"这条路也关掉的事实（今天实测）
+
+这台 ROM 的 root **装不上 tracefs**：`echo > /sys/kernel/tracing/kprobe_events` 是
+`Permission denied`，`ls` 该文件也 `Permission denied`，连 `setenforce 0` 都是
+`Permission denied`（`CapEff=000001ffffffffff` 全能力位、`u:r:su:s0`，dmesg 里只有
+dontaudit 过的 `shell` 读 `error_log` 那条）。内核 `uname -r = 5.10.226-android12-9`，
+`ro.soc.model=SM7475`（确实是 marble 这颗），`ro.build.fingerprint=OnePlus/PKG110/OP5D2BL1:15`
+（props 是改过的，别拿它当型号判据）。
+⇒ `apm_harvest.py` 主路径（kprobe+uprobe）在这个 ROM 上是死的，不用重试。
+
+替代的 `--heapscan`（不放音、不开探针，纯 `/proc/<pid>/mem` 读，按
+`{graph_size, num_subgraphs}` 头 + 体内至少 count 个 GRAPH_SIG **验真**）今天跑了两遍：
+- 先用已知-good 的 `g_graph_vendor4` 当正对照验过探测器（认出 `size=2724 count=4`
+  和 4 个子图 id），并正确拒绝那份 680 字节碎片 ⇒ 探测器不是摆设。
+- 然后跑一遍 agmplay 真会话（`TDM-LPAIF-RX-TERTIARY-VIRT-0 96000/2/32`，100 ms，
+  插件确实加载了），立刻扫 `1588/1646/328/1889/1763` 五个音频域进程共 50 MiB
+  的 malloc 区 ⇒ **一个经验证的图头都没有**，`0x1f0` 和 `0xb38` 都没出现。
+  ⇒ 厂商**当前**那份 2872 字节设备图正文，用现存的检法拿不到；
+  而 `g_graph_vendor4` 那份 2724 在今天这台 ROM 的堆里也复现不出同一形状。
+  （诚实边界：`GRAPH_SIG` 认的是 `size=0x30` 那种 48 字节属性块；若当前图用了别的小节长度，
+  这个检法会漏。这一条**没测**，不能写成"堆里确实没有"。）
