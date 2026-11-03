@@ -2037,3 +2037,54 @@ dontaudit 过的 `shell` 读 `error_log` 那条）。内核 `uname -r = 5.10.226
   而 `g_graph_vendor4` 那份 2724 在今天这台 ROM 的堆里也复现不出同一形状。
   （诚实边界：`GRAPH_SIG` 认的是 `size=0x30` 那种 48 字节属性块；若当前图用了别的小节长度，
   这个检法会漏。这一条**没测**，不能写成"堆里确实没有"。）
+
+## pstore 判死，但 ACDB 把 ② 从"未知"变成"有输入可算"（2026-11-03 晚，零开机）
+
+### 一、pstore 路线实测关闭
+`/sys/fs/pstore` **已挂载**（`pstore … rw,seclabel,…`）、`/sys/module/ramoops/parameters` 存在，
+但作为 root（`u:r:su:s0`、`CapEff=000001ffffffffff`）：
+`ls /sys/fs/pstore` = `Permission denied`（目录是 `dr-xr-x--- system`），
+九个 `ramoops/parameters/*` 全部 `Permission denied`，`/proc/cmdline` 也 `Permission denied`。
+⇒ 与 tracefs 同一个 LSM 拦截，**这条挂死存活通道在这台 ROM 上读不出来**；
+`/dev/mem` 以前已确认不存在，所以也没有绕开的读法。
+
+### 二、真正的进展：厂商图正文的来源是 vendor 分区里的 ACDB
+顺手查的（不依赖探针）：`/vendor/etc/acdbdata/ukee_{mtp,qrd,cdp}/*_acdb_cal.acdb`（每台 1.4 MB
+量级）+ `/vendor/etc/usecaseKvManager.xml`，`/vendor/etc/audio/sku_ukee/` 里是
+mixer_paths / resourcemanager（UKEE 就是这颗 SM7475 的 machine 串）。三套 ACDB 已拉到
+`work/sweet-audio/vendor-ukee/`。
+
+在 ACDB 里按 props 头 `{1, 0x08001001, 0x30}` 枚举：MTP **1450 条 props 记录 / 235 个子图 id**。
+并且**我们容器里的三个子图 blob 在 ACDB 里原样命中**（`0xb0000002`@0x241b2、
+`0xb0000024`@0x54cf6、`0xb0000023`@0x54e2a）。⇒ 结论：**子图 blob 是 ACDB 存的，
+`{graph_size,count}` 容器是 AGM 运行时拼的**——所以堆里扫不到容器（今天 50 MiB 零命中）是**符合结构的**，
+不是"抓漏了"。
+
+### 三、硬事实：我们发的那个容器里，有一个子图在校准数据里根本不存在
+
+| 子图 id | 在三套 ukee ACDB 里 | 厂商当前序列里 |
+|---|---|---|
+| `0xb0000002` | props ×41 | 用（设备图） |
+| **`0xb0000025`** | **22–24 次命中**（props ×2） | **用（设备图）** |
+| `0xb0000024` / `0xb0000023` | props ×1 / ×14 | 用（设备图） |
+| `0xb00000d5` / `0xb00000d6` | props ×2 / ×1 | 用（流图） |
+| **`0xb0000081`** | **0 次**（u32 全对齐搜索，三套都是 0） | **不用** |
+
+`0xb0000081` 是我们 `g_graph_vendor4` 四子图里的那个，也是 `g_vendor4_sgs` 里的那个。
+⇒ 我们一直在发一个**在这台机器校准数据里查不到**的子图。这与"发出后拿不到任何 rsp"**相容**，
+但**没有证明**它就是挂死/无应答的原因——那还需要一条挂死下仍活着的输出通道（第一节已判死，
+剩下的做法只有从别的上下文写 ring，属仪器改动）。
+
+另一条同时到手的结构读法：容器头**不是** `{size,count}` + 四对 `{id,size}`，
+而是 `{总长=0xaa4, count=4}` 后面直接跟第一个子图自己的记录链
+（`… 0x08000001,8,2,0 … 0x08000010,4,2,<blob 长度>` 然后才是 props 头）。
+同一个字段在 ACDB 里是 **808**、在我们容器里是 **816**（差 8）——
+这条差异还没解释，**不许**先拿来当结论。
+
+### 四、② 的下一步因此变成离线可算的（不占开机次数）
+1. 用 ACDB 里 `0xb0000025` 的两条记录 + `b0000002/b0000024/b0000023` 拼出厂商**当前**
+   设备图容器，校验总长是否 = 2872（`0xb38`，厂商包里声明过）；
+2. 同时用同一套 ACDB 拼流图（`0xb00000d5`，声明 496 = `0x1f0`）——流图能对上
+   就证明"ACDB→容器"的重建函数是对的，再信设备图那份；
+3. 两条都对上以后，才谈"要不要花一次开机去发它"，并且那次开机必须自带
+   存活输出通道（第四节③：ring 心跳从别的上下文打），否则又只是一条"发出后没了"。
