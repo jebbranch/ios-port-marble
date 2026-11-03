@@ -35,9 +35,13 @@ OPS = {0x01001006: "SET_CFG", 0x0100100C: "SHM_MAP", 0x0100100D: "SHM_UNMAP",
 # header {iid=1, PARAM_ID_SUB_GRAPH_CONFIG=0x08001001, size=0x30}; that is the
 # same 12-byte signature found in the AGM heap (docs/vendor-graph.md).
 GRAPH_SIG = struct.pack("<III", 1, 0x08001001, 0x30)
-# The two payload sizes the vendor actually opens: 0x1f0 stream graph,
-# 0xb38 device graph (work/sweet-audio/traces/trace_ui.txt).
-GRAPH_SIZES = (0x1f0, 0xb38)
+# Payload sizes the vendor's GRAPH_OPEN declares: 0x1f0 stream graph, 0xb38 device
+# graph (work/sweet-audio/traces/trace_ui.txt).  The container on disk/heap is 12 B
+# longer than the declared payload - container = {total,count} + per subgraph
+# {52 B preamble + blob}, and the wire drops the first 12 bytes (tools/
+# acdb_graph_rebuild.py derives it from g_graph_vendor4: 8 + 4*52 + 2508 = 2724
+# against a declared 2712).  So search both framings.
+GRAPH_SIZES = (0x1f0, 0xb38, 0x1fc, 0xb44, 0xaa4)
 # A graph body starts with its own header {graph_size, num_subgraphs}; g_graph_vendor4
 # proves the framing (0xaa4 = 2724 = the array length).  So a heap candidate is only
 # accepted if `count` is small AND [8, size) actually holds that many GRAPH_SIG hits -
@@ -162,14 +166,17 @@ def find_agm_pid():
     return 0
 
 
-def heap_regions(pid, cap=8 << 20):
-    """Writable allocator regions of a process - where graph bodies live.  File-backed
-    rw maps (.bss/.data) are excluded; so are stacks, which is why the name has to
-    say malloc."""
+def heap_regions(pid, cap=8 << 20, all_rw=False):
+    """Writable regions of a process.  With all_rw off only the malloc arenas are
+    taken, which silently excludes the dma_heap/ion buffers AGM may map the graph
+    container into - that gap made the first 50 MiB sweep prove nothing about
+    containers living outside libc_malloc.  all_rw=True takes every rw mapping."""
     rows = []
     for line in sh(f"cat /proc/{pid}/maps").splitlines():
         f = line.split()
-        if len(f) < 5 or not f[1].startswith("rw") or (len(f) > 5 and "malloc" not in " ".join(f[5:])):
+        if len(f) < 5 or not f[1].startswith("rw"):
+            continue
+        if not all_rw and len(f) > 5 and "malloc" not in " ".join(f[5:]):
             continue
         a, b = f[0].split("-")
         size = int(b, 16) - int(a, 16)
@@ -178,13 +185,16 @@ def heap_regions(pid, cap=8 << 20):
     return rows
 
 
-def heapscan(pids, out_dir="logs", max_regions=48):
+def heapscan(pids, out_dir="logs", max_regions=48, all_rw=False):
     """No tracefs, no probes, no tone needed: find graph bodies in a process heap by
     their own header.  This ROM's root cannot even setenforce, so the kprobe route in
     main() is dead here (verified 2026-11-03)."""
     found = {}
     for pid in pids:
-        regions = heap_regions(pid)[:max_regions]
+        regions = heap_regions(pid, all_rw=all_rw)
+        if len(regions) > max_regions:
+            print(f"   (capped at {max_regions} of {len(regions)} regions)")
+        regions = regions[:max_regions]
         comm = sh(f"cat /proc/{pid}/comm").strip()
         print(f"== pid={pid} ({comm}): {len(regions)} malloc regions, "
               f"{sum(s for _, s in regions) / 1e6:.1f} MiB")
@@ -224,6 +234,8 @@ def main():
                          "self-rebooted once inside a 100 s window with them on)")
     ap.add_argument("--scan", nargs="*", default=[],
                     help="offline mode: run the body detector over these local files and exit")
+    ap.add_argument("--allrw", action="store_true",
+                    help="with --heapscan: sweep every rw mapping, not just malloc arenas")
     ap.add_argument("--pid", default="",
                     help="comma-separated pids for --heapscan (default: the AGMIPC service)")
     ap.add_argument("--heapscan", action="store_true",
@@ -234,7 +246,7 @@ def main():
     if a.heapscan:
         pids = ([int(x) for x in a.pid.split(",")] if a.pid else
                 [p for p in find_agm_pid() and [find_agm_pid()] or []])
-        return heapscan(pids)
+        return heapscan(pids, all_rw=a.allrw)
     if a.scan:
         return scan_files(a.scan, set())
 
