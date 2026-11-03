@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..63e3a2a
+index 0000000..1c74713
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,733 @@
+@@ -0,0 +1,743 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -160,6 +160,14 @@ index 0000000..63e3a2a
 +SweetAudioUCBase::initWithTask(task_t owningTask, void *securityID,
 +    UInt32 type, OSDictionary *properties)
 +{
++	/*
++	 * getProvider() is still NULL here: IOService::open() runs initWithTask
++	 * before it attaches the client to the provider, so "on uid=?" at this line
++	 * is the honest reading, not a bug - the attribution lands on the post-attach
++	 * lines (map requested, notify port, close), which every client that gets
++	 * this far does hit.  ep7a proved the need: it showed 4 device opens and no
++	 * way to say which 4 of the 5 nodes they were.
++	 */
 +	fPid = owningTask ? task_pid(owningTask) : -1;
 +	if (!IOUserClient::initWithTask(owningTask, securityID, type,
 +	    properties)) {
@@ -227,8 +235,9 @@ index 0000000..63e3a2a
 +SweetAudioUCBase::registerNotificationPort(mach_port_t port, UInt32 type,
 +    UInt32 refCon)
 +{
-+	IOLog("SWEET AUDPROBE: %s notify port type=%#x ref=%#x\n", getName(),
-+	    (unsigned)type, (unsigned)refCon);
++	IOLog("SWEET AUDPROBE: %s notify port type=%#x ref=%#x on uid=%s\n",
++	    getName(), (unsigned)type, (unsigned)refCon,
++	    sweet_audio_provider_uid(this));
 +	return IOUserClient::registerNotificationPort(port, type, refCon);
 +}
 +
@@ -238,8 +247,9 @@ index 0000000..63e3a2a
 +{
 +	IOBufferMemoryDescriptor *buf;
 +
-+	IOLog("SWEET AUDPROBE: %s map requested type=%u options=%#x\n",
-+	    getName(), (unsigned)type, options ? (unsigned)*options : 0);
++	IOLog("SWEET AUDPROBE: %s map requested type=%u options=%#x on uid=%s\n",
++	    getName(), (unsigned)type, options ? (unsigned)*options : 0,
++	    sweet_audio_provider_uid(this));
 +
 +	/*
 +	 * Types 0 and 1 both get their own buffer now.  The second boot is what
