@@ -17,8 +17,8 @@
 | ADSP / GLINK / GPR / APM 控制面 | ✅ | GRAPH_OPEN/PREPARE/START、TDM SET_CFG 全 status 0 |
 | **音频数据面（DSP 消费我们的 PCM）** | **✅ 2026-11-02** | `sweets1ap=3`（S1 叶子 AP=11）后 `DATA_BUFFER done status=0`，槽位归还与我们的 ping-pong 一致，1200 buffer 跑完正常复位，cb5 无新故障位 |
 | GPU SMMU（kgsl-smmu） | 🟡 探测完成 | 全局寄存器可读，SMR/S2CR=TRANS 可写，BYPASS 被禁，CB 页访问挂死 |
-| 音频出声（内核侧） | 🔴 未证，参数侧已收 | ① PA 寄存器三时刻逐位相同（J3 未命中）；② 厂商四包重放全被拒 `vcfg2 rc bf=-1 c0=-1 c8=-1 p65=-1`，I4 补测后**跨开机可复现**（`ring-i4.txt:1647`，有效性全绿）；③ 时钟见证因拿不到厂商已知值而关闭 ⇒ 静态快照这条路判死，只剩能量侧（0243）与 iOS 侧的桥（`docs/audio-hal-bridge.md`） |
-| iOS 应用出声（音频桥） | 🟡 探测中 | mediaserverd 能起且不崩；我们内核里没有任何 Apple 音频类，而自写服务已被 backboardd 真实 open ⇒ 0244 发一个空壳 `AppleAOPAudioController`/`IOAudio2Device(Speaker)`问一个二元问题：有没有人来 open。路线与差距清单见 `docs/audio-hal-bridge.md` |
+| 音频出声（内核侧） | 🔴 未证（且 E/P 上次开机作废） | ① PA 寄存器三时刻逐位相同（J3 未命中）；② 厂商四包重放全被拒 `vcfg2 rc bf=-1 c0=-1 c8=-1 p65=-1`，跨开机可复现（`ring-i4.txt:1647`）；③ 时钟见证因拿不到厂商已知值而关闭 ⇒ 静态快照这条路判死。**2026-11-03 重判**：I4 那次的 `sweetbufs=30` 被 607 字节顶切成 `sweetbufs=3`（`ring-i4.txt:1732` 只有 3 buffer ≈ 12 ms 音），所以那组"三时刻相同"的具体读数不作数（结论方向不变）；`ring-ab` 的 E1–E5/P1–P4 三个参数全没进内核 ⇒ 整次作废，且因 `sweetbufs` 丢失实际跑了 1032 个 buffer——宿舍安静的保护当时是失效的，只是那轮提前崩在 `CRASH ExtragalacticPos`。剩能量侧（0243）与 iOS 侧的桥 |
+| iOS 应用出声（音频桥） | 🟡 探测中（0244 已按真机 ioreg 改名） | mediaserverd 确实起（`ring-ab.txt:792 exec mediaserverd`，159 个 ring 都有）；我们内核里没有任何 Apple 音频类，而自写服务已被 backboardd 真实 open ⇒ 发空壳问"有没有人来 open"仍是要做的那一次。**上次开机没有答案**：`sweetaudioprobe=1` 在偏移 613，被 607 顶切掉。真机 `work/iphone-x-recon/dyld/ioservice.txt` 校正了三处名字：UC 类是 `AppleAOPAudioUserClient`(:3559)/`IOAudio2DeviceUserClient`，UID 的键是带空格的 `"device UID"="Speaker"`(:13112)，我原来用的 `IOAudio2DeviceUID` 在整个 dump 里 0 次命中。`cs_invalid_page p=28[mediaserverd]` 不作为阻塞点（backboardd/chronod/dasd 同病）。路线与差距清单见 `docs/audio-hal-bridge.md` |
 | 电池 | 🟡 通道已开 | pmic_glink 能 open，属性请求的响应格式不对 |
 | RTC | 🟡 读到了 | PMK8350 RTC 由 EE4（ADSP）拥有，AP 写入被拒 |
 
@@ -79,14 +79,24 @@ KEEPALIVE=1 CPUS=8 ./scripts/mkimage.sh \
   sweetsmp=1 sweetsmpn=20 sweetsmpms=1000 sweetglink=0
 ```
 
-### 音频（数据面已知-good，2026-11-02 实机确认）
+### 音频（数据面已知-good，2026-11-02 实机确认；参数预算修正 2026-11-03）
+
+> **boot-args 只有 607 字节**：`scripts/mkpayload.py:36-38` 把 CMDLINE 放在 0x48、
+> SEG_TABLE 在 0x2a8（`BOOT_LINE_LENGTH = 608`），`:186` 以前是**静默切片**。
+> 内核侧同一常量 `pexpert/pexpert/arm64/boot.h:26`，`bsd/kern/kern_sysctl.c:2167-2170`
+> 用 `strlcpy(…, BOOT_LINE_LENGTH)` 回显 ⇒ ring 里那行 `boot-args = ` 就是内核真正看到的，
+> 长度顶到 607 就说明后面全没了。`mkimage.sh` 现在超 **590** 直接 build fail。
+> 仪器开关合并成 `sweetexp`（bit0 = IBAT 突发，bit1 = 音频服务探针），新增见证不再吃字节。
+> `sweetgpu=0` 已从示例里去掉——`g_gpu_probe()` 起于 `int en = 0`
+> （`work/chain-tree/bsd/dev/sweet_glink.c:2689`），传 0 与不传等价，别为它浪费 11 字节。
 
 ```bash
 # kernel 需要 >= 0232（S1 叶子的 AP 由 sweets1ap 控制）；0233 起可把 PA 提前配置
 D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PROBE_LEVEL=0 \
-  ./scripts/mkimage.sh sweetgpu=0 sweetpcm=1 sweets1=1 sweetiova=1 \
+  ./scripts/mkimage.sh sweetbufs=30 \
+  sweetpcm=1 sweets1=1 sweetiova=1 \
   sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 \
-  sweets1ap=3 sweetampfirst=1 sweetbufs=30
+  sweets1ap=3 sweetampfirst=1
 ./scripts/boot_one.sh images/shim-iosroot-adsp.img audio
 ```
 

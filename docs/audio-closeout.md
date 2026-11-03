@@ -1685,3 +1685,100 @@ PA 在流前后没有可测变化、厂商那四包在这张图上被拒、并�
 
 风险如实说：0244 是**新增 IOKit C++**，本机没法编译校验（只能靠 CI）。它若编坏，这一版 kernel
 会红，A2 的那次开机一起延后——这是把两件事攒成一次推送的代价，我按用户要求攒了。
+
+---
+
+## 2026-11-03 离线收口：boot-args 只有 607 字节，ring-ab 与 ring-i4 都要重判
+
+设备不在手（用户在上课），这一节全部是本地源码 + 已归档 ring 的离线结论，没有新开机。
+
+### 一、机制（源码级，已核）
+
+* 截断发生在**我们自己的打包器**里：`scripts/mkpayload.py:36` `BOOT_LINE_LENGTH = 608`、
+  `:37 CMDLINE = 0x48`、`:38 SEG_TABLE = CMDLINE + BOOT_LINE_LENGTH # 0x2a8`、
+  `:186 cl = cmdline.encode()[:BOOT_LINE_LENGTH - 1]`——**静默切片，不告警**。
+* 内核侧同一个常量：`pexpert/pexpert/arm64/boot.h:26` `#define BOOT_LINE_LENGTH 608`
+  （已实测存在于 `work/ci-src/xnu-xnu-8796.141.3/`），`bsd/kern/kern_sysctl.c:2167-2170`
+  `char buf[BOOT_LINE_LENGTH]; strlcpy(buf, PE_boot_args(), BOOT_LINE_LENGTH);`。
+  ⇒ **打印截断 == 存储截断，硬顶 607 字节**；launchd 那行看起来是 620，因为
+  `boot-args = ` 前缀 13 字节。
+* 所以 `images/*.build.log` 里的 `cmdline:` 是打包**前**的字符串，它比镜像里真正带的长，
+  以前我一直拿它当真相——这就是三个仪器静默失踪的来源。
+
+### 二、哪些历史结论作废（按实测字节偏移）
+
+| boot | cmdline | 关键 arg@偏移 | 内核回显 | 判定 |
+|---|---|---|---|---|
+| anchor3 | 604 | sweetbufs@571 | 完整（604 字节，未切） | 有效 |
+| nobb / vcfg2 | 616 / 617 | sweetbufs@583/584 完好 | 尾部 `sweettime=1`/`sweettime=` 被切 | 参数有效，时间戳作废（1969） |
+| **i4** | 629 | `sweetbufs=30`@596 → 切成 `sweetbufs=3` | `ring-i4.txt:1732 pcm tone done (3 buffers)` | **值被污染的作废**：I4 是 12 ms 音上测的，不是 130 ms |
+| **ab** | 664 | `sweetibatburst`@596、`sweetaudioprobe`@613、`sweetbufs=30`@631 | 三个都没进内核 | **E1–E5、P1–P4 全作废**（失败的检法不是负结果） |
+
+ab 那轮更糟的后果要说清楚：`sweetbufs` 一起丢了 ⇒ 上限失效，实际跑了 **1032 次 `data_buffer send`**
+（`grep -c` 于 `logs/ring-ab.txt`），`pcm tone done` 一次没有，日志末尾是
+`CRASH ExtragalacticPos … extension check-in timeout`。**宿舍安静那条保护是被静默拿掉的，我当时没发现。**
+
+### 三、我自己两次误判，写下防止复用
+
+1. 我先前用"i4 的 `sweetbufs=3` 在偏移 606 处生效"反推"620 只是打印截断"。错——那是**值被切了一半**。
+   教训：长度必须在打包侧断言，不能靠事后读日志倒推。
+2. **marker 假阳性**：workflow 里 `"SWEET AUDIO: "` 这条门禁不可能抓错，因为这个前缀早就被占了——
+   `work/chain-tree/bsd/dev/sweet_glink.c:6845` `printf("SWEET AUDIO: build v97 (battery refresh worker)")`，
+   外加 0106/0107/0108/0109/0181 五个补丁都用它。已改成 `SWEET AUDPROBE: gate flag=`；
+   `SWEET HAPTICS:` 这类 IOKit `IOLog` 串能在 `out/kernel.adsp` 里 grep 到（实测 37 次命中），
+   所以新 marker 是可用的门禁。`SWEET MARK: ibat ` 也复核过，只在 0243 里出现，唯一。
+
+### 四、0243 的自检行原来写错位置
+
+第一版把 `printf("SWEET MARK: ibat %s flag=%d\n", phase, burst);` 放在
+`PE_parse_boot_argn("sweetibatburst", …)` **之前**，而 `burst` 初值是 0 ⇒ 参数真到了也照样印
+`flag=0`。哨兵必须"不可能作为读数出现"才算哨兵。现在挪到解析之后，并带上 `exp=%#x`。
+
+### 五、下一轮（ep）开机：参数预算 + 判据（开机前写死，事后不许改）
+
+cmdline 实测 **585 字节**（预算 590，硬顶 607）；`mkimage.sh` 现在超 590 直接 build fail。
+仪器参数排最前：`sweetexp=3`（bit0 = IBAT 突发，bit1 = 音频服务探针）、`sweetbufs=30`、`sweetnobb=1`，
+其后才是数据面基线。`sweetgpu=0` 从链上参数里去掉：`g_gpu_probe()` 起点是 `int en = 0`
+（`work/chain-tree/bsd/dev/sweet_glink.c:2689`），传 0 与不传完全等价。
+
+| 格 | 期望读数（开机前定死） | 不成立时怎么判 |
+|---|---|---|
+| 前置 | ring 的 `boot-args` 行里 `sweetexp=3`、`sweetbufs=30`、`sweets1ap=3`、`sweetnobb=1` 逐个出现，且该行长度 < 607 | 缺哪个，依赖它的格一律记"未运行"，不记负结果 |
+| 前置 | `graph_start … status=0` ≥1、`pcm tone done (30 buffers` 出现 | 缺 ⇒ E/P 整次作废 |
+| E0 | `SWEET MARK: ibat pre flag=1 exp=0x3` | 整行没有 ⇒ 仪器不在镜像里（补丁被跳过）；`flag=0` ⇒ 参数没到 |
+| E1/E2 | pre/tone/post 三段各自 `ok=12/12`，`mA` 的 min/max/mean 都在 | `ok<12` 该段作废；`usb=1` 一律不作判（本次日志自带 `usb=` 字段） |
+| E3 | tone 段 mean − pre 段 mean 的差值，记数值不记机制 | 单次开机只说"电流变了"，归因给喇叭要第二次只静音 PA 的对照 |
+| E4 | 三段 `subtype` 是 3 或 4 | 否则 SPMI 路径不对，整组作废 |
+| P1 | `SWEET AUDPROBE: AppleAOPAudioController start` + `IOAudio2Device start` 各一行 | 没有 ⇒ 补丁没进镜像或平台表没发布 |
+| P2 | `gate flag=1 exp=0x3` + 两行 `registered` | `flag=0` ⇒ 参数没到（作废），不是"没人来找" |
+| **P3** | 任意 `open by pid N` | **B 组要的第一个二元答案**；一次都没有也不能直接推"mediaserverd 不找设备"，见 P5 |
+| P4 | pid 用同一次 ring 的 `exec …`/`p=NN[name]` 行核对 | 不许凭印象认 pid |
+| P5 | `ring` 里 `exec mediaserverd`（历史 159 个 ring 都有，`ring-ab.txt:792`） | 有 exec 无 open ⇒ 卡在 HAL/名字解析，不是进程没起来 |
+
+### 六、0244 的名字按真机 ioreg 校正（离线核，未开机）
+
+证据文件 `work/iphone-x-recon/dyld/ioservice.txt`（D22AP，kernel `xnu-8792.82.2`，build `20D67`）：
+
+* `:3545` `+-o AppleAOPAudioController <class IORegistryEntry:IOService:AppleBaseAudioController:AppleAOPAudioController>`
+* `:3547` `"IOClass" = "AppleAOPAudioController"`；`:3559` `"IOUserClientClass" = "AppleAOPAudioUserClient"`；
+  `:3569` `"IOMatchCategory" = "AppleAOPAudioController"`
+* `:13112` **`"device UID" = "Speaker"`**——带空格的那个字面键；`IOAudio2DeviceUID` 在整个 dump 里
+  **0 次命中**，所以我草稿里那个键是编出来的。`IOAudio2DeviceUserClient` 命中 9 次，
+  `AppleAOPAudioUserClient` 命中 3 次，两个 UC 类名都已改成真名。
+  `IOUserClientClass` 这个串正是 `IOService::open()` 查的东西，名字错了就会**永远**读到"没人来 open"。
+* 顺带记一条不该当阻塞点的：`ring-ab.txt:1272` `CODE SIGNING: cs_invalid_page … p=28[mediaserverd] … allowing`
+  同现象也落在 backboardd / chronod / dasd / launchd_cache_loader 上，是移植的通病，不是音频专属。
+
+### 七、仍然没测到的（不许含混）
+
+* **音后 PA 是否可寻址**：`ring-ab` 在 `pcm tone start`（`:1705`）之后 **一条 `SWEET MARK: ampread` 都没有**
+  （post-stream 段要等 `pcm tone done`，而那轮没跑完）。⇒ "出声时刻 PA 可不可读"仍是未知，
+  子智能体报告里"PA 在音后仍 44/44 可寻址"的排序说法我没接受：`ring-ab:1555/1557` 的
+  `geni amp 0x34/0x35 profile 44/44` 在 1705 之前，是音前。
+* **电流通道的节拍**：子智能体引 `0181-sweet-shm-system-ram.patch:3605/:3615` 说"5 s 采样、每 6 次打印 ⇒ 30 s 一跳"。
+  这两行**我还没自己复核**，先记为待验；若成立，那么 30 s 的打印对 130 ms 的音是原理性看不见，
+  下一版见证要按"同一 boot 内 idle→音门控"的 ΔmA 设计（子智能体方案），那是再一次开机的事。
+* `0xa5a5` 哨兵确实印出来了（`ring-vcfg2.txt:1613` 起 16 行 `r=-2 val=0xa5a5`）——我此前写的"哨兵从未打印"
+  是错的；哨兵在 NACK 时保住了，所以别处读到的 `0xffff` 是真全 1 总线。这条更正同时意味着
+  读回仪器是可信的，缺的从来不是仪器。
+
