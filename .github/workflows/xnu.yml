@@ -188,8 +188,8 @@ jobs:
                    "SWEET MARK: ibat " \
                    "SWEET MARK: ibat sweep sid=" \
                    "SWEET AUDPROBE: gate flag=" \
-                   "map type=0 handed" \
-                   "IOK %s: %s %.600s" \
+                   "handed 0x10000 zeros" \
+                   "IOK %s: %s +%u" \
                    "SWEET MARK: clkwit " \
                    "SWEET MARK: vcfg2 rc " \
                    "SWEET MARK: s1ap leaf=" \

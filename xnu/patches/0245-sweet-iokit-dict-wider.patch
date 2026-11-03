@@ -1,19 +1,54 @@
 diff --git a/iokit/Kernel/IOUserClient.cpp b/iokit/Kernel/IOUserClient.cpp
-index 163fce1..9cc612d 100644
+index 163fce1..db1d877 100644
 --- a/iokit/Kernel/IOUserClient.cpp
 +++ b/iokit/Kernel/IOUserClient.cpp
-@@ -2649,7 +2649,13 @@ sweet_iolog_dict(const char *name, const char *what, OSObject *dict, const char
+@@ -2640,16 +2640,46 @@ sweet_iolog(char *name, size_t len)
+ 	return false;
+ }
+ 
+-/* Compact XML of a matching dictionary, at most 240 characters. */
++/*
++ * Compact XML of a matching dictionary, printed in bounded chunks.
++ *
++ * Why chunks and not a wider precision: the ring's console path caps one log
++ * record at roughly 240 bytes and then begins the next record with no separator,
++ * so a long dictionary printed in a single IOLog is not merely shortened - the
++ * following record gets spliced onto the truncated tail.  ring-ep2.txt has
++ *   IOUserClass</key><string ID="4">IOUserAud  followed immediately by
++ *   "IOK mediaserverd:"
++ * and ring-ep.txt - where the precision was still %.240s - has the same splice at
++ * the same offset, which is what proved widening was the wrong lever: 0245 v1's
++ * %.600s changed nothing because the limit is downstream of the format string.
++ *
++ * getLength() is used rather than trusting a NUL: OSSerialize::text() is not
++ * documented to be terminated at the serialized length, so a precision larger
++ * than the buffer reads past it - which is exactly what %.600s could do.
++ */
++#define SWEET_IOK_CHUNK 180
++
+ static void
+ sweet_iolog_dict(const char *name, const char *what, OSObject *dict, const char *result)
+ {
+-	OSSerialize *ser = OSSerialize::withCapacity(256);
++	OSSerialize *ser = OSSerialize::withCapacity(4096);
+ 	const char *text = "?";
++	unsigned int len = 1;
++	unsigned int off;
++
  	if (ser != NULL && dict != NULL && dict->serialize(ser)) {
  		text = ser->text();
++		len = ser->getLength();
++	}
++	for (off = 0; off < len; off += SWEET_IOK_CHUNK) {
++		unsigned int n = len - off;
++
++		if (n > SWEET_IOK_CHUNK) {
++			n = SWEET_IOK_CHUNK;
++		}
++		IOLog("IOK %s: %s +%u %.*s\n", name, what, off, (int) n, text + off);
  	}
 -	IOLog("IOK %s: %s %.240s -> %s\n", name, what, text, result);
-+	/* 240 was too short for the one dictionary this exists to read: the
-+	 * audio server's IOServiceFirstMatch query nests
-+	 * IOPropertyMatch -> IOUserAudioDriverUserClientProperties ->
-+	 * {IOClass, IOUserClass}, and the name that matters - IOUserClass -
-+	 * fell off the end in ring-ep.txt.  600 still fits inside the 400-line
-+	 * cap sweet_iolog() already enforces. */
-+	IOLog("IOK %s: %s %.600s -> %s\n", name, what, text, result);
++	IOLog("IOK %s: %s =end %u -> %s\n", name, what, len, result);
  	OSSafeReleaseNULL(ser);
  }
  #endif
