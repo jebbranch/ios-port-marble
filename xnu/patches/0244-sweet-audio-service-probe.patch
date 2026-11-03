@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..2aca64b
+index 0000000..2344de0
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,628 @@
+@@ -0,0 +1,671 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -44,6 +44,7 @@ index 0000000..2aca64b
 +#include <IOKit/IOBufferMemoryDescriptor.h>
 +#include <libkern/c++/OSDictionary.h>
 +#include <libkern/c++/OSSymbol.h>
++#include <libkern/c++/OSNumber.h>
 +#include <libkern/c++/OSCollectionIterator.h>
 +#include <kern/task.h>
 +
@@ -405,7 +406,49 @@ index 0000000..2aca64b
 +	}
 +	setProperty("IOUserClientClass", "AppleAOPAudioUserClient");
 +	setProperty("IOMatchCategory", "AppleAOPAudioController");
++	/*
++	 * K cells (ep6): the format description the AOP HAL reads off the controller,
++	 * not off the device.  Values are copied from the real node, key by key
++	 * (work/iphone-x-recon/dyld/ioservice.txt:3552-3577, a working iPhone X whose
++	 * mediaserverd keeps this user client open - the dump shows
++	 * "IOUserClientCreator" = "pid 34, mediaserverd" on it, while in four boots
++	 * here the client reached open + selector 0 + both maps and then closed
++	 * (ring-ep3.txt:944-945).  Idle is normal on a real device - every audio node
++	 * there reports "is running"=No and "current state"="off" - a closed AOP
++	 * client is not, which is why this is the next thing to change.
++	 *
++	 * Properties only: no object lifecycle, so no new panic surface.  And
++	 * deliberately NOT faking "is running"/"current state" true - on a healthy
++	 * phone they are false/off at idle, and a shell that claims to be running is
++	 * a shell that lies to the next measurement.
++	 */
++	setProperty("channels per frame", 2ull, 32);
++	setProperty("bytes per sample", 2ull, 32);
++	setProperty("frames per packet", 1ull, 32);
++	setProperty("input samples per sec", 16000ull, 32);
++	setProperty("zero timestamp wrap frames", 3200ull, 32);
++	setProperty("driver safety offset in frames", 1024ull, 32);
++	setProperty("input clock domain", 0ull, 32);
++	setProperty("device input latency in frames", 1ull, 32);
++	setProperty("listening enabled", 1ull, 32);
++	setProperty("listening on gesture supported", 0ull, 32);
 +	registerService();
++	/*
++	 * Read the values back out of the property table instead of restating the
++	 * literals I just passed in: the point of this line is that a client can see
++	 * them, and "MISSING" has to be distinguishable from a value of zero
++	 * (input clock domain legitimately IS zero).
++	 */
++	{
++		OSNumber *cpf = OSDynamicCast(OSNumber, getProperty("channels per frame"));
++		OSNumber *isps = OSDynamicCast(OSNumber,
++		    getProperty("input samples per sec"));
++
++		IOLog("SWEET AUDPROBE: aop keys published cpf=%u isps=%u %s\n",
++		    cpf ? (unsigned) cpf->unsigned32Value() : 0u,
++		    isps ? (unsigned) isps->unsigned32Value() : 0u,
++		    (cpf && isps) ? "ok" : "MISSING");
++	}
 +	IOLog("SWEET AUDPROBE: AppleAOPAudioController registered\n");
 +	return true;
 +}
