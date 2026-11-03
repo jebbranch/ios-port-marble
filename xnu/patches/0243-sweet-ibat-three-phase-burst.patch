@@ -1,6 +1,6 @@
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -5654,6 +5654,86 @@ g_pcm_prepare(void)
+@@ -5654,6 +5654,96 @@ g_pcm_prepare(void)
  	return 0;
  }
  
@@ -37,6 +37,16 @@
 +	int vals[12];
 +	uint8_t subtype = 0xff, usb = 0xff;
 +
++	/*
++	 * 0243 fix-up: report the flag before honouring it.  The first boot that
++	 * carried this instrument printed nothing at all, and silence could not
++	 * be told apart from "the boot-arg never reached the kernel" - an
++	 * instrument that cannot report its own absence is not an instrument.
++	 * This line is unconditional: no "flag=" line at all now means the tone
++	 * path did not run, and flag=0 means the argument did not.
++	 */
++	printf("SWEET MARK: ibat %s flag=%d\n", phase, burst);
++	sweet_log_sync();
 +	(void)PE_parse_boot_argn("sweetibatburst", &burst, sizeof(burst));
 +	if (!burst) {
 +		return;
@@ -87,7 +97,7 @@
  static void
  g_audio_tone(uint32_t src_port, uint32_t dst_port)
  {
-@@ -5747,6 +5827,7 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
+@@ -5747,6 +5837,7 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
  	}
  	printf("SWEET GLINK: pcm tone start (dst=%#x)%s\n", dst_port,
  	    nw ? " fire-and-forget" : "");
@@ -95,7 +105,7 @@
  
  	/* 2000 buffers x 100 ms of waiting is 200 s; that only makes sense when
  	 * the DSP actually replies.  Fire-and-forget needs a few seconds of
-@@ -5780,6 +5861,11 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
+@@ -5780,6 +5871,11 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
  	}
  
  	for (int n = 0; n < tone_buffers; n++) {
@@ -107,7 +117,7 @@
  		uint32_t off = nw ?
  		    ((uint32_t)((unsigned)n % blocks) * G_PCM_BYTES) :
  		    ((n & 1) ? G_PCM_OFF_B : G_PCM_OFF_A);
-@@ -5819,6 +5905,7 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
+@@ -5819,6 +5915,7 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
  		}
  	}
  	printf("SWEET GLINK: pcm tone done (%d buffers)\n", tone_buffers);

@@ -174,7 +174,7 @@ jobs:
                    "SWEET MARK: ampread pins re-applied" \
                    "SWEET MARK: bitbang skipped" \
                    "SWEET MARK: ibat " \
-                   "SWEET AUDIO: " \
+                   "SWEET AUDPROBE: gate flag=" \
                    "SWEET MARK: clkwit " \
                    "SWEET MARK: vcfg2 rc " \
                    "SWEET MARK: s1ap leaf=" \

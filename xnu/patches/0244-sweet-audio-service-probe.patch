@@ -1,8 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
+index 0000000..94250d4
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,272 @@
+@@ -0,0 +1,291 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -61,6 +62,17 @@ new file mode 100644
 +		int on = 0;
 +
 +		(void)PE_parse_boot_argn("sweetaudioprobe", &on, sizeof(on));
++		/*
++		 * Printed before the flag is honoured, and printed every boot: an
++		 * instrument that cannot report its own absence is not an instrument.
++		 * 0244 v1 printed nothing at all and the silence could not be told apart
++		 * from "the patch did not apply" or "the boot-arg never arrived" - and in
++		 * fact the arg had been dropped, because this kernel silently ignores
++		 * boot-args past ~616 bytes of the cmdline.  gate=0 therefore means the
++		 * argument did not reach the kernel, which is a void run, not a negative
++		 * result.
++		 */
++		IOLog("SWEET AUDPROBE: gate flag=%d\n", on);
 +		cached = on ? 1 : 0;
 +	}
 +	return cached == 1;
@@ -73,7 +85,7 @@ new file mode 100644
 +	OSCollectionIterator *it;
 +
 +	if (dict == NULL) {
-+		IOLog("SWEET AUDIO: %s setProperties (non-dict)\n",
++		IOLog("SWEET AUDPROBE: %s setProperties (non-dict)\n",
 +		    service->getName());
 +		return;
 +	}
@@ -81,13 +93,13 @@ new file mode 100644
 +	if (it == NULL) {
 +		return;
 +	}
-+	IOLog("SWEET AUDIO: %s setProperties count=%u\n", service->getName(),
++	IOLog("SWEET AUDPROBE: %s setProperties count=%u\n", service->getName(),
 +	    (unsigned)dict->getCount());
 +	OSObject *key;
 +	while ((key = it->getNextObject()) != NULL) {
 +		const OSSymbol *sym = OSDynamicCast(OSSymbol, key);
 +
-+		IOLog("SWEET AUDIO:   prop %s\n",
++		IOLog("SWEET AUDPROBE:   prop %s\n",
 +		    sym ? sym->getCStringNoCopy() : "?");
 +	}
 +	it->release();
@@ -129,7 +141,7 @@ new file mode 100644
 +	    properties)) {
 +		return false;
 +	}
-+	IOLog("SWEET AUDIO: %s open by pid %d type %#x\n", getName(), fPid,
++	IOLog("SWEET AUDPROBE: %s open by pid %d type %#x\n", getName(), fPid,
 +	    (unsigned)type);
 +	return true;
 +}
@@ -139,7 +151,7 @@ new file mode 100644
 +    IOExternalMethodArguments *arguments, IOExternalMethodDispatch *dispatch,
 +    OSObject *target, void *reference)
 +{
-+	IOLog("SWEET AUDIO: %s sel=%u sin=%u sout=%u struct_in=%u "
++	IOLog("SWEET AUDPROBE: %s sel=%u sin=%u sout=%u struct_in=%u "
 +	    "struct_out=%u\n", getName(), (unsigned)selector,
 +	    (unsigned)arguments->scalarInputCount,
 +	    (unsigned)arguments->scalarOutputCount,
@@ -148,7 +160,7 @@ new file mode 100644
 +
 +	for (uint32_t i = 0;
 +	    i < arguments->scalarInputCount && i < SWEET_AUDIO_OPEN_LIMIT; i++) {
-+		IOLog("SWEET AUDIO:   in[%u]=%#llx\n", i,
++		IOLog("SWEET AUDPROBE:   in[%u]=%#llx\n", i,
 +		    (unsigned long long)arguments->scalarInput[i]);
 +	}
 +	for (uint32_t i = 0;
@@ -162,7 +174,7 @@ new file mode 100644
 +SweetAudioUCBase::registerNotificationPort(mach_port_t port, UInt32 type,
 +    UInt32 refCon)
 +{
-+	IOLog("SWEET AUDIO: %s notify port type=%#x ref=%#x\n", getName(),
++	IOLog("SWEET AUDPROBE: %s notify port type=%#x ref=%#x\n", getName(),
 +	    (unsigned)type, (unsigned)refCon);
 +	return IOUserClient::registerNotificationPort(port, type, refCon);
 +}
@@ -176,7 +188,7 @@ new file mode 100644
 +	 * hand us its ring, and that is a later step with a real backend; here we
 +	 * only want to know that it asked.
 +	 */
-+	IOLog("SWEET AUDIO: %s map refused type=%u\n", getName(),
++	IOLog("SWEET AUDPROBE: %s map refused type=%u\n", getName(),
 +	    (unsigned)type);
 +	return kIOReturnUnsupported;
 +}
@@ -184,14 +196,14 @@ new file mode 100644
 +IOReturn
 +SweetAudioUCBase::clientClose(void)
 +{
-+	IOLog("SWEET AUDIO: %s closed (pid %d)\n", getName(), fPid);
++	IOLog("SWEET AUDPROBE: %s closed (pid %d)\n", getName(), fPid);
 +	return IOUserClient::clientClose();
 +}
 +
 +IOReturn
 +SweetAudioUCBase::clientDied(void)
 +{
-+	IOLog("SWEET AUDIO: %s died (pid %d)\n", getName(), fPid);
++	IOLog("SWEET AUDPROBE: %s died (pid %d)\n", getName(), fPid);
 +	return IOUserClient::clientDied();
 +}
 +
@@ -222,12 +234,19 @@ new file mode 100644
 +	if (!IOService::start(provider)) {
 +		return false;
 +	}
++	/*
++	 * Unconditional, and ahead of the gate: this is the "did 0244 actually link
++	 * and did the platform kext publish my class" half of the three-state
++	 * diagnosis.  No line at all = the patch is not in this kernel; line without
++	 * "registered" = the arg did not arrive; both lines = the probe is live.
++	 */
++	IOLog("SWEET AUDPROBE: AppleAOPAudioController start\n");
 +	if (!sweet_audio_probe_enabled()) {
 +		return true;
 +	}
 +	setProperty("IOUserClientClass", "AppleAOPAudioControllerUC");
 +	registerService();
-+	IOLog("SWEET AUDIO: AppleAOPAudioController registered\n");
++	IOLog("SWEET AUDPROBE: AppleAOPAudioController registered\n");
 +	return true;
 +}
 +
@@ -257,6 +276,7 @@ new file mode 100644
 +	if (!IOService::start(provider)) {
 +		return false;
 +	}
++	IOLog("SWEET AUDPROBE: IOAudio2Device start\n");
 +	if (!sweet_audio_probe_enabled()) {
 +		return true;
 +	}
@@ -265,7 +285,7 @@ new file mode 100644
 +	setProperty("IOAudio2DeviceManufacturer", "sweet");
 +	setProperty("IOAudio2DeviceModel", "marble");
 +	registerService();
-+	IOLog("SWEET AUDIO: IOAudio2Device Speaker registered\n");
++	IOLog("SWEET AUDPROBE: IOAudio2Device Speaker registered\n");
 +	return true;
 +}
 +
@@ -276,6 +296,7 @@ new file mode 100644
 +	return kIOReturnSuccess;
 +}
 diff --git a/iokit/KernelConfigTables.cpp b/iokit/KernelConfigTables.cpp
+index 31d15be..d942eb6 100644
 --- a/iokit/KernelConfigTables.cpp
 +++ b/iokit/KernelConfigTables.cpp
 @@ -109,6 +109,16 @@ const char * gIOKernelConfigTables =
@@ -296,6 +317,7 @@ diff --git a/iokit/KernelConfigTables.cpp b/iokit/KernelConfigTables.cpp
      "     'IOClass'         = IOPanicPlatform;"
      "     'IOProviderClass' = IOPlatformExpertDevice;"
 diff --git a/iokit/conf/files.arm64 b/iokit/conf/files.arm64
+index f74f9ad..ee92b37 100644
 --- a/iokit/conf/files.arm64
 +++ b/iokit/conf/files.arm64
 @@ -18,6 +18,7 @@ iokit/Kernel/arm/SweetFramebuffer.cpp                            optional iokitc
