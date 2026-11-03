@@ -1,0 +1,136 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index d24fee1..e030e79 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -6422,11 +6422,24 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 		0x01, 0x00, 0x00, 0x00,
+ 	};
+ 	/* Vendor AW parameter 0x10013D2A, captured from the speaker graph. */
++	/*
++	 * 0248: the vendor sends this 28-byte payload twice for the AW module -
++	 * {0, 0x10013d1b, 1, 0, 0, 0, 0x632b} and {0, 0x10013d1c, 1, 0, 0, 0,
++	 * 0x6f60}.  Our previous copy put the value in word [5] instead of [6]
++	 * and never sent the second one, which fits ep9: the tone ran and not
++	 * one PA register moved.
++	 */
+ 	static const uint8_t aw[28] = {
+ 		0x00, 0x00, 0x00, 0x00, 0x1b, 0x3d, 0x01, 0x10,
+ 		0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+-		0x00, 0x00, 0x00, 0x00, 0x2b, 0x63, 0x00, 0x00,
+-		0x00, 0x00, 0x00, 0x00,
++		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++		0x2b, 0x63, 0x00, 0x00,
++	};
++	static const uint8_t aw2[28] = {
++		0x00, 0x00, 0x00, 0x00, 0x1c, 0x3d, 0x01, 0x10,
++		0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++		0x60, 0x6f, 0x00, 0x00,
+ 	};
+ 	uint8_t mf[32];
+ 	uint32_t v;
+@@ -6513,9 +6526,24 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 	v = 1;
+ 	(void)g_apm_set_cfg(src_port, G_VP_TDM_IID, 0x08001018, &v, 4,
+ 	    "vp/tdm_frame");
+-	v = 0;
+-	(void)g_apm_set_cfg(src_port, G_VP_TDM_IID, 0x08001176, &v, 4,
+-	    "vp/tdm_power");
++	/*
++	 * 0248: the vendor trace never sends 0x08001176 at all - it comes from the
++	 * CDMA-era list.  sweettdmpwr keeps the shipped behaviour (0) addressable
++	 * without another build: 1 sends the value 1, 2 does not send the packet.
++	 */
++	{
++		int tp = 0;
++
++		(void)PE_parse_boot_argn("sweettdmpwr", &tp, sizeof(tp));
++		if (tp != 2) {
++			v = tp == 1 ? 1 : 0;
++			(void)g_apm_set_cfg(src_port, G_VP_TDM_IID, 0x08001176,
++			    &v, 4, "vp/tdm_power");
++		} else {
++			printf("SWEET GLINK: tdm_power skipped (vendor does not send it)\n");
++			sweet_log_sync();
++		}
++	}
+ 	{
+ 		uint32_t clk[4] = { 0, 12288000, 0, 0 };
+ 
+@@ -6525,6 +6553,38 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 
+ 	(void)g_apm_set_cfg(src_port, G_VP_AW_IID, 0x10013d2a, aw,
+ 	    sizeof(aw), "vp/aw_cfg");
++	(void)g_apm_set_cfg(src_port, G_VP_AW_IID, 0x10013d2a, aw2,
++	    sizeof(aw2), "vp/aw_cfg2");
++
++	{
++		/*
++		 * sweetep4308=1 also configures the second endpoint instance the
++		 * vendor sets these parameters on (iid 0x4308, slot_mask 3 instead
++		 * of 7).  Default off: it is the next single variable, not this one.
++		 */
++		int ep4308 = 0;
++
++		(void)PE_parse_boot_argn("sweetep4308", &ep4308, sizeof(ep4308));
++		if (ep4308) {
++			uint8_t mf2[12];
++			uint8_t cf2[28] = { 0 };
++
++			g_put32(mf2 + 0, 96000);
++			g_put32(mf2 + 4, 32u | (2u << 16));
++			g_put32(mf2 + 8, 1);
++			(void)g_apm_set_cfg(src_port, 0x4308u, 0x08001017, mf2,
++			    sizeof(mf2), "ep4308_mf");
++			g_put32(cf2 + 0, 0);
++			g_put32(cf2 + 4, 2);
++			g_put32(cf2 + 8, 0x10001);
++			g_put32(cf2 + 12, 3);
++			g_put32(cf2 + 16, 0x200004);
++			g_put32(cf2 + 20, 0);
++			g_put32(cf2 + 24, 1);
++			(void)g_apm_set_cfg(src_port, 0x4308u, 0x0800101b, cf2,
++			    sizeof(cf2), "ep4308_cfg");
++		}
++	}
+ 
+ 	{
+ 		/*
+@@ -7451,6 +7511,21 @@ sweet_glink_probe(void)
+ 
+ 				(void)PE_parse_boot_argn("sweetampverify",
+ 				    &ampverify_pre, sizeof(ampverify_pre));
++				/*
++				 * 0248: sweetexp bit2 is the same instrument, because the
++				 * boot-args field has 590 bytes and this boot must change
++				 * exactly one thing (the AW payload).  bit0/bit1 were taken
++				 * by the IBAT burst and the audio-service probe.
++				 */
++				if (!ampverify_pre) {
++					int exp2 = 0;
++
++					(void)PE_parse_boot_argn("sweetexp",
++					    &exp2, sizeof(exp2));
++					if (exp2 & 4) {
++						ampverify_pre = 1;
++					}
++				}
+ 				if (ampverify_pre) {
+ 					sweet_i2c_amp_readback("pre-stream");
+ 				}
+@@ -7477,6 +7552,15 @@ sweet_glink_probe(void)
+ 
+ 			(void)PE_parse_boot_argn("sweetampverify", &ampverify,
+ 			    sizeof(ampverify));
++			if (!ampverify) {
++				int exp2 = 0;
++
++				(void)PE_parse_boot_argn("sweetexp", &exp2,
++				    sizeof(exp2));
++				if (exp2 & 4) {
++					ampverify = 1;
++				}
++			}
+ 			if (ampverify) {
+ 				sweet_i2c_amp_readback("post-stream");
+ 			}

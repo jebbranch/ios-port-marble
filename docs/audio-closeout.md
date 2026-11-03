@@ -2471,3 +2471,27 @@ SWEET I2C: geni amp 0x34 r=0 id=0x2032
 全部**照抄厂商原字节**；同时把 ④ 做成开关（`sweettdmpwr`：0=发值0（现状）/1=发值1/2=**不发**，默认保持现状）；
 仪器用已有的 `sweetampverify=1 sweetnobb=1` 做 **同版 pre/post 配对**，直接读 ① 是否在补齐后变成"寄存器变了"。
 字节预算：去掉 `sweetvgraph=2`（−14）换 `sweetampverify=1 sweetnobb=1`（+30）⇒ 566→582 < 590。
+
+
+## 预先登记：E-AWFIX（0248）判据 —— 开机前写死，且每条都按"该形态下可满足"复查过
+
+（我连着两次把门写不可满足：Y0 的"beat 必须有行"、Z0 的"done 行数 ≥400"。这次每条都先问一遍
+"这条在这台机的打印形态下真的可能出现吗"。）
+
+**单一变量**：AW 模块 `0x10013d2a` 的正文按厂商原字发送——值挪到**第 7 个字**，并补发第二条
+`{0, 0x10013d1c, 1, 0,0,0, 0x6f60}`（`vp/aw_cfg2`）。其余与 z-audible 一字不动。
+两个新开关 `sweettdmpwr` / `sweetep4308` **默认不改变行为**（本枪不用），留给后续枪免重编。
+仪器 `sweetexp=4`（bit2 = 同版 pre/post 配对读回，借位以省字节）+ `sweetnobb=1`。
+参数预算实测：566 + ` sweetexp=4` + ` sweetnobb=1` = **589 ≤ 590**。
+
+| 格 | 检查 | 判读 |
+|---|---|---|
+| **W0** 有效性门 | cmdline 回显含 `sweetvol=24 sweetbufs=500 sweets1ap=1 sweetvgraph=2 sweetexp=4 sweetnobb=1`；`geni amp 0x34 r=0 id=0x2032` **≥2 次**（pre-stream + post-stream，ep9 形态已证可满足）；出现 `vp/aw_cfg rsp … status=0` **和** `vp/aw_cfg2 rsp … status=0`；`data_buffer send` = **501**；`pcm tone done (500 buffers)`；`graph_start … status=0` | 少任一 ⇒ 记「仪器未生效」，**不许**判"AW 修正没用" |
+| **W1** | 用户听到 | 合成音可听 ⇒ 喇叭通路证成；**仍不等于** goal 的真实播放判据 |
+| **W2** | pre 与 post 的 PA 寄存器**出现任何差异** | 包被接受后 DSP **开始编程 PA** ⇒ ①档（PA 从未被编程）被推翻，下一格才谈增益/静音位 |
+| **W3** | 两条 aw_cfg 都 `status=0`，但 pre/post **全同** | 值放对了位置仍不动 PA ⇒ 嫌疑转向 iid **`0x4308`**（开关现成）与图内部连接（`0x0100100e` 状态读回，也从没发过） |
+| **W4** | `aw_cfg`/`aw_cfg2` 任一 `status!=0` | 记下 status 值：模块层面拒了这个正文 ⇒ 与 ② 的 `0x2` 一起看 |
+| **W5** | ring 中途断 / 无 tone done | 挂死特征（本形态下 `done status=0` 只 4 行是**正常**，不作挂死判据） |
+
+上机前本地门：0248 正向 apply 且复现授权树（5 hunk，已核）；CI 产物里 grep `vp/aw_cfg2`；
+镜像产物里 grep `sweetexp=4 sweetnobb=1` 与全部 z-audible 关键项、cmdline 字节数写在 build log 里核。
