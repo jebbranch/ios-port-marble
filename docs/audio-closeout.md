@@ -2495,3 +2495,43 @@ SWEET I2C: geni amp 0x34 r=0 id=0x2032
 
 上机前本地门：0248 正向 apply 且复现授权树（5 hunk，已核）；CI 产物里 grep `vp/aw_cfg2`；
 镜像产物里 grep `sweetexp=4 sweetnobb=1` 与全部 z-audible 关键项、cmdline 字节数写在 build log 里核。
+
+
+## E-AWFIX 判决（`logs/ring-w-awfix.txt`）：**W3 命中——补齐厂商 AW 正文没有让 PA 动起来**，并顺带挖出一段我们从没复制的序列
+
+### 一、先记我第三次把门写错
+W0 写的是"`geni amp 0x34 r=0 id=` ≥2 次"。但**配对读回的真实行是 `SWEET MARK: ampread <tag> …`**；
+`geni amp … id=` 是探针行，每 boot 恒 **1** 次。于是门"必然不过"。
+连续三次同类错（Y0 的 beat、Z0 的 400 行 done、W0 的行指错），根因相同：
+**我拿"我以为会打印的行"当判据，没有先在同一份 ring 里确认这条行的真实打印形态。**
+改法（本轮起执行）：写门之前先从**已有 ring** 里 grep 出该行真实形态与次数，把数字抄进判据。
+
+按真实行重判（这才是证据）：
+
+| 项 | 读数 |
+|---|---|
+| `vp/aw_cfg rsp status=0` 与 **`vp/aw_cfg2 rsp status=0`** | 两包都在、都被接受（第二条是这次新发的） |
+| `ampread pre-stream` / `post-stream` | **各 6 条** |
+| pre vs post 差异 | **0** ⇒ **W3**：值放对位置 + 补发第二条之后，**PA 寄存器仍然一动不动** |
+| `data_buffer send` / `tone done` | 501 / (500 buffers) ⇒ 3.0 s 音照旧发满 |
+| `graph_start status=0` / `sweets1ap=1` | 成立 |
+| 用户耳朵 | 仍无 |
+
+### 二、这段 trace 里有一段我们**从没复制过**的设备侧序列（离线新读，非开机所得）
+在 `apm-18504-evidence.txt` 里，紧跟**设备图 `GRAPH_OPEN(p9=2872, src=0x2011)`** 之后：
+
+```
+SHM_MAP    p6=0x10003(pool) p7=4(flag) p8=0x2001f000 p10=20480   ← 第二块区域
+SET_CFG    p9=18504  p8=<刚映射的 handle>  dst=1                  ← 大块配置灌进 APM
+SHM_UNMAP  p6=<同一个 handle>
+```
+
+⇒ 厂商在**开设备图之后**，另开一块 SHM 把一个 **18504 字节的配置对象**交给 APM，然后立刻 unmap。
+这与 goal 里那句"② 缺的配置对象 `0x40bf/0x40c0/0x40c8/0x4165/0x4308`"是同一件事的具体形态。
+W3"PA 不被编程"与"这个对象从没发过"是**相容**的（AW 模块的行为通常要靠这块参数驱动）。
+
+### 三、正文的可得性（这一条决定下一枪能不能做，先查干净）
+- 盘上两个 `apm-blob-*.txt` 是 **trace 文本**，`18504/4848` 只是包元数据 ⇒ **正文不在盘上**。
+- `/vendor` `/odm` `/apex` 里**没有** 18504/18128/18088 字节的文件；也**没有** `*acf*` / `*aw882*` 文件。
+- 抓取需要 tracefs，而这台 ROM 的 root 连 `setenforce`/`mount debugfs` 都被拒 ⇒ **这条正文在当前设备上不可得**。
+⇒ 结论要直说：**② 的下一步（补这个 18504 对象）在现有条件下做不了**，不是"还没想到怎么试"。
