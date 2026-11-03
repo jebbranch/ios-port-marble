@@ -244,3 +244,80 @@ SWEET BATT: tick 25  ok=5/5 cap=100% 4413mV    0mA status=4 usb=1
 4. matchq 也没到 ⇒ 名字/匹配域还错，回到 9.2 的证据面继续挖离线材料（`artifacts/kernel.bin`
    里四个类名都在，需要 im4p 解包 + 反汇编，这条**不需要设备**）。
 
+---
+
+## 10. 2026-11-03 深夜：B2 的内核侧 ABI 已经离线拿下，而且它把主攻对象换了
+
+素材 `work/iphone-x-recon/artifacts/kernel.bin` **是已解密的 Mach-O**（fat 容器，arm64 thin 切片的
+banner 我本地读到的是 `Darwin Kernel Version 22.3.0 … root:xnu-8792.82.2~1/RELEASE_ARM64_T8015`），
+跟 §9.2 那份 ioreg 是**同一个 build**，所以两边可以互相印证。`kernelcache.img4` 仍是 IMG4/IM4P，没用上。
+
+### 10.1 更正：真正被音频客户端 open 的是 `IOAudio2Device`，不是 AOP 控制器
+
+我自己数那份 dump：
+
+| 事实 | 数值/位置 | 为什么重要 |
+|---|---|---|
+| `IOUserClient:IOAudio2DeviceUserClient` 实例 | **8**（节点在 `:10572 :12913 :13021 :13131 :13310 :13420 :13495 :13607`） | 音频客户端集中在这条线上 |
+| `IOUserClient:AppleAOPAudioUserClient` 实例 | **1** | AOP 控制器只有 1 个客户端 |
+| `"device UID" = "Speaker"`（`:13112`）属于哪个节点 | `:13094` 的 `Speaker`，类链 `IOService:IOAudio2Device:AppleARMDMAAudioDevice:AppleARMIISAudioDevice:AppleEmbeddedAudioDevice` | §9.2 我把它当成了 AOP 控制器的属性——**不是**，它是 IOAudio2Device 的 |
+| `Speaker` 节点是否发布 `IOUserClientClass` | **否**（`:13094-13140` 内 0 命中；只有 `AppleAOPAudioController` 在 `:3559` 发布） | 真机的 UC 解析走 `IOAudio2Device::newUserClient` 的类名回退 |
+
+⇒ 空壳的两个节点里，**`IOAudio2Device` 那个才是主战场**；AOP 控制器是配角。
+顺带一条对 B3（震动）有用的观察（**仅记录现象，结论未证**）：真机 registry 里有
+`AppleSecondaryAudio`（6 个实例）和 `AppleActuatorSecondaryAudio`（1 个），二者的类链都是
+`IOService:IOAudio2Device:…`——iOS 把触觉促动器**建模成一种 IOAudio2Device**。
+
+### 10.2 `AppleAOPAudioUserClient` 的方法表（已抄进 0244）
+
+它的 `externalMethod` 用 `table + selector*0x18` 取 dispatch、对 selector 上界做 `cmp #6`，
+然后 **tail-call `IOUserClient::externalMethod`**。`0x18 == sizeof(IOExternalMethodDispatch)`
+（`iokit/IOKit/IOUserClient.h:160-166`），六条记录与我本地能 grep 到的名字一一对应：
+
+| sel | 名字 | sIn / sInSz / sOut / sOutSz |
+|---|---|---|
+| 0 | `method_Open` | 0,0,0,0 |
+| 1 | `method_Close` | 0,0,0,0 |
+| 2 | `method_StartHardware` | 0,0,0,0 |
+| 3 | `method_StopHardware` | 0,0,0,0 |
+| 4 | `method_GetControlValue` | **1,0,1,0** |
+| 5 | `method_SetControlValue` | **2,0,0,0** |
+
+两条门禁字符串也在这份 binary 里（我 grep 到，命中数 ≥1）：
+`com.apple.private.aop-audio.user-access`（AOP UC 的 `initWithTask` 断言它）、
+`com.apple.private.audio.driver-host`（`IOAudio2Device::newUserClient` 要它，缺了给 `0xe00002c7`）。
+**我们的空壳不是那个 family，所以这两条检查不会执行** ⇒ 客户端只要能 open 就会 open 成功，
+这正是要的（探针不该自己造门槛）。
+
+### 10.3 由此修掉的三个"探针自己在骗客户端"的问题
+
+1. 原来 `externalMethod` 对任何 selector 直接 `return kIOReturnSuccess`。基类里有真正的校验
+   （比较 `dispatch->checkScalarInputCount` / `checkStructureInputSize`，不匹配给
+   `kIOReturnBadArgument 0xe00002c2`）。跳过它就等于**回答"是"给真机会回答"否"的调用**，
+   而且 `structureOutput` 没填就返回成功 ⇒ 客户端读垃圾，我们要的序列反而不会出现。
+   现在：记录之后交还 `IOUserClient::externalMethod`；无 dispatch 时基类报 unsupported，
+   与真机"越界 selector"的行为一致。
+2. `scalarInput` / `scalarOutput` 解引用全部加 NULL 保护——**count>0 而指针为 NULL 是这个探针
+   唯一能把机器搞死机的方式**，而死机的代价是用户去长按电源。
+3. `IOAudio2DeviceUserClient` 覆写 `getTargetAndMethodForIndex` / `getTargetAndTrapForIndex`
+   （记 index、返回 NULL）：真机的 legacy `IOConnectMethod*`/trap 路径在**发任何 selector 之前**
+   先问这两个。不记的话，客户端在这一步放弃就表现为"连接建立但一次调用都没有"。
+
+### 10.4 离线的边界（不许含混）
+
+* **内核侧 ABI：已完备**，不需要设备。
+* **用户侧调用顺序（mediaserverd 先调哪个、按什么顺序）：离线拿不到。** 那段代码在
+  AudioToolbox/CoreAudio + 用户态 IOKit，也就是 dyld 共享缓存里；
+  `dyld_shared_cache_arm64.01` 的 extent 落在卷偏移 **9,633,174,784**，
+  而我们本地 HFS 前缀只到 **2,684,616,704**（2.5 GiB）⇒ 在本地数据之外。
+  历史上三条提取路子都没成功（19 个 text 子缓存扫 install-name、`dylibsTrieAddr` 落进代码段、
+  ObjC relative-method-list 扫描），`/tmp/sc01.bin` 那份拷贝也已不在。
+  ⇒ 要么设备回来做一次**只读** `dd`（不写盘，符合红线）补上子缓存 `.01`，要么就靠这轮开机的
+  P/Q 日志给出顺序。**探针对象存在的意义正是补上这一块。**
+* 已定位未解码：`AppleIPCAudioDeviceUserClient`、`AppleAOPAudioPCMAssetManagerUserClient` 的表。
+* 编译状态如实说：CI 新产物（`out/kernel.adsp`，本地重下）里
+  `SWEET AUDPROBE: gate flag=` 命中 1 ⇒ **这个 IOKit 文件确实能编过**；
+  但 §10.3 那 ~100 行是 v6 才加的，**这个产物里没有**（`aop sel=`、`legacy trap[%u]` 均 0 命中），
+  所以 v6 仍是"未过编译器"的状态，等下一次 CI。
+
+

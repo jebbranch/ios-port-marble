@@ -1680,6 +1680,11 @@ PA 在流前后没有可测变化、厂商那四包在这张图上被拒、并�
 | **P2** | 出现任意 `SWEET AUDIO: … open by pid N` | **本目标 B 组要的第一个二元答案**：有人来找音频设备了。同时记下 pid 与之后的 `sel=` 序列（序列就是 ABI 复原的原料） |
 | **P3** | 一次 `open` 都没有 | mediaserverd 根本没走到 IOKit ⇒ 不许开始写音频后端，先解决"它为什么不找设备"（HAL bundle 是否加载、签名、依赖进程） |
 | P4 | `open by pid` 的 pid 归属 | 用同一次 ring 的 `exec …` 与 `p=NN[name]` 行核对是不是 mediaserverd；**不许凭印象认 pid** |
+| P5 | `ring` 里 `exec mediaserverd`（历史 159 个 ring 都有，`ring-ab.txt:792`） | 有 exec 无 open ⇒ 卡在 HAL/名字解析，不是进程没起来 |
+
+**↑ 这张表已作废（2026-11-03）**：它写的是 `SWEET AUDIO: … open by pid`，而那个前缀和 bsd 侧
+撞名（§三），0244 现在的打印是 `SWEET AUDPROBE: …`。当前有效的判据表在下面的
+"2026-11-03 离线收口"一节里（P1–P7 + Q0c/Q0–Q4）。保留原文是为了让"我当时打算怎么判"可查。
 | E1/E2 | 见上一节（`ok=<有效>/<N>` 不足即该阶段作废） | 能量侧第一次判定 |
 | E5 | `done status=0`/`graph_start status=0` 缺失 | 整次作废，E/P 全记未运行 |
 
@@ -1751,10 +1756,18 @@ cmdline 实测 **585 字节**（预算 590，硬顶 607）；`mkimage.sh` 现在
 | E4 | 三段 `subtype` 是 3 或 4 | 否则 SPMI 路径不对，整组作废 |
 | P1 | `SWEET AUDPROBE: AppleAOPAudioController start` + `IOAudio2Device start` 各一行 | 没有 ⇒ 补丁没进镜像或平台表没发布 |
 | P2 | `gate flag=1 exp=0x3` + 两行 `registered` | `flag=0` ⇒ 参数没到（作废），不是"没人来找" |
-| **P2.5** | `SWEET AUDPROBE: matchq <name> n=…` 及其后的 `key …` 行 | 分层判据（0244 v5 新增）：完全没有 matchq ⇒ 没人拿这两个类名去查；只有 publish 期自己那条（键是 `IOProviderClass=IOResources` 一类）⇒ 注册通路没问题但仍没人查音频类；键里出现 `IOAudio2Device`/`AppleAOPAudioController` 却没有 open ⇒ 卡在用户态决策。**上限 40 行且封顶会 announce 一次**，所以"40 之后安静"不会被误读成"没人问过" |
+| ~~P2.5~~ | ~~`SWEET AUDPROBE: matchq …`~~ **已撤销，不在这一版 kernel 里** | 覆写 `matchPropertyTable` 测不到纯类名查询（`IOService.cpp:7787` 先跑 `matchInternal`，`IOProviderClass` 被 `metaCast` 吃掉后 `done == count` 就 break，`:7556-7567`），留着会产出"没人问过"式的假安静。分层判据改由下面的 **Q 组**（0049 的用户态查询埋点）承担 |
 | **P3** | 任意 `open by pid N` | **B 组要的第一个二元答案**；一次都没有也不能直接推"mediaserverd 不找设备"，见 P5 |
 | P4 | pid 用同一次 ring 的 `exec …`/`p=NN[name]` 行核对 | 不许凭印象认 pid |
 | P5 | `ring` 里 `exec mediaserverd`（历史 159 个 ring 都有，`ring-ab.txt:792`） | 有 exec 无 open ⇒ 卡在 HAL/名字解析，不是进程没起来 |
+
+| **P6** | `SWEET AUDPROBE: aop sel=N ran …`（N∈0..5，对应 §10.2 那六条） | 出现 ⇒ 客户端真按 Apple 的方法表在调；`sel>5` 应当**看不到** ran 行而是基类报 unsupported（与真机一致）。整类缺失 ⇒ v6 没进这一版 kernel（本地 `out/kernel.adsp` 里 `aop sel=` 命中 0，所以这一格只有在 CI 出了 v6 产物之后才可判） |
+| **P7** | `SWEET AUDPROBE: legacy method[N] / trap[N] requested by pid P` | 出现 ⇒ 客户端走 legacy `IOConnectMethod*`/trap 路径。这以前是盲区（基类返回 NULL 不打字），现在能看见"第一个 selector 都还没发就放弃"的那种失败 |
+
+主攻对象按 §10.1 更正：**`IOAudio2Device` 那个节点才是音频客户端 open 的地方**——真机
+`IOAudio2DeviceUserClient` 有 8 个实例、`AppleAOPAudioUserClient` 只有 1 个，而且带
+`"device UID"="Speaker"` 的 `:13094` 节点属于 `IOService:IOAudio2Device:…` 类链、
+自身**不发布** `IOUserClientClass`。P3 的判读优先看 `IOAudio2Device` 那一行。
 
 ### 六、0244 的名字按真机 ioreg 校正（离线核，未开机）
 
