@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..0364897
+index 0000000..fdcbac7
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,396 @@
+@@ -0,0 +1,321 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -113,65 +113,6 @@ index 0000000..0364897
 +
 +		IOLog("SWEET AUDPROBE:   prop %s\n",
 +		    sym ? sym->getCStringNoCopy() : "?");
-+	}
-+	it->release();
-+}
-+
-+/*
-+ * The question "did anybody even ask for this class" is answered BEFORE any
-+ * open, which is what separates the silent rows of the truth table:
-+ *   - a client that never names the class  -> no matchq line at all
-+ *   - a client that names it but opens nothing -> matchq with no "open by pid"
-+ *   - a client that opens it -> matchq followed by "open by pid"
-+ *
-+ * IOService::matchPropertyTable(table, &score) is the virtual the matcher
-+ * actually calls (iokit/Kernel/IOService.cpp:7798), and the base two-argument
-+ * form forwards to the one-argument form (IOService.cpp:1294-1297), so
-+ * overriding the one-argument version catches both entry paths.  matchInternal
-+ * is not virtual in this xnu (IOService.h:1659), so it is not an option.
-+ *
-+ * The keys are printed, not just counted, because the platform kext's own
-+ * publish-time match has to be told apart from a userspace
-+ * IOServiceGetMatchingServices query, and the matching dictionary is the only
-+ * thing that distinguishes them at this point.
-+ */
-+static void
-+sweet_audio_match_log(IOService *service, OSDictionary *table)
-+{
-+	static int count = 0;
-+	OSCollectionIterator *it;
-+	int printed = 0;
-+
-+	if (!sweet_audio_probe_enabled()) {
-+		return;
-+	}
-+	count++;
-+	/*
-+	 * Matching runs for every registry query in the system, so this is capped -
-+	 * the ring has to survive the experiment.  The cap is announced once, because
-+	 * "quiet after 40" has to be distinguishable from "nothing asked 40 times".
-+	 */
-+	if (count == 41) {
-+		IOLog("SWEET AUDPROBE: matchq capped at 40, still counting\n");
-+	}
-+	if (count > 40) {
-+		return;
-+	}
-+	IOLog("SWEET AUDPROBE: matchq %s n=%d\n", service->getName(), count);
-+	if (table == NULL) {
-+		return;
-+	}
-+	it = OSCollectionIterator::withCollection(table);
-+	if (it == NULL) {
-+		return;
-+	}
-+	OSObject *key;
-+	while (printed < 6 && (key = it->getNextObject()) != NULL) {
-+		const OSSymbol *sym = OSDynamicCast(OSSymbol, key);
-+
-+		IOLog("SWEET AUDPROBE: matchq   key %s\n",
-+		    sym ? sym->getCStringNoCopy() : "?");
-+		printed++;
 +	}
 +	it->release();
 +}
@@ -309,7 +250,6 @@ index 0000000..0364897
 +public:
 +	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
 +	virtual IOReturn setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
-+	virtual bool matchPropertyTable(OSDictionary *table) APPLE_KEXT_OVERRIDE;
 +};
 +OSDefineMetaClassAndStructors(AppleAOPAudioController, IOService);
 +
@@ -343,13 +283,6 @@ index 0000000..0364897
 +	return kIOReturnSuccess;
 +}
 +
-+bool
-+AppleAOPAudioController::matchPropertyTable(OSDictionary *table)
-+{
-+	sweet_audio_match_log(this, table);
-+	return IOService::matchPropertyTable(table);
-+}
-+
 +class IOAudio2DeviceUserClient : public SweetAudioUCBase {
 +	OSDeclareDefaultStructors(IOAudio2DeviceUserClient);
 +};
@@ -360,7 +293,6 @@ index 0000000..0364897
 +public:
 +	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
 +	virtual IOReturn setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
-+	virtual bool matchPropertyTable(OSDictionary *table) APPLE_KEXT_OVERRIDE;
 +};
 +OSDefineMetaClassAndStructors(IOAudio2Device, IOService);
 +
@@ -392,13 +324,6 @@ index 0000000..0364897
 +{
 +	sweet_audio_props(this, properties);
 +	return kIOReturnSuccess;
-+}
-+
-+bool
-+IOAudio2Device::matchPropertyTable(OSDictionary *table)
-+{
-+	sweet_audio_match_log(this, table);
-+	return IOService::matchPropertyTable(table);
 +}
 diff --git a/iokit/KernelConfigTables.cpp b/iokit/KernelConfigTables.cpp
 index 31d15be..d942eb6 100644

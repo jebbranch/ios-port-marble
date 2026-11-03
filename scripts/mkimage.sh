@@ -33,7 +33,10 @@ PY
 
 # ufsroot_* describe the HFS+ root image that lives in this phone's userdata
 # partition.  Change them if your partition layout differs.
-CMDLINE='debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 cs_debug=0 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweetkeys=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=1 gicrstride=0x40000 sweetbatt=1 sweetglink=1 sweetreboot=1'
+# cs_debug is deliberately NOT listed: bsd/kern/kern_cs.c:87 initialises
+# int cs_debug = 0, so "cs_debug=0" was a no-op that cost 11 of the 607 bytes
+# the boot-args field holds.
+CMDLINE='debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweetkeys=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=1 gicrstride=0x40000 sweetbatt=1 sweetglink=1 sweetreboot=1'
 for a in "$@"; do CMDLINE="$CMDLINE $a"; done
 # KEEPALIVE=1 builds an image that stays in iOS instead of resetting itself
 # after boot.  Use it when a human needs to touch the GUI (e.g. to feel the
@@ -55,6 +58,21 @@ if [ "${QUIET:-0}" = 1 ]; then
 fi
 # Host wall clock at image build time; XNU sets its calendar from this.
 CMDLINE="$CMDLINE sweettime=$(date +%s)"
+
+# SWEETIOLOG=<procname[,procname]> turns on the userspace IOKit query trace
+# that 0049-sweet-iokit-trace.patch already compiles into every kernel:
+# every io_service_get_matching_services / _service / add_notification /
+# registry-path lookup made by a named process is printed as
+#   IOK <name>: matching <dict> -> <N found | class | none>
+# capped at 400 lines per boot.  The base string carries sweetiolog=- (off), so
+# the flag has to be substituted rather than appended - PE_parse_boot_argn
+# returns the FIRST match, and the base copy comes earlier in the line.  This
+# has never been enabled in any archived ring (no "IOK " line in logs/ring-*.txt
+# at all), which makes it the cheapest answer we can get to "does anything in
+# userspace even look for an audio class".
+if [ -n "${SWEETIOLOG:-}" ]; then
+  CMDLINE=$(printf '%s' "$CMDLINE" | sed "s/sweetiolog=-/sweetiolog=${SWEETIOLOG}/")
+fi
 
 # The boot-args field is 607 bytes: mkpayload.py puts CMDLINE at 0x48 and the
 # segment table at 0x2a8, i.e. BOOT_LINE_LENGTH 608 (kernel + sysctl copy it
