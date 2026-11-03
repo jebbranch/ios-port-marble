@@ -35,6 +35,7 @@ OPS = {0x01001006: "SET_CFG", 0x0100100C: "SHM_MAP", 0x0100100D: "SHM_UNMAP",
 # header {iid=1, PARAM_ID_SUB_GRAPH_CONFIG=0x08001001, size=0x30}; that is the
 # same 12-byte signature found in the AGM heap (docs/vendor-graph.md).
 GRAPH_SIG = struct.pack("<III", 1, 0x08001001, 0x30)
+PROPS_ID = 0x08001001
 # Payload sizes the vendor's GRAPH_OPEN declares: 0x1f0 stream graph, 0xb38 device
 # graph (work/sweet-audio/traces/trace_ui.txt).  The container on disk/heap is 12 B
 # longer than the declared payload - container = {total,count} + per subgraph
@@ -98,7 +99,12 @@ def graph_headers(b):
         size, count = struct.unpack_from("<II", b, o)
         if not (0x100 <= size <= 0x4000) or not (1 <= count <= 8) or o + size > len(b):
             continue
-        inner = [i for i in offsets(b[o + 8:o + size], GRAPH_SIG)]
+        # 8-byte key only: a container whose subgraph props block is not the 48-byte
+        # (size=0x30) shape would be invisible to GRAPH_SIG, and a silent miss is
+        # worse than a loose match here because the header arithmetic below still has
+        # to agree.
+        key = struct.pack("<II", 1, PROPS_ID)
+        inner = offsets(b[o + 8:o + size], key)
         if len(inner) < count:
             continue
         sgs = [struct.unpack_from("<I", b, o + 8 + i + 16)[0] for i in inner[:count]]
@@ -234,6 +240,8 @@ def main():
                          "self-rebooted once inside a 100 s window with them on)")
     ap.add_argument("--scan", nargs="*", default=[],
                     help="offline mode: run the body detector over these local files and exit")
+    ap.add_argument("--maxregions", type=int, default=48,
+                    help="cap on regions per pid for --heapscan")
     ap.add_argument("--allrw", action="store_true",
                     help="with --heapscan: sweep every rw mapping, not just malloc arenas")
     ap.add_argument("--pid", default="",
@@ -246,7 +254,7 @@ def main():
     if a.heapscan:
         pids = ([int(x) for x in a.pid.split(",")] if a.pid else
                 [p for p in find_agm_pid() and [find_agm_pid()] or []])
-        return heapscan(pids, all_rw=a.allrw)
+        return heapscan(pids, all_rw=a.allrw, max_regions=a.maxregions)
     if a.scan:
         return scan_files(a.scan, set())
 
