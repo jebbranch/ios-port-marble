@@ -2404,3 +2404,27 @@ SWEET SMMU: vgraph-post cb5 FSR=0x400 FAR=0x2040410 ...            <-- 我们 IO
   现在只能说：**同一区域、同一句柄、同一句法，AP=01 时 DSP 读了、并回了 2；AP=11 时它读不到、什么都不回。**
 - `sweets1ap=1` 现在是有证据的**新基线候选**（四行齐 + 无挂死 + 无 wedge），
   但"数据面四行齐"从来都不等于出声，**出声仍未证**。
+
+
+## 预先登记：E-AUDIBLE（`sweetbufs=500 sweetvol=24`）的判据 —— 开机前写死
+
+用户特许一次"能听见"的测试音。实测到的旧事实：历次开机走的是**等 DONE 的节拍路径**
+（`pcm tone start` 无 `fire-and-forget` 后缀），每缓冲 288 帧 = 48 kHz 下 **6 ms**，
+`sweetbufs=30` ⇒ **只有 180 ms**；而 `g_fill_tone()` 里 `>> 3` 使峰值 = 1024/32767 ≈ **−30 dBFS**。
+⇒ "听不到"有明确的量化解释，不需要新假设。
+
+改动：0247 加 `sweetvol=<1..31>`（默认 1 = 原行为一字不变），峰值 = `1024*g`；
+本次 `g=24` ⇒ 峰值 24576 ≈ **−2.5 dBFS**；`sweetbufs=500` ⇒ **3.0 s**（硬上限 1200 = 7.2 s 之内）。
+其余参数与 y-ap01 **完全一致**（含 `sweets1ap=1 sweetvgraph=2`）。
+
+| 格 | 检查 | 判读 |
+|---|---|---|
+| **Z0** 有效性门 | cmdline 含 `sweetbufs=500 sweetvol=24`；出现 `SWEET MARK: tone gain g=24 peak=24576`；出现 `pcm tone done (500 buffers)`；`data_buffer … done status=0` 行数 ≥ 400；`graph_start rsp … status=0`；`geni amp 0x34 r=0 id=0x2032` | 少任一条 ⇒ 记「未成立」，**不许**把"没听到"当成结论 |
+| **Z1** | 用户当场听到 | **仅**证明"XNU 下的喇叭通路能发出可听声"。goal 的终点判据是**真实播放、不是内核合成音**，所以 Z1 **不等于 goal 达成**，这条不许越界写 |
+| **Z2** | Z0 全绿但仍听不到 | 分档定位，不笼统收：① PA/后端静音（我们写的 AW882xx 增益/使能与 Android 生效值不同——**这是目前最大嫌疑，且没读过真值**）；② TDM 时钟/后端实际没跑；③ 数据没到喇叭。**判别对照现成**：同一台机在 Android 下 `agmplay` 同一后端能出声（今天刚跑过），所以硬件与时钟不是限制项 |
+| **Z3** | ring 在 tone 循环中途结束 | 500 缓冲的节拍里出事 ⇒ 记最后一条 `data_buffer` 的序号，长度/节拍是新变量 |
+
+安全：只动幅度与时长（用户明确特许），不碰 GPU、不 flash、纯 RAM `fastboot boot`。
+本地门（上机前必须全绿）：0247 正向 apply 且 apply 后与授权树 `diff -q` 相同；
+CI 产物里 grep 到 `SWEET MARK: tone gain`；镜像产物里 grep 到 `sweetvol=24 sweetbufs=500`、
+`sweets1ap=1`、`leaf` 无关参数一字未动；cmdline < 590。

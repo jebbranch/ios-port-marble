@@ -1,0 +1,34 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 9af0118..d24fee1 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5458,6 +5458,8 @@ static const int16_t g_sine_48[48] = {
+ 	-7094, -6499, -5793, -4987, -4096, -3135, -2120, -1069,
+ };
+ 
++static int g_vol_printed = 0;
++
+ static void
+ g_fill_tone(uint32_t off)
+ {
+@@ -5467,8 +5469,19 @@ g_fill_tone(uint32_t off)
+ 	 * 1152 bytes is 288 frames (6 ms).  The 48-entry table is one
+ 	 * period: a 1 kHz tone.  Amplitude is deliberately low - the tone
+ 	 * only has to prove the pipe, not be loud. */
++	int g = 1;
++
++	(void)PE_parse_boot_argn("sweetvol", &g, sizeof(g));
++	if (g < 1 || g > 31) {
++		g = 1;		/* the shipped 1/8 of 1/8, i.e. peak 1024 */
++	}
++	if (!g_vol_printed) {
++		g_vol_printed = 1;
++		printf("SWEET MARK: tone gain g=%d peak=%d\n", g, 1024 * g);
++		sweet_log_sync();
++	}
+ 	for (uint32_t i = 0; i < G_PCM_BYTES / 4; i++) {
+-		int16_t v = (int16_t)(g_sine_48[i % 48] >> 3);
++		int16_t v = (int16_t)((g_sine_48[i % 48] * g) >> 3);
+ 
+ 		p[2 * i] = v;
+ 		p[2 * i + 1] = v;
