@@ -494,3 +494,45 @@ AppleUSBMike ×2
 - 下一步的主力从"发一个名字"变成"发一组设备 + 补两个真机有的服务"，判据继续单变量。
 
 
+
+---
+
+## 13. 2026-11-03 傍晚：NVRAM 那条缺口有机制级解释了，而且是设备树少了一批键
+
+等 ep5 的 CI 产物时做的离线对照。方法：用仓库自带的 `scripts/adt.py` 解析真机
+D22AP 树和我们打包出来的 `images/ep4.adt`，逐节点比键。
+
+**顶层节点差距**（真机 18 个，我们 8 个）：
+
+```
+真机 : aliases arm-io backlight baseband buttons chosen cpus defaults dock dock-0pin
+       filesystems memory options osenvironments pram product sacm vram
+我们 : arm-io buttons chosen cpus defaults product sweet-fbcon sweet-ufs
+```
+
+但 `IODTNVRAM` 缺的原因不在 `/options` —— 真机的 `/options` 只有
+`AAPL,phandle` 和 `name`，**一个变量都没有**（iPhone X 的 NVRAM 变量在裸分区里，不在 ADT）。
+真正的依赖在 `/chosen`：真机那侧描述 NVRAM 几何与上限的键是
+
+```
+nvram-bank-count  nvram-bank-size  nvram-current-bank  nvram-proxy-data
+max-env-partition  max-env-var-data-size  max-env-var-name-size  ephemeral-storage
+```
+
+而我们的 `/chosen` 只有 14 个键（`chip-id / dram-base / dram-size / firmware-version /
+random-seed / boot-manifest-hash / certificate-* / effective-production-status-ap /
+effective-security-mode-sep / unique-chip-id / debug-enabled / display-scale /
+crypto-hash-method / system-firmware-version`），**这些一个都没有** ⇒ 驱动拿不到几何，
+挂不上去 ⇒ `IODTNVRAM -> none` 从此有了机制级解释，而不是"我们没写驱动"。
+
+真机 `/chosen` 里另外那批我们同样没有的键，属于**别的线**，先只记录不认领：
+`unique-device-id`、`boot-nonce`、`die-id`、`uid-aes-key`、`gid-aes-key`、`root-matching`、
+`osevironment`、`secure-boot`、`image4-supported`、`mac-address-*`（keystore / AMFI /
+安全相关，可能牵动 `AppleKeyStoreUserClient` 那条真机有 2 个实例的缺口）。
+
+**为什么不能照抄了之**：给了 `nvram-*` 几何却没有真实后备存储，可能让驱动**挂上去之后**
+在读写时超时——那比现在"根本没有这个服务"更糟（等着它的守护进程会卡）。
+所以 ep6 的前置是先读 `iokit/Kernel/IONVRAM.cpp` 的 `IONVRAM::start`/`IODTNVRAM::start`
+（:1224 起，`require(super::start(provider), fail)`）与它的 platform-storage 路径，
+确认能不能跑在空/panic-only 存储上；能，就同样用开关包住（`MARBLE_ADT_*` 那一族），
+不能，就改成"我们自己发布一个最小的 `IODTNVRAM` 派生服务"这种明确的假服务并写明是假的。
