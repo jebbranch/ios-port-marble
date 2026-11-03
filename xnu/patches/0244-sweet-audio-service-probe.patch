@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..0e23c8c
+index 0000000..bcc0cb3
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,499 @@
+@@ -0,0 +1,621 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -466,48 +466,170 @@ index 0000000..0e23c8c
 +	return NULL;
 +}
 +
-+class IOAudio2Device : public IOService {
-+	OSDeclareDefaultStructors(IOAudio2Device);
++/*
++ * ep5: one node is not a device set.
++ *
++ * Three boots in a row produced the same audio handshake - open, selector 0,
++ * two maps, then closed - and nothing after it, while a working iPhone X's own
++ * ioreg shows mediaserverd holding 17 user clients of which
++ * IOAudio2DeviceUserClient accounts for 8.  The real device tree is not one
++ * audio device: there are eleven IOAudio2Device nodes and five of them carry a
++ * "device UID" - Speaker, Codec, Actuator, Hawking, Loopback
++ * (ioservice.txt, class chains at :13094 for Speaker and the AppleSecondaryAudio
++ * family for the rest).  Our probe published exactly one of them, so the open
++ * count 8-vs-1 was never a statement about mediaserverd's intent - it was a
++ * statement about how many nodes existed to open.
++ *
++ * This is the single variable under test: publish the named set and see whether
++ * the client enumerates further and whether any selector beyond 0 finally
++ * appears.  Nothing here answers, maps or plays anything different from before.
++ *
++ * Shape note, deliberate: five distinct classes rather than five instances of
++ * one class driven by per-entry properties.  Whether extra keys in a
++ * KernelConfigTables entry become properties of the instantiated service is not
++ * something I could establish from the sources in this tree (no
++ * instantiateConfigTable in IOService.cpp or IOPlatformExpert.cpp), and an
++ * experiment whose instrument placement is uncertain is not an experiment.
++ * Static classes plus config-table entries are the shape 0196 and 0244 have
++ * already booted green, and they add no object-lifecycle code - allocating
++ * services by hand is the shortest route to a panic, and a panic costs the user
++ * a power-button hold.
++ *
++ * Fidelity, stated honestly: the real Speaker and Codec are both
++ * AppleEmbeddedAudioDevice, so two of these five names carry a UID that the real
++ * tree would put on a different class (Hawking and Loopback are
++ * AppleSecondaryAudio there).  What is being tested is whether a set of
++ * IOAudio2Device-descended nodes with distinct "device UID" values changes the
++ * client's behaviour, not the class-to-UID mapping, and every class below does
++ * descend from IOAudio2Device so that IOProviderClass=IOAudio2Device matches
++ * (IOService::metaCast compares names along the chain).
++ */
++class SweetAudioDevice : public IOService {
++	OSDeclareDefaultStructors(SweetAudioDevice);
 +public:
 +	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
 +	virtual IOReturn setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
++	virtual const char *sweetDeviceUID(void);
 +};
-+OSDefineMetaClassAndStructors(IOAudio2Device, IOService);
++OSDefineMetaClassAndStructors(SweetAudioDevice, IOService);
++
++const char *
++SweetAudioDevice::sweetDeviceUID(void)
++{
++	return "Speaker";
++}
 +
 +bool
-+IOAudio2Device::start(IOService *provider)
++SweetAudioDevice::start(IOService *provider)
 +{
++	const char *uid = sweetDeviceUID();
++	const char *cname = GetMetaClass()->getClassName();
++
++	/*
++	 * Unconditional, ahead of the gate, and carrying both the class and the UID:
++	 * with five nodes the ring has to say which one started, and "no line" has to
++	 * stay distinguishable from "line but flag=0".
++	 */
++	IOLog("SWEET AUDPROBE: %s start uid=%s\n", cname, uid);
 +	if (!IOService::start(provider)) {
 +		return false;
 +	}
-+	IOLog("SWEET AUDPROBE: IOAudio2Device start\n");
 +	if (!sweet_audio_probe_enabled()) {
 +		return true;
 +	}
 +	setProperty("IOUserClientClass", "IOAudio2DeviceUserClient");
 +	/*
-+	 * "device UID" - with a space - is the property the real Speaker node carries
-+	 * (ioservice.txt:13112).  The names this draft had before, IOAudio2DeviceUID
-+	 * plus invented manufacturer/model strings, do not appear anywhere in the
-+	 * dump, so they are dropped rather than kept as decoration.
++	 * "device UID" - with a space - is the property the real nodes carry
++	 * (ioservice.txt:13112).  IOAudio2DeviceUID, the key an earlier draft of this
++	 * file invented, has zero occurrences in that dump.
 +	 */
-+	setProperty("device UID", "Speaker");
++	setProperty("device UID", uid);
 +	registerService();
-+	IOLog("SWEET AUDPROBE: IOAudio2Device Speaker registered\n");
++	IOLog("SWEET AUDPROBE: %s registered uid=%s\n", cname, uid);
 +	return true;
 +}
 +
 +IOReturn
-+IOAudio2Device::setProperties(OSObject *properties)
++SweetAudioDevice::setProperties(OSObject *properties)
 +{
 +	sweet_audio_props(this, properties);
 +	return kIOReturnSuccess;
 +}
++
++class IOAudio2Device : public SweetAudioDevice {
++	OSDeclareDefaultStructors(IOAudio2Device);
++public:
++	virtual const char *sweetDeviceUID(void) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(IOAudio2Device, SweetAudioDevice);
++
++const char *
++IOAudio2Device::sweetDeviceUID(void)
++{
++	return "Speaker";
++}
++
++class AppleEmbeddedAudioDevice : public IOAudio2Device {
++	OSDeclareDefaultStructors(AppleEmbeddedAudioDevice);
++public:
++	virtual const char *sweetDeviceUID(void) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(AppleEmbeddedAudioDevice, IOAudio2Device);
++
++const char *
++AppleEmbeddedAudioDevice::sweetDeviceUID(void)
++{
++	return "Codec";
++}
++
++class AppleActuatorSecondaryAudio : public IOAudio2Device {
++	OSDeclareDefaultStructors(AppleActuatorSecondaryAudio);
++public:
++	virtual const char *sweetDeviceUID(void) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(AppleActuatorSecondaryAudio, IOAudio2Device);
++
++const char *
++AppleActuatorSecondaryAudio::sweetDeviceUID(void)
++{
++	/*
++	 * The one node whose real class and real UID both line up: on iPhone X the
++	 * haptic actuator is AppleActuatorSecondaryAudio, an IOAudio2Device subclass.
++	 * That is also why the haptics line and this one are the same delivery item.
++	 */
++	return "Actuator";
++}
++
++class AppleARMIISAudioDevice : public IOAudio2Device {
++	OSDeclareDefaultStructors(AppleARMIISAudioDevice);
++public:
++	virtual const char *sweetDeviceUID(void) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(AppleARMIISAudioDevice, IOAudio2Device);
++
++const char *
++AppleARMIISAudioDevice::sweetDeviceUID(void)
++{
++	return "Hawking";
++}
++
++class AppleARMDMAAudioDevice : public IOAudio2Device {
++	OSDeclareDefaultStructors(AppleARMDMAAudioDevice);
++public:
++	virtual const char *sweetDeviceUID(void) APPLE_KEXT_OVERRIDE;
++};
++OSDefineMetaClassAndStructors(AppleARMDMAAudioDevice, IOAudio2Device);
++
++const char *
++AppleARMDMAAudioDevice::sweetDeviceUID(void)
++{
++	return "Loopback";
++}
 diff --git a/iokit/KernelConfigTables.cpp b/iokit/KernelConfigTables.cpp
-index 31d15be..d942eb6 100644
+index 31d15be..e7f2c88 100644
 --- a/iokit/KernelConfigTables.cpp
 +++ b/iokit/KernelConfigTables.cpp
-@@ -109,6 +109,16 @@ const char * gIOKernelConfigTables =
+@@ -109,6 +109,45 @@ const char * gIOKernelConfigTables =
      "     'IOMatchCategory' = AppleHapticsSupportCallan;"
      "   },"
  #endif
@@ -520,6 +642,35 @@ index 31d15be..d942eb6 100644
 +    "     'IOClass'         = IOAudio2Device;"
 +    "     'IOProviderClass' = IOResources;"
 +    "     'IOMatchCategory' = IOAudio2Device;"
++    "   },"
++    /*
++     * ep5: the rest of the named device set (Speaker, Codec, Actuator, Hawking,
++     * Loopback).  One entry per class, because each entry instantiates one
++     * service; the class itself supplies its "device UID".  A working iPhone X
++     * has eleven IOAudio2Device nodes and mediaserverd holds eight
++     * IOAudio2DeviceUserClient instances, while three boots of this probe
++     * published one node and got one open - so 8-vs-1 was a statement about how
++     * many nodes existed, not about the client's intent.
++     */
++    "   {"
++    "     'IOClass'         = AppleEmbeddedAudioDevice;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOMatchCategory' = AppleEmbeddedAudioDevice;"
++    "   },"
++    "   {"
++    "     'IOClass'         = AppleActuatorSecondaryAudio;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOMatchCategory' = AppleActuatorSecondaryAudio;"
++    "   },"
++    "   {"
++    "     'IOClass'         = AppleARMIISAudioDevice;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOMatchCategory' = AppleARMIISAudioDevice;"
++    "   },"
++    "   {"
++    "     'IOClass'         = AppleARMDMAAudioDevice;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOMatchCategory' = AppleARMDMAAudioDevice;"
 +    "   },"
      "   {"
      "     'IOClass'         = IOPanicPlatform;"
