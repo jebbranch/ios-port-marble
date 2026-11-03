@@ -637,3 +637,47 @@ cmdline 580 字节（预算 590 内），11 个 marker 全部在镜像里连续�
 且有一个客户端在听，而音频域**一行新增都没有**。这不算 B1 的正式测量（单次、非设计、
 时机不可控），但它把 B1 的可行性验证掉了：**输入通道自带见证行，位置可用于归因**。
 B1 就是拿同一版内核、同一份镜像，只把"人故意连按音量键 + 点屏幕"作为唯一变量重做。
+
+
+---
+
+## 17. B2/B4 交付：selector 语义表与促动器同场记录（**只记录，不发明**）
+
+分母先说清楚，不然这表会被读成"170 次开机里只出现 11 次"：
+盘上 `logs/ring-*.txt` 共 **170** 个，其中带 `SWEET AUDPROBE` 这件仪器的只有 **11** 个
+（`sweetexp` 的 bit1 才开它，0244 起才有）。下面所有计数都以这 11 个为分母。
+
+### 一、音频控制器 user-client 的 selector 观测
+`AppleAOPAudioUserClient`（iOS 侧就是我们发布的 AOP 音频壳）：
+
+| sel | 出现次数 | 覆盖开机 | 参数（sin/sout/struct_in/struct_out） | 执行行 |
+|---|---|---|---|---|
+| 0 | 11 | 11/11（每 boot 恰好 1） | `0/0/0/0` | `aop sel=0 ran in=0 out=0 sin=0` |
+| 4 | 30 | 6/11（每 boot 恰好 5） | `1/1/0/0` | `aop sel=4 ran in=1 out=1 sin=` **0 / 0x1 / 0x2** |
+| 1,2,3,5,6+ | **0** | 0 | — | — |
+
+只记录到的事实，不升级成解释：
+- **形状在 11 个开机里完全不变**：`sel=0` 恒 1 次、`sel=4` 恒 5 次。
+  `sel=4` 的入参只见过 `sin=0`、`0x1`、`0x2` 三种，输出恒 `in=1 out=1`；
+  我们的答复值历史上一直是 0 —— **不伪造** `is running`/`current state`，真机待机就是 No/off。
+- `sel=2/3/5`（StartHardware/StopHardware 等候选语义）**在全部 170 个 ring 里 0 次**。
+  这一条在 B1 判据里已经用尽两次开机的额度，止损生效。
+- 剩下 5 个 `AUDPROBE` 开机里 `sel=4` 为 0 次：那几次 `sweetexp` 的 bit1 开但
+  mediaserverd 侧会话未走到（不是新信息，记在这里防止被当异常去追）。
+
+### 二、促动器 / 震动同场记录（B4）
+同一版内核、同一次开机里，震动类是**另一条独立形状**：
+
+| 观测 | 每 boot 计数 | 覆盖 |
+|---|---|---|
+| `AppleAOPButtonHapticsServiceUserClient open by pid 57` | **2** | 11/11 |
+| `AppleAOPButtonHapticsServiceUserClient map type=0 options=0` | **2** | 11/11 |
+| `AppleAOPButtonHapticsServiceUserClient sel=1 sin=0 sout=1 struct_in=0 struct_out=0` | **2** | 11/11 |
+| `AppleSPUHapticsAudioUC open by pid 57` | 见 0244 前的 boot | 123 次 / 70+ ring |
+
+要点两条，别混：
+1. 震动类 `sel=1` 是**基线**（116 次里每 boot 恒 2），b1/b2 没有新增；我上一轮差点把它当
+   "新 selector"，按类拆开才看清。
+2. ep8 那句"Actuator 对同一区域重复索要 4 次"是**按 uid=Actuator 的区域请求**数的，
+   和本表 `map type=0` 的 2 次/boot **不是同一个计数口径**，引用时必须分开写。
+   SoundWire 马达后端单列，不进这两条判据。
