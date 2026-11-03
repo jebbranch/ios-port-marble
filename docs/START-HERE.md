@@ -100,6 +100,21 @@ D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PRO
 ./scripts/boot_one.sh images/shim-iosroot-adsp.img audio
 ```
 
+下一轮（ep）要开的是"E 能量格 + P 空壳 + Q 查询埋点"三件互不干扰的仪器，
+用的是 0049 里那个**从没开过**的 IOKit 查询埋点（每 boot 上限 400 行；
+`backboardd` 是对照，它今天确实在发 matching，所以 mediaserverd 那边为 0 才是真负结果）。
+cmdline 实测 584 字节（硬顶 607）：
+
+```bash
+SWEETIOLOG=mediaserverd,backboardd \
+  D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt \
+  ./scripts/mkimage.sh sweetexp=3 sweetbufs=30 sweetnobb=1 \
+  sweetpcm=1 sweets1=1 sweetiova=1 \
+  sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 \
+  sweets1ap=3 sweetampfirst=1
+./scripts/boot_one.sh images/shim-iosroot-adsp.img ep
+```
+
 必须同时看到的四条才算这一配置成立（少一条就别当基线用）：
 
 ```

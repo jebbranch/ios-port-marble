@@ -1789,3 +1789,75 @@ cmdline 实测 **585 字节**（预算 590，硬顶 607）；`mkimage.sh` 现在
   是错的；哨兵在 NACK 时保住了，所以别处读到的 `0xffff` 是真全 1 总线。这条更正同时意味着
   读回仪器是可信的，缺的从来不是仪器。
 
+---
+
+## 2026-11-03 晚些时候：桥的"层一"判据我先证伪了，然后发现答案早就在kernel里
+
+### 一、`matchPropertyTable` 这个钩子不能测我想测的东西，已删
+
+我上午给 0244 加了覆写 `matchPropertyTable` 来回答"有没有人**问过**这个类"（而不只是"有没有人 open"）。
+读源码之后它被证明测不到：**纯类名查询走不到这个钩子**。
+
+- `IOService::matchPassive` 先调 `matchInternal(table, options, &done)`（`iokit/Kernel/IOService.cpp:7787`）；
+  只有当表里**还有没被吃掉的键**时才继续走到 `where->matchPropertyTable(table, &score)`（`:7798`）。
+- `IOServiceMatching("IOAudio2Device")` 这种查询把 `IOProviderClass` 放进表，`matchInternal`
+  用 `metaCast(str)` 处理它并在 `done == count` 时 `break`（`:7556-7567`）⇒ **钩子一次都不会跑**。
+- 这颗 xnu 里那条路径上根本没有可覆写的每实例虚函数：`matchInternal` 不是虚的
+  （`IOService.h:1659`），`doesMatch` 在这棵树里不存在（全库 grep 0 命中）。
+
+留着它的后果正是我这一天一直在修的那个错误：会产出"没有 matchq"，而它会被读成"没人问过"。
+所以删掉，并把证明过程写在这里，防止下一个我把它再加回来。
+
+### 二、真正在用户态查询路径上的仪器，0049 早就编进每一版 kernel 了——但从没打开过
+
+`xnu/patches/0049-sweet-iokit-trace.patch` 在 `iokit/Kernel/IOUserClient.cpp`
+（`internal_io_service_get_matching_services:2658` 等一系列 `is_io_*` 入口）埋了跟踪器：
+
+```
+IOK <进程名>: matching <序列化后的匹配字典，240 字节> -> <N found | 命中的类名 | none>
+```
+
+覆盖 matching 调用、`add_notification`（**即"它在等某个类出现"这件事**）、registry path 查询；
+每进程按名字过滤，**每 boot 上限 400 行**。开关是 boot-arg `sweetiolog`
+（逗号分隔进程名，默认 `backboardd`，`-` 关闭）。
+
+而我们的基础 cmdline 一直写着 `sweetiolog=-` ⇒ **它一次都没跑过**：
+`logs/ring-*.txt` 里 `IOK ` 命中数为 **0**（实测 `grep -al "IOK "` 无输出），
+`docs/` 里也从来没提过这个开关。也就是说，"mediaserverd 到底向 registry 问过什么类名"这个
+桥的头号未知，**不用写一行新代码**，改一个参数就能拿到答案。
+
+`scripts/mkimage.sh` 因此加了 `SWEETIOLOG=<names>` 环境变量：**替换**基础串里的
+`sweetiolog=-`，而不是往后追加——`PE_parse_boot_argn` 取**第一个**匹配，追加会被基础串那份
+早于它的答案顶掉。为了付这 11 个字节，把 `cs_debug=0` 从基础串删掉
+（`bsd/kern/kern_cs.c:87` 就是 `int cs_debug = 0`，传 0 与不传完全等价）。
+
+### 三、ep 这轮开机的最终参数与预算（开机前写死）
+
+`sweetiolog=mediaserverd,backboardd`、cmdline **584 字节**（硬顶 607，余 23）。
+关键键的字节位置：`sweetiolog`@298、`sweetexp`@403、`sweetbufs`@414、`sweets1ap`@536、
+`sweetampfirst`@548、`sweettime`@564。为凑出这 23 字节，从基础串删掉两个**可证的空转参数**：
+`cs_debug=0`（`bsd/kern/kern_cs.c:87` 就是 `int cs_debug = 0`）和 `sweetkeys=1`
+（`xnu/patches/0060:163` 是 `int enabled = 1`，只有 `=0` 才改变行为）。
+`gicrstride=0x40000` 虽然 0187 自己注释说"cpus=1 从来不需要"，**没删**：那是 SMP 线的断言，
+18 字节不值一次开机风险。链脚本会把下面这些逐个对齐 ring 里内核自己回显的 `boot-args` 行，
+缺一个就把依赖它的格判成 VOID。
+
+新增 Q 组判据（同样是开机前定死）：
+
+| 格 | 期望读数 | 读不到时怎么判 |
+|---|---|---|
+| **Q0c** | 对照格：`IOK backboardd …` 行数 > 0 | backboardd 今天就确实在发 IOKit matching（它 open 我们的 haptics stub 约 99 次）。**对照不成立 ⇒ 整组 Q 判"仪器不可判"，不许当负结果**；`sweetiolog` 不在回显里同样作废 |
+| Q0 | 在 Q0c 成立的前提下看 `IOK mediaserverd` 行数 | 为 0 且对照 >0 ⇒ mediaserverd 这轮**没发起任何被埋点的 IOKit 查询**（这才是一个真的负结果） |
+| **Q1** | `IOK mediaserverd: matching … IOAudio2Device … -> N found`（或 `none`） | 有 = 名字方向对，`none`/`0 found` 就是我们缺这台设备；没有则继续看 Q2 |
+| **Q2** | `IOK mediaserverd: <某 notify 类型> … -> notify` | notify 说明它**在等**某个类出现 ⇒ 只要把那个类发出来就能推进；这比 Q1 更值钱 |
+| Q3 | 它实际问的类名（从 `matching` 字典里读，不是我们猜的） | 这一条直接替换掉 `docs/audio-hal-bridge.md` 里所有"推测 mediaserverd 会查 X"的句子 |
+| Q4 | `IOK …: path …` 之类其它入口也有行 | 埋点覆盖面确认；缺这条时 Q0 的"全 0"仍不能升级为机制结论 |
+
+
+### 四、剩下的仍未测到的
+
+`audio-hal-bridge.md` §7 里那条"mediaserverd 会不会走到 IOKit"仍未证；
+但有了 Q 组，这次开机**无论有无 open** 都能把它切一刀，
+而不是像 ab 那样拿一次参数没送达的安静当答案。
+
+
