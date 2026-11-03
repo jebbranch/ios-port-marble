@@ -142,6 +142,18 @@ jobs:
           # A patch can also "apply" while a later edit reverts it.  Check
           # the built kernel for one marker per recent patch that must be
           # linked in.
+          #
+          # A marker only works if the literal is UNIQUE to that patch, and a
+          # prefix is not a marker: "SWEET MARK: ampread " was satisfiable by
+          # 0238's own "SWEET MARK: ampread pins re-applied", so it could never
+          # have caught 0234 being skipped, and "SWEET AUDIO: " was already used
+          # by the bsd shim (battery refresh worker) and patches 0106-0181, which
+          # is how 0244 got a green gate while absent from the image.  New
+          # markers: copy the whole printf format string, then grep the patch
+          # series for it and insist on exactly one hit.  Audited 2026-11-03; the
+          # remaining shared strings ("pre-stream" in 0236/0237/0242, the two
+          # SWEET HAPTICS lines) are safe only because the later patch's hunks
+          # carry the earlier patch's code as context, so a skip takes both out.
           K="dxb/fakeroot/System/Library/Kernels/kernel.development.sweet"
           for s in "SWEET: halt: SCM deassert" \
                    "SWEET: skip PM halt/restart notifications" \
@@ -166,7 +178,7 @@ jobs:
                    "SWEET CANARY: start v2 nc=" \
                    "SWEET GMU: ahb burst ahb=" \
                    "SWEET MARK: ampfirst before bringup" \
-                   "SWEET MARK: ampread " \
+                   "SWEET MARK: ampread %s addr=%#x reg=%#x" \
                    "SWEET MARK: rxsnap " \
                    "rxsnap %s @" \
                    "pre-stream" \
