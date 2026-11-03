@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..7e090c5
+index 0000000..fdcbac7
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,309 @@
+@@ -0,0 +1,321 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -60,19 +60,31 @@ index 0000000..7e090c5
 +
 +	if (cached < 0) {
 +		int on = 0;
++		int exp = 0;
 +
 +		(void)PE_parse_boot_argn("sweetaudioprobe", &on, sizeof(on));
 +		/*
-+		 * Printed before the flag is honoured, and printed every boot: an
-+		 * instrument that cannot report its own absence is not an instrument.
-+		 * 0244 v1 printed nothing at all and the silence could not be told apart
-+		 * from "the patch did not apply" or "the boot-arg never arrived" - and in
-+		 * fact the arg had been dropped, because this kernel silently ignores
-+		 * boot-args past ~616 bytes of the cmdline.  gate=0 therefore means the
-+		 * argument did not reach the kernel, which is a void run, not a negative
-+		 * result.
++		 * sweetexp is the aggregate instrument switch: this kernel's boot-args
++		 * field is 607 bytes (mkpayload.py:36,37,186 - CMDLINE 0x48 plus
++		 * BOOT_LINE_LENGTH 608 ending at SEG_TABLE 0x2a8) and the packer used to
++		 * slice whatever did not fit, silently.  Sharing one integer argument
++		 * between instruments means a new witness costs no cmdline bytes; bit 1
++		 * is this probe, bit 0 is the IBAT burst in bsd/dev/sweet_glink.c.
 +		 */
-+		IOLog("SWEET AUDPROBE: gate flag=%d\n", on);
++		(void)PE_parse_boot_argn("sweetexp", &exp, sizeof(exp));
++		if (!on && (exp & 0x2) != 0) {
++			on = 1;
++		}
++		/*
++		 * Printed after parsing, and every boot.  An instrument that cannot
++		 * report its own absence is not an instrument: 0244 v1 printed nothing at
++		 * all and the silence could not be told apart from "the patch did not
++		 * apply" or "the boot-arg never arrived" - and in fact the argument had
++		 * been dropped, because sweetaudioprobe=1 sat at byte 629 of a 607-byte
++		 * field.  So gate flag=0 means the argument did not reach the kernel,
++		 * which is a void run and not a negative result.
++		 */
++		IOLog("SWEET AUDPROBE: gate flag=%d exp=%#x\n", on, exp);
 +		cached = on ? 1 : 0;
 +	}
 +	return cached == 1;

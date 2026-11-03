@@ -56,6 +56,20 @@ fi
 # Host wall clock at image build time; XNU sets its calendar from this.
 CMDLINE="$CMDLINE sweettime=$(date +%s)"
 
+# The boot-args field is 607 bytes: mkpayload.py puts CMDLINE at 0x48 and the
+# segment table at 0x2a8, i.e. BOOT_LINE_LENGTH 608 (kernel + sysctl copy it
+# with strlcpy(..., BOOT_LINE_LENGTH)).  Until now anything past byte 606 was
+# sliced off in silence, which voided whole cells and corrupted one value:
+# ring-ab lost sweetibatburst/sweetaudioprobe/sweetbufs (so its tone ran
+# uncapped at 1200 buffers instead of 30), and ring-i4's "sweetbufs=30" was cut
+# mid-value into "sweetbufs=3" and then looked like a valid measurement.
+# Budget 590 so a future append cannot land exactly on the edge.
+if [ "${#CMDLINE}" -gt 590 ]; then
+  echo "::error::cmdline is ${#CMDLINE} bytes; the field holds 607 and byte 590 is the budget." >&2
+  echo "   tail that would be lost: ${CMDLINE:560}" >&2
+  exit 1
+fi
+
 mkdir -p "$OUT"
 
 # The ADT needs Apple's D22AP device tree (product metadata).  It is not in
