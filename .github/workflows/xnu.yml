@@ -186,7 +186,10 @@ jobs:
                    "SWEET MARK: ampread pins re-applied" \
                    "SWEET MARK: bitbang skipped" \
                    "SWEET MARK: ibat " \
+                   "SWEET MARK: ibat sweep sid=" \
                    "SWEET AUDPROBE: gate flag=" \
+                   "map type=0 handed" \
+                   "IOK %s: %s %.600s" \
                    "SWEET MARK: clkwit " \
                    "SWEET MARK: vcfg2 rc " \
                    "SWEET MARK: s1ap leaf=" \

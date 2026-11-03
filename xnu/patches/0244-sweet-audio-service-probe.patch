@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..f086fe8
+index 0000000..2e2283f
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,465 @@
+@@ -0,0 +1,498 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -41,6 +41,7 @@ index 0000000..f086fe8
 +#include <IOKit/IOLib.h>
 +#include <IOKit/IOService.h>
 +#include <IOKit/IOUserClient.h>
++#include <IOKit/IOBufferMemoryDescriptor.h>
 +#include <libkern/c++/OSDictionary.h>
 +#include <libkern/c++/OSSymbol.h>
 +#include <libkern/c++/OSCollectionIterator.h>
@@ -225,14 +226,46 @@ index 0000000..f086fe8
 +SweetAudioUCBase::clientMemoryForType(UInt32 type, IOOptionBits *options,
 +    IOMemoryDescriptor **memory)
 +{
++	IOBufferMemoryDescriptor *buf;
++
++	IOLog("SWEET AUDPROBE: %s map requested type=%u options=%#x\n",
++	    getName(), (unsigned)type, options ? (unsigned)*options : 0);
++
 +	/*
-+	 * Refused on purpose.  Mapping a buffer is how a real audio client would
-+	 * hand us its ring, and that is a later step with a real backend; here we
-+	 * only want to know that it asked.
++	 * It used to refuse every type, "we only want to know that it asked", and
++	 * that is exactly what the first boot with this probe showed us it was not
++	 * enough for: ring-ep.txt has mediaserverd (pid 28, confirmed at :1681)
++	 * opening the AOP user client at :954, running selector 0 at :957, asking
++	 * for type 0 at :958 - refused - then closing at :959 and dying at :960;
++	 * the IOAudio2Device client at :1367 asked for type 0 at :1368 and never got
++	 * as far as a selector.  Ordering is not proof of cause and I am not claiming
++	 * it, but a probe that answers "unsupported" to the one thing every client
++	 * asks cannot see past that point, so type 0 now gets a buffer.
++	 *
++	 * Other types stay refused, so the log still shows what else it wants.
 +	 */
-+	IOLog("SWEET AUDPROBE: %s map refused type=%u\n", getName(),
-+	    (unsigned)type);
-+	return kIOReturnUnsupported;
++	if (type != 0 || memory == NULL || !sweet_audio_probe_enabled()) {
++		IOLog("SWEET AUDPROBE: %s map refused type=%u\n", getName(),
++		    (unsigned)type);
++		return kIOReturnUnsupported;
++	}
++	/*
++	 * The same call 0197/0211 have been shipping for the haptics client
++	 * (IOBufferMemoryDescriptor::withCapacity(0x10000, kIODirectionInOut, true))
++	 * - reused deliberately, because that idiom is already proven to build and
++	 * to survive a client mapping it here; withCapacity also hands the reference
++	 * to the caller without an extra release, which is what this API expects.
++	 */
++	buf = IOBufferMemoryDescriptor::withCapacity(0x10000, kIODirectionInOut,
++	    true);
++	if (buf == NULL) {
++		IOLog("SWEET AUDPROBE: %s map type=0 no memory\n", getName());
++		return kIOReturnNoMemory;
++	}
++	*memory = buf;
++	IOLog("SWEET AUDPROBE: %s map type=0 handed 0x10000 zeros\n",
++	    getName());
++	return kIOReturnSuccess;
 +}
 +
 +IOReturn

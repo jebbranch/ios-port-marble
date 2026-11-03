@@ -1,0 +1,19 @@
+diff --git a/iokit/Kernel/IOUserClient.cpp b/iokit/Kernel/IOUserClient.cpp
+index 163fce1..9cc612d 100644
+--- a/iokit/Kernel/IOUserClient.cpp
++++ b/iokit/Kernel/IOUserClient.cpp
+@@ -2649,7 +2649,13 @@ sweet_iolog_dict(const char *name, const char *what, OSObject *dict, const char
+ 	if (ser != NULL && dict != NULL && dict->serialize(ser)) {
+ 		text = ser->text();
+ 	}
+-	IOLog("IOK %s: %s %.240s -> %s\n", name, what, text, result);
++	/* 240 was too short for the one dictionary this exists to read: the
++	 * audio server's IOServiceFirstMatch query nests
++	 * IOPropertyMatch -> IOUserAudioDriverUserClientProperties ->
++	 * {IOClass, IOUserClass}, and the name that matters - IOUserClass -
++	 * fell off the end in ring-ep.txt.  600 still fits inside the 400-line
++	 * cap sweet_iolog() already enforces. */
++	IOLog("IOK %s: %s %.600s -> %s\n", name, what, text, result);
+ 	OSSafeReleaseNULL(ser);
+ }
+ #endif
