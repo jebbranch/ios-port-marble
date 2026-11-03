@@ -1751,6 +1751,7 @@ cmdline 实测 **585 字节**（预算 590，硬顶 607）；`mkimage.sh` 现在
 | E4 | 三段 `subtype` 是 3 或 4 | 否则 SPMI 路径不对，整组作废 |
 | P1 | `SWEET AUDPROBE: AppleAOPAudioController start` + `IOAudio2Device start` 各一行 | 没有 ⇒ 补丁没进镜像或平台表没发布 |
 | P2 | `gate flag=1 exp=0x3` + 两行 `registered` | `flag=0` ⇒ 参数没到（作废），不是"没人来找" |
+| **P2.5** | `SWEET AUDPROBE: matchq <name> n=…` 及其后的 `key …` 行 | 分层判据（0244 v5 新增）：完全没有 matchq ⇒ 没人拿这两个类名去查；只有 publish 期自己那条（键是 `IOProviderClass=IOResources` 一类）⇒ 注册通路没问题但仍没人查音频类；键里出现 `IOAudio2Device`/`AppleAOPAudioController` 却没有 open ⇒ 卡在用户态决策。**上限 40 行且封顶会 announce 一次**，所以"40 之后安静"不会被误读成"没人问过" |
 | **P3** | 任意 `open by pid N` | **B 组要的第一个二元答案**；一次都没有也不能直接推"mediaserverd 不找设备"，见 P5 |
 | P4 | pid 用同一次 ring 的 `exec …`/`p=NN[name]` 行核对 | 不许凭印象认 pid |
 | P5 | `ring` 里 `exec mediaserverd`（历史 159 个 ring 都有，`ring-ab.txt:792`） | 有 exec 无 open ⇒ 卡在 HAL/名字解析，不是进程没起来 |
@@ -1775,9 +1776,15 @@ cmdline 实测 **585 字节**（预算 590，硬顶 607）；`mkimage.sh` 现在
   （post-stream 段要等 `pcm tone done`，而那轮没跑完）。⇒ "出声时刻 PA 可不可读"仍是未知，
   子智能体报告里"PA 在音后仍 44/44 可寻址"的排序说法我没接受：`ring-ab:1555/1557` 的
   `geni amp 0x34/0x35 profile 44/44` 在 1705 之前，是音前。
-* **电流通道的节拍**：子智能体引 `0181-sweet-shm-system-ram.patch:3605/:3615` 说"5 s 采样、每 6 次打印 ⇒ 30 s 一跳"。
-  这两行**我还没自己复核**，先记为待验；若成立，那么 30 s 的打印对 130 ms 的音是原理性看不见，
-  下一版见证要按"同一 boot 内 idle→音门控"的 ΔmA 设计（子智能体方案），那是再一次开机的事。
+* **电流通道的节拍——已核实，不再是待验**：`xnu/patches/0181-sweet-shm-system-ram.patch:3604-3607`
+  是 `tick_n++; if (tick_n % 6 == 1) printf("SWEET BATT: tick %d …")`，注释自陈 "(30 s)"
+  ⇒ **tick 5 s、打印 30 s**。30 s 的打印对 130 ms 的音原理性看不见，0243 的密集突发
+  （12 次 × 10 ms 直读 SPMI）正是为绕开这条通路设计的。
+  但还有一条更硬的结构冲突要写死：`fastboot boot` 必须插线，所以"拔掉 USB"这条前置
+  在我们的运行模式里做不到 ⇒ E 组门加严为 **同一 phase 里 `usb=1` ⇒ 该 phase 记未运行**
+  （0243 自带 `usb=` 字段，不用凭印象）。若 pre/tone/post 三段全 `usb=1`，
+  能量侧在 RAM-only 模式下就是**原理性不可判**，按止损把"内核出声未证"写死并全转 B 组。
+  历史单点只作量级参考、不作结论：`ring-ab.txt:2707 tick 1 ok=5/5 cap=84% 4354mV -1207mA status=1 usb=1`。
 * `0xa5a5` 哨兵确实印出来了（`ring-vcfg2.txt:1613` 起 16 行 `r=-2 val=0xa5a5`）——我此前写的"哨兵从未打印"
   是错的；哨兵在 NACK 时保住了，所以别处读到的 `0xffff` 是真全 1 总线。这条更正同时意味着
   读回仪器是可信的，缺的从来不是仪器。

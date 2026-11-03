@@ -176,3 +176,71 @@ SWEET BATT: tick 25  ok=5/5 cap=100% 4413mV    0mA status=4 usb=1
 
 第 2、3 点合起来意味着：**这条仪器值得一次开机，但它的前提是"能测到"，
 所以它的判据里必须写死一条否证格**——否则又会变成 ① 那种"修好了仪器、没拿到证据"的一轮。
+
+---
+
+## 9. 2026-11-03 离线更正：桥这一轮的答案是"没测到"，不是"没人来 open"
+
+### 9.1 上一次开机对桥没有给出任何结论
+
+`sweetaudioprobe=1` 在 cmdline 的**偏移 613**，而 boot-args 字段只有 **607 字节**
+（`scripts/mkpayload.py:36-38`：CMDLINE 0x48 + `BOOT_LINE_LENGTH` 608 → SEG_TABLE 0x2a8；`:186` 以前静默切片）。
+内核回显走 `bsd/kern/kern_sysctl.c:2167-2170` 的 `strlcpy(buf, PE_boot_args(), BOOT_LINE_LENGTH)`，
+所以 ring 里那行 `boot-args =` 就是内核真正拿到的东西 ⇒ **ab 那轮的"没有 open"是参数没到，作废**。
+细节与逐 boot 偏移表见 `docs/audio-closeout.md` 的 2026-11-03 一节。
+
+### 9.2 名字按真机 ioreg 校正（三处，全部有行号）
+
+证据文件 `work/iphone-x-recon/dyld/ioservice.txt`（D22AP，`xnu-8792.82.2`，`20D67`）：
+
+| 用途 | 真机写法 | 行号 | 我原来写的 |
+|---|---|---|---|
+| 控制器 UC 类名 | `"IOUserClientClass" = "AppleAOPAudioUserClient"` | `:3559` | `AppleAOPAudioControllerUC`（编的） |
+| 设备 UC 类名 | `IOAudio2DeviceUserClient`（dump 内 9 次命中） | — | `IOAudio2DeviceUC`（编的） |
+| UID 键 | **`"device UID" = "Speaker"`**（带空格） | `:13112` | `IOAudio2DeviceUID`（该 dump 里 **0 次命中**） |
+| 类链 | `IOService:AppleBaseAudioController:AppleAOPAudioController` | `:3545` | 直接挂 `IOService` |
+| 匹配类别 | `"IOMatchCategory" = "AppleAOPAudioController"` | `:3569` | 无 |
+
+`IOUserClientClass` 这个字符串正是 `IOService::open()` 查的东西 ⇒ **名字错了就会永远读到
+"没人来 open"**，而且读起来像结论。0244 v5 已改。
+
+### 9.3 空壳现在回答三层问题，不是一层
+
+原来只问"有没有人来 open"；三种失败会打印同一片安静。v5 覆写匹配钩子把安静分层：
+`IOService.cpp:7798` 调 `where->matchPropertyTable(table, &score)`，
+基类两参版又转调一参版（`IOService.cpp:1294-1297`）⇒ 覆写一参版能同时接住两条入口
+（`matchInternal` 在这颗 xnu 里**不是**虚函数，`IOService.h:1659`，所以不能用它）。
+匹配字典的键一起打出来，因为平台 kext 自己 publish 时的匹配必须和用户态
+`IOServiceGetMatchingServices` 的查询区分开。
+
+| 观测 | 判读 |
+|---|---|
+| `start` 行有、`gate flag=1` 有、`registered` 有 | 空壳活着且发布成功 |
+| 之后**任何** `matchq` 都没有 | 没人拿这两个类名去查 ⇒ 问题在 HAL/名字层，不在 open 层 |
+| 只有 publish 期自己的 `matchq`（键里是 `IOProviderClass=IOResources` 一类） | 有人问过，但不是音频 client ⇒ 仍算"没人来 open"，但已排除"注册路径不通" |
+| `matchq` 带 `IOAudio2Device`/`AppleAOPAudioController` 却无 `open by pid` | 名字对了、匹配到了、客户端没开 ⇒ 卡在用户态决策（权限/依赖/选择哪台设备） |
+| `open by pid N` + `sel=` 序列 | B2 的原料：按序列反推 selector ABI |
+
+`matchq` 上限 40 行并** announce 一次封顶**，因为系统里每一次 registry 查询都会走这里；
+不这么写会把"40 次之后安静"读成"没人问过 40 次"。
+
+### 9.4 能量侧（E 组）与我们的运行模式有结构冲突，先说清楚
+
+本节 §8 的前置写的是"拔掉 USB"。但本项目只 `fastboot boot` 纯 RAM，**设备必须插线**，
+所以拔 USB 这条前置在我们的运行模式里做不到。已核实的节拍：
+`xnu/patches/0181-sweet-shm-system-ram.patch:3604-3607` 是 `tick_n++; if (tick_n % 6 == 1) printf(...)`，
+注释自己写 "(30 s)" ⇒ **tick 5 s、打印 30 s**。0243 的密集突发（12 次 × 10 ms 直读 SPMI）
+正是绕开这条打印通路的，但充电电流这个支配项绕不开。
+因此 E 组判据加一条硬门：**同一 phase 里 `usb=1` ⇒ 该 phase 记未运行**（0243 自带 `usb=` 字段，
+不用凭印象），若三段全 `usb=1`，能量侧就在 RAM-only 模式下**原理性不可判**，
+按止损把"内核出声未证"写死，全部转桥。这不是坏消息的遮掩，是把一格不该被
+"看起来测过了"的结论污染的地方提前封掉。
+
+### 9.5 顺序
+
+1. 一次开机（E+P 合一，cmdline 585 字节，仪器参数最前）⇒ 先看 9.3 的五层落点；
+2. 有 open ⇒ B2 复原 selector ABI，再谈把 PCM 后端接到已通的 SHM/GPR 环；
+3. 无 open 但 matchq 到了音频类名 ⇒ 问题在用户态（HAL bundle 加载/依赖），不许跳去写内核音频驱动；
+4. matchq 也没到 ⇒ 名字/匹配域还错，回到 9.2 的证据面继续挖离线材料（`artifacts/kernel.bin`
+   里四个类名都在，需要 im4p 解包 + 反汇编，这条**不需要设备**）。
+
