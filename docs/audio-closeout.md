@@ -2428,3 +2428,46 @@ SWEET SMMU: vgraph-post cb5 FSR=0x400 FAR=0x2040410 ...            <-- 我们 IO
 本地门（上机前必须全绿）：0247 正向 apply 且 apply 后与授权树 `diff -q` 相同；
 CI 产物里 grep 到 `SWEET MARK: tone gain`；镜像产物里 grep 到 `sweetvol=24 sweetbufs=500`、
 `sweets1ap=1`、`leaf` 无关参数一字未动；cmdline < 590。
+
+
+## E-AUDIBLE 判决（`logs/ring-z-audible.txt`）：**Z2 成立——3 秒 −2.5 dBFS 的 1 kHz 音被消费，用户没听到**
+
+### 一、我第二次把门写错，必须先记这个
+Z0 里"data_buffer `done status=0` 行数 ≥ 400"**不可满足**：这台机的打印形态从来不是每条缓冲一行。
+实测四份 ring：
+
+| ring | `data_buffer send` | `done status=0` | `tone done` |
+|---|---|---|---|
+| y-ap01（30 缓冲） | **31** | 4 | (30) |
+| **z-audible（500 缓冲）** | **501** | 4 | (500) |
+| b2 / ep9（30 缓冲） | 31 | 4 | (30) |
+
+⇒ 真正的每条缓冲见证是 **`data_buffer send` 计数 = 缓冲数 + 1**；`done status=0` 只出现在
+探测/前几条。已按此改门（与 Y0 的 beat 门同一类错误：**判据必须"该形态下可满足"**，连着两次踩到，
+这条要进我的工作规则）。
+
+### 二、去掉写错的门之后，这一枪的全部证据
+```
+SWEET MARK: tone gain g=24 peak=24576        （−2.5 dBFS，比历次响 ~28 dB）
+pcm tone start (dst=0x40bd)                  （无 fire-and-forget 后缀 ⇒ 走等 DONE 的节拍路径）
+data_buffer send × 501                        （= 请求的 500 缓冲 = 3.0 s）
+pcm tone done (500 buffers)
+graph_start rsp op=0x1001002 status=0
+SWEET I2C: geni amp 0x34 r=0 id=0x2032
+```
+用户当场读数：**没有听到**。⇒ **Z2**：数字侧全部到位、DSP 逐条消费，喇叭无声。
+
+### 三、Z2 的分档，按现有证据收窄（不笼统）
+| 档 | 证据状态 |
+|---|---|
+| ① **PA 从未被编程**（我们写的 AW 配置不足以让 DSP 动 PA） | **ep9 已实测**：pre-stream 与 post-stream **16 对寄存器全同**（`0`=0x2032、`0x3`=0xffff、`0x4`=0x4003、`0x5`=0x38）。⇒ 播放在跑，PA 一个比特都没变。这是目前**最强**的一档 |
+| ② TDM/后端实际没跑（时钟） | **已关闭**：能量/时钟两条见证此前判死（无 `/dev/mem`、`clk_summary` 空、tinyplay 扰动无效） |
+| ③ 数据没到喇叭（图内部连接不通） | **未测**。现成仪器：`0x0100100e`（模块状态读回，我们从没发过）与代码里已有的 `g_apm_state_query_sync()` |
+| ④ 我们自创的 `0x08001176` 值 0 把接口关了 | **未测**；厂商 trace 里这条参数**一次都没发过**（4 次比对全没有），且 `status-log.md:18` 说它来自 CDMA 时代（那时有 CDMA 模块语境，TDM sink 上是借用的） |
+
+### 四、下一枪（不再靠猜）
+0248 只做一件事：**把厂商发而我们没发的设备侧配置补齐**——AW 第二条 `0x10013d2a`{0,`0x10013d1c`,1,0,0,0,**0x6f60**,0}
+与 iid **`0x4308`** 的 `0x08001017`{96000,**0x20020**,1} + `0x0800101b`{0,2,0x10001,**3**,0x200004,0,1}，
+全部**照抄厂商原字节**；同时把 ④ 做成开关（`sweettdmpwr`：0=发值0（现状）/1=发值1/2=**不发**，默认保持现状）；
+仪器用已有的 `sweetampverify=1 sweetnobb=1` 做 **同版 pre/post 配对**，直接读 ① 是否在补齐后变成"寄存器变了"。
+字节预算：去掉 `sweetvgraph=2`（−14）换 `sweetampverify=1 sweetnobb=1`（+30）⇒ 566→582 < 590。
