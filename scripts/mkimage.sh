@@ -33,10 +33,12 @@ PY
 
 # ufsroot_* describe the HFS+ root image that lives in this phone's userdata
 # partition.  Change them if your partition layout differs.
-# cs_debug is deliberately NOT listed: bsd/kern/kern_cs.c:87 initialises
-# int cs_debug = 0, so "cs_debug=0" was a no-op that cost 11 of the 607 bytes
-# the boot-args field holds.
-CMDLINE='debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweetkeys=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=1 gicrstride=0x40000 sweetbatt=1 sweetglink=1 sweetreboot=1'
+# Two base args are deliberately NOT listed, both provable no-ops that were
+# eating the 607-byte boot-args field:
+#   cs_debug=0    - bsd/kern/kern_cs.c:87 initialises int cs_debug = 0
+#   sweetkeys=1   - xnu/patches/0060-sweet-keys...:sweet_keys_init() starts at
+#                   int enabled = 1, so only sweetkeys=0 changes anything
+CMDLINE='debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=1 gicrstride=0x40000 sweetbatt=1 sweetglink=1 sweetreboot=1'
 for a in "$@"; do CMDLINE="$CMDLINE $a"; done
 # KEEPALIVE=1 builds an image that stays in iOS instead of resetting itself
 # after boot.  Use it when a human needs to touch the GUI (e.g. to feel the
