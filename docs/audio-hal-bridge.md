@@ -577,3 +577,30 @@ crypto-hash-method / system-firmware-version`），**这些一个都没有** ⇒
 ### 14.1 顺带抓到自己一个仪器缺陷（已修，但记下来）
 
 `open by pid 28 type 0 on uid=?` 五行全是 `?`——不是笔误：`IOService::open()` 在 **attach 之前**就调 `initWithTask`，那时 `getProvider()` 合法地是 NULL。于是 ep7a 说得出"4 个设备被 open"却说不出是哪 4 个。修法是**把归属打到 attach 之后必然经过的行**（`map requested`、`notify port`），open 行保留诚实的 `?`。ep8 就是拿这一版复现 ep7a 并补这张表。
+
+---
+
+## 15. ep8：归属打通，4/5 节点被开，**Actuator 一个人在反复要映射**
+
+同一版内核复现 ep7a 的条件（`sweetexp=7`）：AOP `closed/died = 0/0`、`sel=0` ×1、
+`sel=4` ×5 —— 键的效果**第二次独立复现**。归属（A2）通了：
+
+```
+AppleAOPAudioUserClient   map type=0 ×1, type=1 ×1   uid=AppleAOPAudioController
+IOAudio2DeviceUserClient  map type=0 ×4              uid=Actuator
+                          map type=0 ×1              uid=Codec / Hawking / Speaker
+notify port ref=0x25 ×4  uid=Actuator   ref=0x23 Hawking   0x27 Codec   0x29 Speaker
+```
+
+三条新事实：
+
+1. **被开的是 Speaker、Codec、Actuator、Hawking 四个，`Loopback` 一次都没被开**（5 个只当背景板）。
+   注意 open 行只有 4 条而 map 有 7 条：这不是矛盾——4 个客户端，Actuator 那一个自己问了 4 次。
+2. **Actuator 是唯一"同一区域被反复索要"的节点**（type=0 ×4 + notify `0x25` ×4）。
+   现在它拿到的是一页全零缓冲。这是"map 内容需要真东西"这条候选的第一个定量迹象，
+   而且它落在**触觉促动器**节点上（真机里 `AppleActuatorSecondaryAudio` 也是 `IOAudio2Device` 派生）
+   ⇒ B3 那条线第一次有了音频侧的可测信号。
+3. 复核了一个我自己差点误读的东西：ep8 汇总里 `setProperties=2` 与 ep7a 的 `0` 看似行为不一致，
+   查原文是** grep 口径不同**：那 2 条是 `SWEET HAPTICS: AppleSPUHapticsAudioDriver` 的
+   `GlobalConfig` / `GlobalForceFeel=1`（顺带证明 backboardd 真的在配置我们的震动 stub），
+   **音频侧 setProperties 两台都是 0**。聚合口径不一致时会先怀疑自己的 grep，而不是先宣布行为变了。
