@@ -2345,3 +2345,29 @@ X0 要求"同版必须带数据面基线四行"。这条**在设计上就不可�
 - 用户授权的那一次开机**已用掉**，产出是上面两条判读，其中 X5 把 ② 从"正文"转向
   **"SHM 正文读路径"**。按我自己 X5 那格的预定动作：**不再动正文**。
 - `docs/START-HERE.md` 里"② 结构缺口"的措辞需要按此收窄（见下）。
+
+
+## 预先登记：E-AP01（`sweetvgraph=2 sweets1ap=1`）的判据 —— 开机前写死，事后不许改
+
+依据（全部来自盘上对照，见上一节的表）：19 次 `s1ap=3`（AP=11，全特权级只读）的正常数据面
+**从不**在我们 IOVA 上故障且 `done status=0`；4 次没有 `sweets1ap`（AP=00）的 offset-mode 开机
+故障在 0x408；**只有 v2960 是"AP=11 + 跑了 graph-open 正文读"，故障也是 0x408**。
+⇒ 假说：`DATA_BUFFER` 只需读，AP=11 够；graph-open 那次访问需要可写/非特权，被 AP 挡住。
+`sweets1ap=1` 写 AP=01（EL1 RW + EL0 RW），是唯一同时保住读、放开写的编码。
+
+代码事实（`work/chain-tree/bsd/dev/sweet_glink.c` 的 s1_ap 块）：`s1_leaf &= ~(3ull<<6);
+s1_leaf |= N<<6` ⇒ **叶子应从 `0x7c1` 变成 `0x741`**，并回显 `req=1`。这是可事先算死的字面值。
+
+| 格 | 检查 | 判读 |
+|---|---|---|
+| **Y0** 有效性门 | cmdline 回显含 `sweets1ap=1 sweetvgraph=2`；出现 `SWEET MARK: s1ap leaf=0x741 req=1`；出现 `APM graph_open/ukee2960 … len=2944`；`SWEET SMMU: vgraph-pre` ≥1 且 `vgraph-post` ≥1；`poll beat` 有行 | 少任一条 ⇒ 记「仪器/参数未生效」，**不许**判权限假说 |
+| **Y1** | `graph_open/ukee2960 rsp … status=0` | AP 就是那位拦路石 ⇒ 建图通，接下去 `graph_cfg/START/tone/data_buffer` 若跟上，才第一次有"可能出声"的条件 |
+| **Y2** | 有 rsp、`status!=0` | 权限过了、内容被拒 ⇒ 回到 graph key（41 选 1）/`b0000025` 另一条，**这才是正文问题的战场** |
+| **Y3** | 仍 `no response`，但 **post 的 cb5 FAR 不再是 `0x1ffe8000`** | 权限不是原因 ⇒ 剩余候选只有"读发生在建表之前"与句柄/池语义，两条都要另行设计 |
+| **Y4** | 仍 `no response` 且 FAR 仍是 `0x1ffe8000` | 记下 FSR 值。**预先声明仪器局限**：AP=00 与 AP=11 都报 0x408、只有坏编码报 0x402 ⇒ 若 01 仍得 0x408，则 **FSR 不区分 AP=00/11**，这一格就**不能**读成"权限无关"，只能读成"仪器分不开" |
+| **Y5** | `poll beat` < 25 且 ring 就此断 | 挂死（v2960 已证明 AP=11 下不挂，故这次若出现是新信息） |
+| **Y6** | Y1 之后 `pcm tone done (30 buffers)` 与 `data_buffer … done status=0` 是否回来 | 回来 ⇒ 同版内数据面与建图并存成立；**出声仍只能由耳朵判**，需用户当场确认 |
+
+单一变量：相对 v2960 只改 `sweets1ap 3→1`。其余参数一字不动。
+本地门（上机前必须全绿）：不需要重编（0246 内核已含 beat/见证与 s1ap 解析，靠 marker 与字符串核过）；
+镜像重打；在**打包产物**里 grep 到 `sweets1ap=1`、`sweetvgraph=2`、`graph_open/ukee2960`；cmdline < 590。
