@@ -2371,3 +2371,36 @@ s1_leaf |= N<<6` ⇒ **叶子应从 `0x7c1` 变成 `0x741`**，并回显 `req=1`
 单一变量：相对 v2960 只改 `sweets1ap 3→1`。其余参数一字不动。
 本地门（上机前必须全绿）：不需要重编（0246 内核已含 beat/见证与 s1ap 解析，靠 marker 与字符串核过）；
 镜像重打；在**打包产物**里 grep 到 `sweets1ap=1`、`sweetvgraph=2`、`graph_open/ukee2960`；cmdline < 590。
+
+
+## E-AP01 判决（2026-11-03 23:0x，`logs/ring-y-ap01.txt`）：**Y2 命中，权限就是那位拦路石**
+
+单一变量：`sweets1ap` 3 → 1（叶子 `0x7c1` → `0x741`，AP=01）。其余一字未改。
+
+```
+SWEET MARK: s1ap leaf=0x741 req=1
+SWEET GLINK: APM graph_open/ukee2960 src=0x2010 (shm handle=0xb0d7f408 len=2944)
+SWEET GLINK: graph_open/ukee2960 rsp op=0x1001000 status=0x2        <-- 第一次有 rsp
+SWEET SMMU: vgraph-post cb5 FSR=0x400 FAR=0x2040410 ...            <-- 我们 IOVA 上不再故障
+```
+
+| 判据 | 读数 |
+|---|---|
+| **Y0** | 全绿：叶子回显 `0x741 req=1`、`len=2944`、pre/post 见证各 7 行 |
+| **Y1/Y2** | **Y2**：有 rsp 且 `status=0x2` ⇒ 正文被送到、被内容层面拒绝，**权限阶段已过** |
+| **Y3** | 反面成立：`FAR=0x1ffe8000` 的故障**消失**（post 只剩背景值 `0x2040410/0x400`） |
+| **Y5** | 无挂死。**beat=0 不是仪器失效**——应答在 ~1 秒内到达，还没到第一拍 |
+| **Y6** | 同版数据面完整回来：`graph_start rsp status=0`、`vp/*` 八条全 `status=0`、`vendor graph + WR input started`、`data_buffer done status=0` ×4、`pcm tone done (30 buffers)`、`geni amp 0x34 r=0 id=0x2032` ⇒ **四个已知-good 基线行齐全** |
+
+两条必须记的**我自己的错**：
+1. **Y0 里"poll beat 有行"这一项设计错了**：快速成功必然 0 拍。已按实测改成本条目（beat 只在"无应答"时有意义）。
+2. 打分脚本与判据表在这一项上不一致（脚本没把 beat 当门）。**判据表为准的部分我已逐项在 ring 里复核**，不拿脚本的 PASS 当证据。
+
+### 这条结果改变了什么
+- **② 从"沉默"变成"有错误码"**：AP=01 之后 SHM 形态的 graph-open **每条包都在 <1 秒内应答**。
+  这既修掉了 v2960 那种"发出后整段静默、还会把后面的 APM 一起 wedge"的不可诊断态，
+  也让**一次开机内可以试多个正文变体**（每个变体一秒内给 status）。
+- `status=0x2` 是唯一的新事实。它的含义**没查**，不许写成"内容无效"之类解释；
+  现在只能说：**同一区域、同一句柄、同一句法，AP=01 时 DSP 读了、并回了 2；AP=11 时它读不到、什么都不回。**
+- `sweets1ap=1` 现在是有证据的**新基线候选**（四行齐 + 无挂死 + 无 wedge），
+  但"数据面四行齐"从来都不等于出声，**出声仍未证**。
