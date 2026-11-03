@@ -140,6 +140,31 @@ val=0x2032`——AP 第一次真读到 AW882xx。下一步是 0241 `sweetnobb=1`
 DSP 真正读通**；`sweetampfirst=1` 把 PA 的配置挪到开图之前——历史上顺序是反的，
 所以任何"没出声"的观测在 0233 之前都不成立。
 
+**B1 判决（2026-11-03，b1+b2 两次开机）——iOS 会话常驻但不出流。**
+两次都有 U0 全绿 + 真输入（b2：99 条 touch、21 次音量键），但音频域**零新增**：
+控制器 selector 只有 `sel=0`/`sel=4`，`sel=2/3/5` 计数为 0；Actuator 的重复 map 仍 4 次没停；
+`IOK mediaserverd` 埋点在跑（407 块）只见匹配我们的壳。
+（`AppleAOPButtonHapticsServiceUserClient sel=1` 每 boot 都是 2 条，是基线，不是新增。）
+另有一个**独立阻塞**：b1/b2 都没到 GUI，ring 结尾是 launchd 的
+`Too many corpses being created`（dasd + 三个 TTS 宿主，sig 6），
+没有 `PSCI SYSTEM_RESET`、没有 panic ⇒ "自己重启"不是我们的复位路径。
+⇒ 主攻按预登记转 ②（不依赖 iOS 行为），判决表在 `docs/audio-closeout.md` 末尾。
+
+② 的下一条不是新代码，而是**从没试过的 framing**：
+`g_graph_vendor4[2724]` 自己声明 `graph_size=2724`，可盘上 6 条实机记录全是
+`graph_open/vendor4 … len=2712`（每次都把 12 字节图头剥掉了）。
+镜像已构建并在产物里核过（cmdline 582 字节）：
+
+```bash
+D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PROBE_LEVEL=0 \
+  ./scripts/mkimage.sh sweetbufs=30 sweetpcm=1 sweets1=1 sweetiova=1 \
+  sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 \
+  sweets1ap=3 sweetampfirst=1 sweetvgraph=1 sweetvgoff=0 sweetvglen=2724
+./scripts/boot_one.sh images/e1-vgraph2724.img e1
+```
+
+判据 W0–W5（含 W0 有效性门和 W5 仪器缺口）在 `docs/audio-closeout.md` "E1" 一节，开机前已写死。
+
 **注意**：`sweetsmp=1` 是测试开关，采样 20 秒后主动复位；**默认 cmdline
 里没有它**，正常启动不会自己重启。
 

@@ -1874,3 +1874,112 @@ IOK <进程名>: matching <序列化后的匹配字典，240 字节> -> <N found
 而不是像 ab 那样拿一次参数没送达的安静当答案。
 
 
+
+## 2026-11-03 夜：B1 判完（止损触发）＋ ② 抓到一条"从来没试过的变量"
+
+### 一、b1 / b2 判决（`logs/ring-b1.txt`、`logs/ring-b2.txt`，用开机前写死的 U 组）
+
+- **U0 全绿**（b2：560 字节 cmdline、cpus=8、无 sweetreboot、S1 叶子 0x7c1、
+  keys bit2=1、AUDPROBE gate=1、`pcm tone done (30 buffers)`、opens=1/closed=0）
+  ⇒ b2 与 ep9 完全可比，B1 的内核级判据是有效测量，不是"参数没送达"。
+- **GUI 没到，但不是我们让它重启的**：ring 里没有 `PSCI SYSTEM_RESET`、没有 panic 行，
+  结尾是 launchd 自己说的 `Process[326] crashed: dasd. Too many corpses being created.`
+  → `exec xpcproxy` → `exec medialibraryd`（崩溃者全是音频域宿主：
+  SiriTTSSynthesizer / MacinTalkAUSP / KonaSynthesizer / dasd，sig 6，约 28 轮 crash+respawn）。
+  ⇒ "设备直接重启、没进 GUI" = **另一个独立阻塞**（记为 U6：GUI 到达），
+  b1、b2 都有它，所以它是 U2 判据的一个共同混淆项，我按这个记，不改判据。
+- **输入真的进了内核**：b2 = 99 条 touch（b1 只有 1 条，b1 的按键基本落在 GUI 前）、
+  音量键 0xe9×13、0xea×8、0x0e30×1，共 21 次按键。
+- **音频域零新增**：以首条 touch（b2 行 3107）为锚点，其后 0 条音频域日志；
+  音频控制器的 selector 分布仍是 `sel=0 ×2`、`sel=4 ×10`，**`sel=2/3/5` 在两次开机里计数为 0**。
+- 按类/pid 拆开核过，不把聚合数当结论：震动类 `AppleAOPButtonHapticsServiceUserClient sel=1`
+  在 b1/b2 各 2 条，和盘上 70+ 个 ring 的每-boot 基线一模一样 ⇒ **不是新增**，别把它当"新 selector"。
+  Actuator 对同一区域重复索要 map 仍是 4 次（没停）；pid 57 的 opens 仍是 4；
+  `IOK mediaserverd` 埋点在跑（407 个 180 字节块、36 条 `=end`），只见匹配/发布我们的壳
+  和一条 `AppleEFINVRAM -> none`。
+
+⇒ **止损条件成立**（两次开机、任何新 selector/状态改动都没有）。
+按预登记的写法：**iOS 会话常驻但不出流**；主攻转 B3 的 ②（不依赖 iOS 行为）。
+
+### 二、② 的厂商帧表（离线，把 `work/sweet-audio/traces/trace_ui.txt` 按 opcode 重解析）
+
+| 事件 | src 端口 | token | GPR p6/p7 | p8 handle | p9 |
+|---|---|---|---|---|---|
+| GRAPH_OPEN（流图） | 0x2010 | 0x26 / 0x44 | 0 / 0 | 0xb0d890e8 | **0x1f0** = 496 |
+| GRAPH_OPEN（设备图） | 0x2011 | 0x2c / 0x4a | 0 / 0 | 0xb0d890e8 | **0xb38** = 2872 |
+| GRAPH_START（流图） | 0x2010 | 0x49 | param 0x08001005 | — | 表 = {1, 0xb00000d5} |
+| GRAPH_START（设备图） | 0x2011 | 0x59 | param 0x08001005 | — | 表 = {4, 0xb0000002, 0xb0000025, 0xb0000024, 0xb0000023} |
+
+**两个 GRAPH_OPEN 共用同一个 handle**（0xb0d890e8），正文都放在区域偏移 0。
+我们的 `g_apm_graph_open_shm()` 发的字段布局（`{off,0,handle,len}` @pkt+24）和上表逐字对齐，
+所以包结构不是问题；问题只可能在 `len` 和正文本身。
+
+### 三、关键发现：我们发的正文比正文自己声明的长度少 12 字节
+
+把 `work/chain-tree/bsd/dev/sweet_glink.c:2043` 的 `g_graph_vendor4[2724]` 解出来：
+
+```
+[0] 0x00000aa4 = 2724      <-- 图自己声明的 graph_size == 数组全长
+[1] 0x00000004 = 4         <-- num_subgraphs
+子图正文头 {1, 0x08001001, 0x30} 在体内 0x3c / 0x3a0 / 0x5d8 / 0x70c
+子图 id = 0xb0000002, 0xb0000081, 0xb0000024, 0xb0000023
+```
+
+`g_vendor4_sgs[4]`（:2274）和正文里的 4 个 id **一字不差**，所以 START 列表和我们自己的正文是自洽的。
+
+而盘上 6 条实机记录全是：
+
+```
+SWEET GLINK: APM graph_open/vendor4 src=0x2010 (shm handle=0xb0d7f408 len=2712)
+```
+
+也就是每次都 `sweetvgoff=12 / len=2712` —— **把 12 字节的图头剥掉**，再告诉 DSP "正文 2712 字节"。
+DSP 读到的第一个 u32 于是成了 0x35c（860），而它期望那里是 graph_size。
+"no response" 不需要新假设就能被这条解释。
+
+⇒ `off=0 / len=2724`（正文自洽 + 与厂商 framing 同形）是一个**从未跑过**的单一变量，
+而且不需要重编内核（`out/kernel.adsp` 里已有 `graph_open/vendor4`、`vgraph off/len out of range` 字符串，
+两个开关本来就留着）。
+
+同时把我上一轮那句"我们的 0xb0000081 对不上厂商的 0xb0000025 ⇒ START 表写错"**降级**：
+不一致的不是我们的表，是**正文变体**——厂商当前设备图 2872 B、含 0xb0000025，
+我们手上这份是 2724 B、含 0xb0000081。两件事分开记。
+
+### 四、离线复核补一条正面结果（并且再纠自己一次）
+
+- `work/sweet-audio/traces/agm-heap-tdm-window.bin` 里能扫到 **35 处** `{1,0x08001001,0x30}` 头，
+  逐个走 TLV 链读得出 4–6 段（0x08001001 子图属性 / 0x08001000 模块表 / 0x08001002 连接表 /
+  0x08001003 / 0x08001004 / 0x08001061），单份跨度 256–1240 B；
+  其中 6 份 span=816、子图 id=0xb0000002（@0xb39e 等）——那正是
+  `agm-graph-b0000002-compact.bin`（680 B）的母本，母本被截断了。
+  ⇒ **完整的子图正文副本是在盘上的**，我上一轮"正文一条都不在盘上"说过头了。
+- 但**没有任何一份等于 2872**，也没有 496；厂商当前那份设备图正文仍旧不在盘上
+  ⇒ 要拿它还是得跑一次 Android 侧抓取。`scripts/apm_harvest.py` 已补：
+  `OPS` 认 GRAPH_OPEN/PREPARE/START、`GRAPH_SIG` = `{1,0x08001001,0x30}`、
+  `GRAPH_SIZES` = (496, 2872)、GRAPH_OPEN 的 size 进 `sizes`，外加一个不碰手机的
+  `--scan FILE` 离线模式（上面两张表就是用它跑出来的）。
+- 再次作废一条：**"堆里 size=2872@0xb9e"是 u32 对齐伪影**（值活在 2 mod 4 的指针表里），不是命中。
+
+### 五、预先登记：E1（`sweetvgoff=0 sweetvglen=2724`）的判据 —— 开机前写死，事后不许改
+
+镜像已构建并**在打包产物里核过**（`images/e1-vgraph2724.img`，cmdline 582 字节 < 590 顶）：
+
+```
+D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PROBE_LEVEL=0 \
+  ./scripts/mkimage.sh sweetbufs=30 sweetpcm=1 sweets1=1 sweetiova=1 \
+  sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 \
+  sweets1ap=3 sweetampfirst=1 sweetvgraph=1 sweetvgoff=0 sweetvglen=2724
+./scripts/boot_one.sh images/e1-vgraph2724.img e1
+```
+
+| 格 | 检查 | 期望 / 判读 |
+|---|---|---|
+| **W0** 有效性门 | cmdline 回显含 `sweetvgoff=0 sweetvglen=2724`；出现 `graph_open/vendor4 … len=2724`；数据面四行照旧（`s1ap leaf=0x7c1`、`graph_start rsp … status=0`、`data_buffer: dst=0x40bd done status=0`、`pcm tone done (30 buffers)`） | 少任何一条 ⇒ 记"**仪器未生效**"，不许判"正文长度不对" |
+| W1 | `graph_open/vendor4` 有 rsp 且 `status=0` | framing 假说成立 ⇒ 进 E2（把 iOS 流接进来） |
+| W2 | 有 rsp 但 `status≠0` | 正文被受理、内容被拒 ⇒ 记下 status 值，转 2872 变体抓取 |
+| W3 | 仍旧 `no response` | framing 不是唯一原因；**这一格只能得"no response"，不能得"不是 SMMU"**，见 W5 |
+| W4 | `SWEET GLINK: vendor4 graph started` | 再加一条：`graph_start` 的 rsp status 是不是 0 |
+| **W5** 仪器缺口如实登记 | vgraph 分支**没有** `g_smmu_faults()` 包装（:5212 那个函数只在别的路径上调过），所以 W3 无法排除"区域读不到" | 若 W3 命中，下一轮先加 1 行 SMMU 见证再谈其它假设；失败的检法不复用 |
+
+安全线：不加音、不放长音、`sweetbufs=30` 一字不动；纯 RAM `fastboot boot`；
+vgraph 的 1000×`g_wait(5)` 最多阻塞 5 s，比一轮 tone 短。

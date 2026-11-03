@@ -27,7 +27,16 @@ import time
 ADB = ["adb", "-s", "2aa26095"]
 DEV = "/data/local/tmp"
 TLV = (0x08001008, 0x080010C4, 0x0800100C, 0x08001001, 0x08001002)
-OPS = {0x01001006: "SET_CFG", 0x0100100C: "SHM_MAP", 0x0100100D: "SHM_UNMAP"}
+OPS = {0x01001006: "SET_CFG", 0x0100100C: "SHM_MAP", 0x0100100D: "SHM_UNMAP",
+       0x01001000: "GRAPH_OPEN", 0x01001001: "GRAPH_PREPARE",
+       0x01001002: "GRAPH_START"}
+# The vendor GRAPH_OPEN payload (the graph body) starts with a compact TLV
+# header {iid=1, PARAM_ID_SUB_GRAPH_CONFIG=0x08001001, size=0x30}; that is the
+# same 12-byte signature found in the AGM heap (docs/vendor-graph.md).
+GRAPH_SIG = struct.pack("<III", 1, 0x08001001, 0x30)
+# The two payload sizes the vendor actually opens: 0x1f0 stream graph,
+# 0xb38 device graph (docs/traces/trace_ui.txt).
+GRAPH_SIZES = (0x1f0, 0xb38)
 UPROBES = ("ugwr", "ugrw", "udpw", "umap", "umeta", "ucald", "usetcal",
            "usetcfg", "ugrcal", "ugrcfg", "uioctl", "ushmal")
 # which thread/proc ids show up is boot-dependent; the parse keys on names only.
@@ -62,6 +71,37 @@ def parse(trace):
     return apm, ups
 
 
+def scan_bytes(b, sizes):
+    """Body-detection over one blob: sizes seen in the trace + the vendor graph
+    sizes, the subgraph-config TLV, and the GRAPH_OPEN body signature."""
+    hits = []
+    for want in sorted(sizes | set(GRAPH_SIZES)):
+        p = struct.pack("<I", want)
+        hits += [f"size={want}@{o:#x}" for o in range(len(b) - 3) if b[o:o + 4] == p]
+    for t in TLV:
+        p = struct.pack("<I", t)
+        hits += [f"TLV{t:#010x}@{o:#x}" for o in range(len(b) - 3) if b[o:o + 4] == p]
+    for o in range(len(b) - len(GRAPH_SIG) + 1):
+        if b[o:o + len(GRAPH_SIG)] == GRAPH_SIG:
+            hits.append(f"GRAPH_SIG@{o:#x}")
+    return hits
+
+
+def scan_files(paths, sizes):
+    """Offline mode: run the same detector over dumps already on disk."""
+    for p in paths:
+        try:
+            b = open(p, "rb").read()
+        except OSError as e:
+            print(f"  {p}: unreadable ({e})")
+            continue
+        hits = scan_bytes(b, sizes)
+        print(f"  {p} ({len(b)} B) head={b[:32].hex(' ')}")
+        if hits:
+            print("     markers: " + " ".join(hits[:12]))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cmd", default=f"{DEV}/agmplay /vendor/etc/bottom_spk.wav "
@@ -73,7 +113,12 @@ def main():
     ap.add_argument("--hot", action="store_true",
                     help="also probe gsl_write/graph_write/dp_write (PCM hot path; the phone "
                          "self-rebooted once inside a 100 s window with them on)")
+    ap.add_argument("--scan", nargs="*", default=[],
+                    help="offline mode: run the body detector over these local files and exit")
     a = ap.parse_args()
+
+    if a.scan:
+        return scan_files(a.scan, set())
 
     # --- (re)install the probes.  tracefs resets every boot, and clearing
     # kprobe_events needs the existing events disabled first (else EBUSY).
@@ -91,12 +136,20 @@ def main():
 
     print(f"== APM-level traffic ({len(apm)} packets)")
     sizes = set()
+    graph_open = []
     for pid, op, dst, tok, handle, size in apm:
         if op == "SET_CFG":
             sizes.add(size)
-            print(f"  pid={pid} {op} dst={dst} tok={tok} handle={handle:#010x} "
-                  f"size={size}" + ("   <== WANTED" if size == a.want else ""))
+        elif op == "GRAPH_OPEN":
+            # the payload for a GRAPH_OPEN is the graph body: its size is what
+            # the dump below has to match.
+            sizes.add(size)
+            graph_open.append((pid, dst, handle, size))
+        print(f"  pid={pid} {op} dst={dst} tok={tok} handle={handle:#010x} "
+              f"size={size}" + ("   <== WANTED" if size == a.want else ""))
     print(f"== uprobe hits: {len(ups)}")
+    for pid, dst, handle, size in graph_open:
+        print(f"  GRAPH_OPEN pid={pid} src/dst={dst:#x} handle={handle:#010x} body={size}")
 
     if not any(s == a.want for s in sizes):
         print(f"  (no {a.want}-byte SET_CFG in this window; harvesting the sizes we did see)")
@@ -134,17 +187,11 @@ def main():
             b = open(f"/tmp/{name}", "rb").read()
         except OSError:
             continue
-        hits = []
-        for want in sorted(sizes | {a.want}):
-            p = struct.pack("<I", want)
-            hits += [f"size={want}@{o:#x}" for o in range(len(b) - 3) if b[o:o + 4] == p]
-        for t in TLV:
-            p = struct.pack("<I", t)
-            hits += [f"TLV{t:#010x}@{o:#x}" for o in range(len(b) - 3) if b[o:o + 4] == p]
+        hits = scan_bytes(b, sizes)
         head = b[:32].hex(" ")
         print(f"  {name} ({len(b)} B) head={head}")
         if hits:
-            print("     markers: " + " ".join(hits[:10]))
+            print("     markers: " + " ".join(hits[:12]))
     return 0
 
 
