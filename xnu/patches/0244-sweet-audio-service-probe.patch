@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..fdcbac7
+index 0000000..f086fe8
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,321 @@
+@@ -0,0 +1,465 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -138,7 +138,8 @@ index 0000000..fdcbac7
 +	virtual IOReturn clientMemoryForType(UInt32 type,
 +	    IOOptionBits *options, IOMemoryDescriptor **memory)
 +	    APPLE_KEXT_OVERRIDE;
-+private:
++protected:
++	/* subclasses log who they are serving (see IOAudio2DeviceUserClient) */
 +	int fPid;
 +};
 +
@@ -163,6 +164,11 @@ index 0000000..fdcbac7
 +    IOExternalMethodArguments *arguments, IOExternalMethodDispatch *dispatch,
 +    OSObject *target, void *reference)
 +{
++	if (arguments == NULL) {
++		IOLog("SWEET AUDPROBE: %s sel=%u arguments==NULL\n", getName(),
++		    (unsigned)selector);
++		return kIOReturnBadArgument;
++	}
 +	IOLog("SWEET AUDPROBE: %s sel=%u sin=%u sout=%u struct_in=%u "
 +	    "struct_out=%u\n", getName(), (unsigned)selector,
 +	    (unsigned)arguments->scalarInputCount,
@@ -170,16 +176,40 @@ index 0000000..fdcbac7
 +	    (unsigned)arguments->structureInputSize,
 +	    (unsigned)arguments->structureOutputSize);
 +
-+	for (uint32_t i = 0;
-+	    i < arguments->scalarInputCount && i < SWEET_AUDIO_OPEN_LIMIT; i++) {
-+		IOLog("SWEET AUDPROBE:   in[%u]=%#llx\n", i,
-+		    (unsigned long long)arguments->scalarInput[i]);
++	if (dispatch == NULL) {
++		for (uint32_t i = 0; i < arguments->scalarInputCount &&
++		    i < SWEET_AUDIO_OPEN_LIMIT && arguments->scalarInput != NULL;
++		    i++) {
++			IOLog("SWEET AUDPROBE:   in[%u]=%#llx\n", i,
++			    (unsigned long long)arguments->scalarInput[i]);
++		}
++		for (uint32_t i = 0; i < arguments->scalarOutputCount &&
++		    i < SWEET_AUDIO_OPEN_LIMIT && arguments->scalarOutput != NULL;
++		    i++) {
++			arguments->scalarOutput[i] = 0;
++		}
 +	}
-+	for (uint32_t i = 0;
-+	    i < arguments->scalarOutputCount && i < SWEET_AUDIO_OPEN_LIMIT; i++) {
-+		arguments->scalarOutput[i] = 0;
-+	}
-+	return kIOReturnSuccess;
++	/*
++	 * Hand the call over instead of answering kIOReturnSuccess here.  Two
++	 * reasons, both learned from Apple's own implementation in the iPhone X
++	 * kernel (artifacts/kernel.bin, Darwin 22.3.0 xnu-8792.82.2~1/
++	 * RELEASE_ARM64_T8015):
++	 *
++	 *   - IOUserClient's base (validator around 0xfffffff0077fca18) compares
++	 *     dispatch->checkScalarInputCount / checkStructureInputSize against the
++	 *     client's arguments and returns kIOReturnBadArgument (0xe00002c2) on a
++	 *     mismatch.  A blanket Success would answer "yes" to calls Apple answers
++	 *     "no" to, so the client's state machine we are trying to observe would
++	 *     not behave like it does on a real phone.
++	 *   - worse, Success with an UNFILLED structureOutput is a lie a client can
++	 *     read as data.  An error is survivable; garbage is not.
++	 *
++	 * With dispatch == NULL the base runs no method and reports it as
++	 * unsupported, which is exactly what Apple's user clients do for selectors
++	 * past their table - so our log keeps being a capability map.
++	 */
++	return IOUserClient::externalMethod(selector, arguments, dispatch, target,
++	    reference);
 +}
 +
 +IOReturn
@@ -240,10 +270,80 @@ index 0000000..fdcbac7
 + * "IOAudio2DeviceUID", and "IOAudio2DeviceUID" has zero occurrences in the
 + * real dump - the property carrying the UID is literally named "device UID".
 + */
++/*
++ * AppleAOPAudioUserClient's method table, transcribed from Apple's own
++ * implementation rather than invented.  In artifacts/kernel.bin (Darwin 22.3.0,
++ * xnu-8792.82.2~1/RELEASE_ARM64_T8015 - the same build as the ioreg dump) its
++ * externalMethod computes a dispatch pointer as table + selector * 0x18, bounds
++ * it against 6, and tail-calls IOUserClient::externalMethod.  0x18 is
++ * sizeof(IOExternalMethodDispatch) (iokit/IOKit/IOUserClient.h:160-166), and the
++ * six records are named method_Open, method_Close, method_StartHardware,
++ * method_StopHardware, method_GetControlValue, method_SetControlValue, with
++ * {checkScalarInputCount, checkStructureInputSize, checkScalarOutputCount,
++ * checkStructureOutputSize} = {0,0,0,0} for the first four, {1,0,1,0} and
++ * {2,0,0,0} for the last two.
++ *
++ * Copying the widths is the point: with them, a client asking selector 4 with no
++ * scalar input gets the same kIOReturnBadArgument Apple would send, and a
++ * selector past 5 gets unsupported - so what lands in the ring is a map of what
++ * the audio stack actually calls, not an artefact of a shell that accepts
++ * everything.
++ */
++#define SWEET_AOP_METHOD_COUNT 6
++
++static IOReturn
++sweet_aop_method(OSObject *target, void *reference,
++    IOExternalMethodArguments *arguments)
++{
++	uint32_t sel = (uint32_t) (uintptr_t) reference;
++	uint32_t i;
++
++	if (arguments == NULL) {
++		return kIOReturnBadArgument;
++	}
++	for (i = 0; i < arguments->scalarOutputCount && arguments->scalarOutput != NULL; i++) {
++		arguments->scalarOutput[i] = 0;
++	}
++	IOLog("SWEET AUDPROBE: aop sel=%u ran in=%u out=%u sin=%#llx\n", sel,
++	    (unsigned) arguments->scalarInputCount,
++	    (unsigned) arguments->scalarOutputCount,
++	    (arguments->scalarInput != NULL && arguments->scalarInputCount > 0) ?
++	    (unsigned long long) arguments->scalarInput[0] : 0ull);
++	return kIOReturnSuccess;
++}
++
++static IOExternalMethodDispatch sAopMethods[SWEET_AOP_METHOD_COUNT] = {
++	{ sweet_aop_method, 0, 0, 0, 0 },   /* method_Open             */
++	{ sweet_aop_method, 0, 0, 0, 0 },   /* method_Close            */
++	{ sweet_aop_method, 0, 0, 0, 0 },   /* method_StartHardware    */
++	{ sweet_aop_method, 0, 0, 0, 0 },   /* method_StopHardware     */
++	{ sweet_aop_method, 1, 0, 1, 0 },   /* method_GetControlValue  */
++	{ sweet_aop_method, 2, 0, 0, 0 },   /* method_SetControlValue  */
++};
++
 +class AppleAOPAudioUserClient : public SweetAudioUCBase {
 +	OSDeclareDefaultStructors(AppleAOPAudioUserClient);
++public:
++	virtual IOReturn externalMethod(uint32_t selector,
++	    IOExternalMethodArguments *arguments,
++	    IOExternalMethodDispatch *dispatch, OSObject *target,
++	    void *reference) APPLE_KEXT_OVERRIDE;
 +};
 +OSDefineMetaClassAndStructors(AppleAOPAudioUserClient, SweetAudioUCBase);
++
++IOReturn
++AppleAOPAudioUserClient::externalMethod(uint32_t selector,
++    IOExternalMethodArguments *arguments, IOExternalMethodDispatch *dispatch,
++    OSObject *target, void *reference)
++{
++	if (dispatch == NULL && selector < SWEET_AOP_METHOD_COUNT) {
++		dispatch = &sAopMethods[selector];
++		target = this;
++		reference = (void *) (uintptr_t) selector;
++	}
++	return SweetAudioUCBase::externalMethod(selector, arguments, dispatch,
++	    target, reference);
++}
 +
 +class AppleAOPAudioController : public IOService {
 +	OSDeclareDefaultStructors(AppleAOPAudioController);
@@ -283,10 +383,54 @@ index 0000000..fdcbac7
 +	return kIOReturnSuccess;
 +}
 +
++/*
++ * IOAudio2DeviceUserClient is the class that actually carries audio clients: in
++ * the iPhone X dump it has 8 live instances against AppleAOPAudioUserClient's 1
++ * (ioservice.txt, IOUserClient:IOAudio2DeviceUserClient nodes at :10572, :12913,
++ * :13021, :13131, :13310, :13420, :13495, :13607).
++ *
++ * Apple's version has NO selector table of its own: its externalMethod and
++ * clientMemoryForType are trampolines into the owning device, and
++ * getTargetAndMethodForIndex / getTargetAndTrapForIndex read counts that belong
++ * to the IOAudio2Device subclass (this+0x100 / this+0x104 in the binary).  A
++ * client using the legacy IOConnectMethod* / trap path asks those two BEFORE it
++ * ever issues a selector, so if it gives up there the open-only log would show a
++ * connection with no methods and nothing to explain it.  Log the index, return
++ * NULL the way an empty table does.
++ */
 +class IOAudio2DeviceUserClient : public SweetAudioUCBase {
 +	OSDeclareDefaultStructors(IOAudio2DeviceUserClient);
++public:
++	virtual IOExternalMethod * getTargetAndMethodForIndex(
++	    IOService **targetP, UInt32 index) APPLE_KEXT_OVERRIDE;
++	virtual IOExternalTrap * getTargetAndTrapForIndex(
++	    IOService **targetP, UInt32 index) APPLE_KEXT_OVERRIDE;
 +};
 +OSDefineMetaClassAndStructors(IOAudio2DeviceUserClient, SweetAudioUCBase);
++
++IOExternalMethod *
++IOAudio2DeviceUserClient::getTargetAndMethodForIndex(IOService **targetP,
++    UInt32 index)
++{
++	IOLog("SWEET AUDPROBE: legacy method[%u] requested by pid %d\n",
++	    (unsigned) index, fPid);
++	if (targetP != NULL) {
++		*targetP = NULL;
++	}
++	return NULL;
++}
++
++IOExternalTrap *
++IOAudio2DeviceUserClient::getTargetAndTrapForIndex(IOService **targetP,
++    UInt32 index)
++{
++	IOLog("SWEET AUDPROBE: legacy trap[%u] requested by pid %d\n",
++	    (unsigned) index, fPid);
++	if (targetP != NULL) {
++		*targetP = NULL;
++	}
++	return NULL;
++}
 +
 +class IOAudio2Device : public IOService {
 +	OSDeclareDefaultStructors(IOAudio2Device);
