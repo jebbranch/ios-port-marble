@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..94250d4
+index 0000000..7e090c5
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,291 @@
+@@ -0,0 +1,309 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -208,17 +208,30 @@ index 0000000..94250d4
 +}
 +
 +/*
-+ * The two names worth asking about first.  AppleAOPAudioController is the
-+ * IOProviderClass the rootfs's own HAL bundle declares it needs
-+ * (/System/Library/Audio/Plug-Ins/HAL/AppleAOPAudioPlugin.driver), so if the iOS
-+ * audio server walks any IOKit path at all it passes through this one.
-+ * IOAudio2Device is the class the audio clients open against, with the
-+ * IOAudio2DeviceUID "Speaker" that an output device would be looked up by.
++ * The two names worth asking about first, both taken from a real D22AP ioreg
++ * dump (work/iphone-x-recon/dyld/ioservice.txt, kernel xnu-8792.82.2, build
++ * 20D67), not from memory:
++ *
++ *   ioservice.txt:3545  +-o AppleAOPAudioController <class
++ *                     IORegistryEntry:IOService:AppleBaseAudioController:
++ *                     AppleAOPAudioController>
++ *   ioservice.txt:3559  "IOUserClientClass" = "AppleAOPAudioUserClient"
++ *   ioservice.txt:3569  "IOMatchCategory"    = "AppleAOPAudioController"
++ *   ioservice.txt:13112 "device UID"         = "Speaker"
++ *
++ * The controller is the IOProviderClass that the rootfs's own HAL bundle
++ * declares it needs (/System/Library/Audio/Plug-Ins/HAL/AppleAOPAudioPlugin
++ * .driver), so if the iOS audio server walks any IOKit path it passes through
++ * this one.  The user-client class names have to match exactly, because that
++ * string is what IOService::open() looks up; an earlier draft of this file
++ * invented "AppleAOPAudioControllerUC"/"IOAudio2DeviceUC" and
++ * "IOAudio2DeviceUID", and "IOAudio2DeviceUID" has zero occurrences in the
++ * real dump - the property carrying the UID is literally named "device UID".
 + */
-+class AppleAOPAudioControllerUC : public SweetAudioUCBase {
-+	OSDeclareDefaultStructors(AppleAOPAudioControllerUC);
++class AppleAOPAudioUserClient : public SweetAudioUCBase {
++	OSDeclareDefaultStructors(AppleAOPAudioUserClient);
 +};
-+OSDefineMetaClassAndStructors(AppleAOPAudioControllerUC, SweetAudioUCBase);
++OSDefineMetaClassAndStructors(AppleAOPAudioUserClient, SweetAudioUCBase);
 +
 +class AppleAOPAudioController : public IOService {
 +	OSDeclareDefaultStructors(AppleAOPAudioController);
@@ -244,7 +257,8 @@ index 0000000..94250d4
 +	if (!sweet_audio_probe_enabled()) {
 +		return true;
 +	}
-+	setProperty("IOUserClientClass", "AppleAOPAudioControllerUC");
++	setProperty("IOUserClientClass", "AppleAOPAudioUserClient");
++	setProperty("IOMatchCategory", "AppleAOPAudioController");
 +	registerService();
 +	IOLog("SWEET AUDPROBE: AppleAOPAudioController registered\n");
 +	return true;
@@ -257,10 +271,10 @@ index 0000000..94250d4
 +	return kIOReturnSuccess;
 +}
 +
-+class IOAudio2DeviceUC : public SweetAudioUCBase {
-+	OSDeclareDefaultStructors(IOAudio2DeviceUC);
++class IOAudio2DeviceUserClient : public SweetAudioUCBase {
++	OSDeclareDefaultStructors(IOAudio2DeviceUserClient);
 +};
-+OSDefineMetaClassAndStructors(IOAudio2DeviceUC, SweetAudioUCBase);
++OSDefineMetaClassAndStructors(IOAudio2DeviceUserClient, SweetAudioUCBase);
 +
 +class IOAudio2Device : public IOService {
 +	OSDeclareDefaultStructors(IOAudio2Device);
@@ -280,10 +294,14 @@ index 0000000..94250d4
 +	if (!sweet_audio_probe_enabled()) {
 +		return true;
 +	}
-+	setProperty("IOUserClientClass", "IOAudio2DeviceUC");
-+	setProperty("IOAudio2DeviceUID", "Speaker");
-+	setProperty("IOAudio2DeviceManufacturer", "sweet");
-+	setProperty("IOAudio2DeviceModel", "marble");
++	setProperty("IOUserClientClass", "IOAudio2DeviceUserClient");
++	/*
++	 * "device UID" - with a space - is the property the real Speaker node carries
++	 * (ioservice.txt:13112).  The names this draft had before, IOAudio2DeviceUID
++	 * plus invented manufacturer/model strings, do not appear anywhere in the
++	 * dump, so they are dropped rather than kept as decoration.
++	 */
++	setProperty("device UID", "Speaker");
 +	registerService();
 +	IOLog("SWEET AUDPROBE: IOAudio2Device Speaker registered\n");
 +	return true;
