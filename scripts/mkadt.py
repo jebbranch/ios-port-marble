@@ -308,6 +308,26 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
         haptic_props = d22ap_product_child('haptics')
         if haptic_props is not None:
             product_children.append(node('haptics', [ph()] + haptic_props))
+    # /product/audio, added because of a measurement rather than a guess: with
+    # the 0049 userspace-query tracer switched on for the first time (it had
+    # always been off, sweetiolog=-), mediaserverd resolves
+    #   IODeviceTree:/product        -> IOPlatformDevice   (294 times)
+    #   IODeviceTree:/product/audio  -> none               (3 times)
+    # in ring-ep2.txt/ring-ep3.txt, and the real D22AP tree does have that child:
+    # product's children are camera, facetime, maps, haptics, audio, and audio
+    # carries exactly two properties, 'wireless-splitter' and
+    # 'supports-always-listening'.  They are copied verbatim, not invented.
+    #
+    # The risk is the one the comment above already names: a capability we
+    # advertise is a capability mediaserverd may try to use, and we have neither
+    # a wireless splitter nor always-listening here.  That is why this sits behind
+    # its own switch - with MARBLE_ADT_AUDIO=0 the image is byte-for-byte the one
+    # that produced ring-ep3.txt, so a change in the client's behaviour can be
+    # attributed to this node and to nothing else.
+    if os.environ.get('MARBLE_ADT_AUDIO', '1') != '0':
+        audio_props = d22ap_product_child('audio')
+        if audio_props is not None:
+            product_children.append(node('audio', [ph()] + audio_props))
     product = [node('product', [ph()] + product_props, product_children)] if product_props else []
 
     # Identity of the iPhone X whose userland runs here: compatible[0] is
