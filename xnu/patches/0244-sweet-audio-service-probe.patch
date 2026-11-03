@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..702a6ed
+index 0000000..63e3a2a
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
-@@ -0,0 +1,671 @@
+@@ -0,0 +1,733 @@
 +/*
 + * SWEET: an empty audio service, published under the names iOS's audio userspace
 + * looks up, whose only job is to report whether anyone opens it.
@@ -54,6 +54,15 @@ index 0000000..702a6ed
 +extern "C" int PE_parse_boot_argn(const char *name, void *value, int length);
 +
 +#define SWEET_AUDIO_OPEN_LIMIT 8
++
++class SweetAudioDevice;
++
++/*
++ * Defined at the bottom of the file (OSDynamicCast needs the complete type) and
++ * declared here so the user-client methods can use it.
++ */
++static const char *sweet_audio_provider_uid(IOService *client);
++static bool sweet_audio_keys_enabled(void);
 +
 +static bool
 +sweet_audio_probe_enabled(void)
@@ -156,8 +165,8 @@ index 0000000..702a6ed
 +	    properties)) {
 +		return false;
 +	}
-+	IOLog("SWEET AUDPROBE: %s open by pid %d type %#x\n", getName(), fPid,
-+	    (unsigned)type);
++	IOLog("SWEET AUDPROBE: %s open by pid %d type %#x on uid=%s\n",
++	    getName(), fPid, (unsigned)type, sweet_audio_provider_uid(this));
 +	return true;
 +}
 +
@@ -273,14 +282,16 @@ index 0000000..702a6ed
 +IOReturn
 +SweetAudioUCBase::clientClose(void)
 +{
-+	IOLog("SWEET AUDPROBE: %s closed (pid %d)\n", getName(), fPid);
++	IOLog("SWEET AUDPROBE: %s closed (pid %d) on uid=%s\n", getName(), fPid,
++	    sweet_audio_provider_uid(this));
 +	return IOUserClient::clientClose();
 +}
 +
 +IOReturn
 +SweetAudioUCBase::clientDied(void)
 +{
-+	IOLog("SWEET AUDPROBE: %s died (pid %d)\n", getName(), fPid);
++	IOLog("SWEET AUDPROBE: %s died (pid %d) on uid=%s\n", getName(), fPid,
++	    sweet_audio_provider_uid(this));
 +	return IOUserClient::clientDied();
 +}
 +
@@ -404,6 +415,7 @@ index 0000000..702a6ed
 +	if (!sweet_audio_probe_enabled()) {
 +		return true;
 +	}
++	const bool wantKeys = sweet_audio_keys_enabled();
 +	setProperty("IOUserClientClass", "AppleAOPAudioUserClient");
 +	setProperty("IOMatchCategory", "AppleAOPAudioController");
 +	/*
@@ -422,6 +434,7 @@ index 0000000..702a6ed
 +	 * phone they are false/off at idle, and a shell that claims to be running is
 +	 * a shell that lies to the next measurement.
 +	 */
++	if (wantKeys) {
 +	setProperty("channels per frame", 2ull, 32);
 +	setProperty("bytes per sample", 2ull, 32);
 +	setProperty("frames per packet", 1ull, 32);
@@ -432,6 +445,7 @@ index 0000000..702a6ed
 +	setProperty("device input latency in frames", 1ull, 32);
 +	setProperty("listening enabled", 1ull, 32);
 +	setProperty("listening on gesture supported", 0ull, 32);
++	}
 +	registerService();
 +	/*
 +	 * Read the values back out of the property table instead of restating the
@@ -444,7 +458,8 @@ index 0000000..702a6ed
 +		OSNumber *isps = OSDynamicCast(OSNumber,
 +		    getProperty("input samples per sec"));
 +
-+		IOLog("SWEET AUDPROBE: aop keys published cpf=%u isps=%u %s\n",
++		IOLog("SWEET AUDPROBE: aop keys published bit2=%d cpf=%u isps=%u %s\n",
++		    wantKeys ? 1 : 0,
 +		    cpf ? (unsigned) cpf->unsigned32BitValue() : 0u,
 +		    isps ? (unsigned) isps->unsigned32BitValue() : 0u,
 +		    (cpf && isps) ? "ok" : "MISSING");
@@ -674,6 +689,53 @@ index 0000000..702a6ed
 +AppleARMDMAAudioDevice::sweetDeviceUID(void)
 +{
 +	return "Loopback";
++}
++
++/*
++ * Which node is this client for?  ep6's log only printed the user-client class
++ * name, so when audio opens went from 2 to 5 I could not say which of the five
++ * nodes were opened and which was skipped - a gap in my logging, not in the
++ * result.  Read the UID through the device class rather than by casting the
++ * property value, so there is no assumption about whether setProperty(key,
++ * string) stored an OSString or an OSSymbol.
++ */
++static const char *
++sweet_audio_provider_uid(IOService *client)
++{
++	IOService *provider = client ? client->getProvider() : NULL;
++	SweetAudioDevice *dev = OSDynamicCast(SweetAudioDevice, provider);
++
++	if (dev != NULL) {
++		return dev->sweetDeviceUID();
++	}
++	return provider ? provider->getName() : "?";
++}
++
++/*
++ * sweetexp bit 2 = publish the controller's format keys.  Same argument as the
++ * other instruments because the boot-args field is 607 bytes and every extra
++ * flag is a byte-cost that has already silently voided boots once.
++ *
++ * Why this is a switch at all: ep6 changed two things in one boot (the device
++ * set and these keys) and the AOP client stopped closing right there, which is
++ * suggestive but not a clean single-variable result.  With the keys behind a bit,
++ * one kernel answers both halves: sweetexp=7 keeps them, sweetexp=3 drops them,
++ * and if the client closes either way - or stays open either way - then "the
++ * keys are the gate" is dead and the next hypothesis (the device's
++ * streams/controls dictionaries, or the mapped buffer needing real content)
++ * takes over.
++ */
++static bool
++sweet_audio_keys_enabled(void)
++{
++	static int cached = -1;
++	int exp = 0;
++
++	if (cached < 0) {
++		(void)PE_parse_boot_argn("sweetexp", &exp, sizeof(exp));
++		cached = (exp & 0x4) ? 1 : 0;
++	}
++	return cached == 1;
 +}
 diff --git a/iokit/KernelConfigTables.cpp b/iokit/KernelConfigTables.cpp
 index 31d15be..e7f2c88 100644

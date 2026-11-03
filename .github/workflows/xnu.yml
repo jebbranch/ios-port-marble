@@ -190,6 +190,8 @@ jobs:
                    "SWEET AUDPROBE: gate flag=" \
                    "handed 0x10000 zeros" \
                    "registered uid=" \
+                   "aop keys published bit2=" \
+                   "on uid=" \
                    "IOK %s: %s +%u" \
                    "SWEET MARK: clkwit " \
                    "SWEET MARK: vcfg2 rc " \
