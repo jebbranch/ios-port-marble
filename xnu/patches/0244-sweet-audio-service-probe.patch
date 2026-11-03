@@ -1,6 +1,6 @@
 diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 new file mode 100644
-index 0000000..2344de0
+index 0000000..702a6ed
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
 @@ -0,0 +1,671 @@
@@ -445,8 +445,8 @@ index 0000000..2344de0
 +		    getProperty("input samples per sec"));
 +
 +		IOLog("SWEET AUDPROBE: aop keys published cpf=%u isps=%u %s\n",
-+		    cpf ? (unsigned) cpf->unsigned32Value() : 0u,
-+		    isps ? (unsigned) isps->unsigned32Value() : 0u,
++		    cpf ? (unsigned) cpf->unsigned32BitValue() : 0u,
++		    isps ? (unsigned) isps->unsigned32BitValue() : 0u,
 +		    (cpf && isps) ? "ok" : "MISSING");
 +	}
 +	IOLog("SWEET AUDPROBE: AppleAOPAudioController registered\n");
