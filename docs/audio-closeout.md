@@ -2260,3 +2260,31 @@ header {total=2960, count=4}
 我们自己那五次发的正文有两处 4 字节缺陷（离线可证，见上一节）；厂商今天那份正字节的**获取手段已全部判死**；
 剩下能发的是这份自洽的 2960，但它要一次开机才能判，而那次开机的已知失败模式是挂死（要长按电源）。
 ⇒ ② 是否再花一次开机，**现在是用户的决定，不再是我能自己推进的步骤**。
+
+
+## 预先登记：E-2960 那次开机的判据（0246，开机前写死，事后不许改）
+
+变量只有一个：正文换成**这一代**自洽容器（`sweetvgraph=2`，off=16/len=2944）。
+同版 kernel 里另带两件仪器：`SWEET GLINK: poll beat`（每秒一条，走完全程共 5 条）与
+`g_smmu_faults("vgraph-pre"/"vgraph-post")`。
+
+```bash
+D22AP_ADT=~/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt CPUS=8 GPU_PROBE_LEVEL=0 \
+  ./scripts/mkimage.sh sweetbufs=30 sweetpcm=1 sweets1=1 sweetiova=1 \
+  sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 \
+  sweets1ap=3 sweetampfirst=1 sweetvgraph=2
+./scripts/boot_one.sh images/shim-iosroot-adsp.img v2960
+```
+
+| 格 | 检查 | 判读 |
+|---|---|---|
+| **X0** 有效性门 | ring 回显 cmdline 含 `sweetvgraph=2`；出现 `APM graph_open/ukee2960 … len=2944`；`SWEET SMMU: vgraph-pre` 至少 1 行；数据面四行照旧（`s1ap leaf=0x7c1` / `graph_start rsp … status=0` / `data_buffer: dst=0x40bd done status=0` / `pcm tone done (30 buffers)`） | 少任一条 ⇒ 记「**仪器未生效**」，**不许**判"正文不对" |
+| **X1** | `graph_open/ukee2960 rsp op=… status=0` | 这一代正文 + 16 字节 framing 成立 ⇒ ② 的输入问题解决，才谈把 iOS 流接进来 |
+| **X2** | 有 rsp，`status != 0` | 正文被受理、内容被拒 ⇒ 记下 status 值；下一个单变量 = graph key（41 条同长 `b0000002` 选哪条）或 `b0000025` 的另一条 |
+| **X3** | 最终打印 `no response`，且 **beat 行数 = 5**（跑满 5 秒） | **AP 活着、DSP 不回** ⇒ 与"挂死"正式分开；这才是这轮买的关键判读 |
+| **X4** | beat 行数 < 5 且 ring 就此结束 | 真挂死；记下最后一条 beat 的 `i` 值（走到第几毫秒），恢复只长按电源 |
+| **X5** | pre/post 任一 `GFSR != 0` 或有非零 cb 的 `FSR/FAR` | 是**我们区域的映射/权限**问题 ⇒ 转 SMMU 线，别再动正文 |
+| **X6** | `SWEET GLINK: vgraph 2 started` | 建图+启动都过 ⇒ 但**出声仍只能由耳朵判**（能量见证、寄存器见证都已关闭），需要用户当场确认 |
+
+安全线：`sweetbufs=30` 不动、不加音、不放长音、纯 RAM `fastboot boot`；
+beat 最多 5 行，SMMU 见证只在 vgraph 分支两次调用，不进热路径。
