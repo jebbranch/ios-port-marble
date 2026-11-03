@@ -96,18 +96,32 @@ iOS 的音频服务在我们这颗机器上**是活的**，它缺的是**下面�
 - 判死依据就是 F7+F8：ADT 要 AOP+MCA+CS35L26，marble 有 ADSP+TDM+AW882xx+WCD938x。
   补节点等于把 Apple 驱动绑到不存在的寄存器上。
 
-## 5. 差距清单（可数，按依赖顺序）
+## 5. 差距清单（可数，按依赖顺序；2026-11-03 按四台开机重排）
 
-1. **R1 空壳实验**：1 补丁 + 1 开机。产出"mediaserverd 到底会不会来 open"这个二元事实。
-2. **IOAudio2 私有 ABI 复原**：只在 (1) 有 open 之后做。产出 selector→语义的表（不许猜，
-   全部来自我们记录到的真实调用与 `dyld/mediaserverd` 反汇编的交叉印证）。
-3. **采样格式协商**：iOS 侧要什么 rate/format（`AppleARMIISAudioDevice` 一路是 I2S 语义），
-   我们后端要的是 48 kHz stereo S16 的 SHM 环；差一个重采样/格式转换的归属决定（AP 做还是 DSP 做）。
-4. **路由与音量语义**：F6 的 HAL 与 `Tunings/{D22,D221}/` 那套 `.aupreset/.plist` tuning 图
-   是 D22 的，不是 marble 的——音量/路由参数最终会指向不存在的设备 id，这一步决定要不要 stub。
-5. **功放后端**：桥建好之后仍然要把 PCM 变成真实声音，那还是要回到本文没解决的 ②/③：
-   **设备图/后端绑定**（`0x4165 param=0x080010C4 data={0x428f}` 在 ② 里被拒，见 I2）。
-   也就是说：**R1 修的是"iOS 有没有出口"，②修的是"出口后面有没有喇叭"，两件事都得有人做。**
+1. ~~R1 空壳实验~~ **已关闭（§11）**：mediaserverd 会来 open，并按真机方法表发出
+   `selector 0 (method_Open)`、要两块映射区域。答案不再是未知。
+2. **设备组**（ep5 正在测）：真机是 11 个 `IOAudio2Device` 节点、mediaserverd 持有 8 个
+   `IOAudio2DeviceUserClient`，而我们三台开机只发了 1 个节点 ⇒ "8 vs 1" 之前量的是
+   **我这侧给了几个可选项**，不是客户端意愿。不齐这个，后面所有"它停在这儿"的读法都不干净。
+3. **节点属性与引擎子对象**（离线对照进行中）：`Speaker` 真节点带哪些键、是否有
+   `IOAudio2Engine` 子节点。如果客户端在"枚举引擎"这一步就返回，属性级补齐就够；
+   若需要真引擎，那是对象生命周期代码，风险等级完全不同（死机代价是用户长按电源）。
+4. **IOAudio2 私有 ABI 复原 —— 加门槛**：音频路上至今只有 `sel=0`，
+   **看到 `sel≥1` 或 `setProperties` 之前不许开始写 PCM 后端**（表本身已经从真机
+   kernel.bin 抄下来了：六条 selector + 参数宽度，§10.2；缺的是调用序列，不是方法表）。
+5. **采样格式协商**（未变）：iOS 侧要的 rate/format 与我们后端的 48 kHz stereo S16 SHM 环
+   之间，重采样归属（AP 还是 DSP）仍未决。
+6. **路由与音量语义**（未变）：F6 的 HAL 与 `Tunings/{D22,D221}/` 是 D22 的 tuning 图，
+   参数最终指向不存在的设备 id ⇒ 要不要 stub 由 2/3 的结果决定。
+7. **②不会因桥通而消失（最重要的一条）**：厂商四包原字节重放**全被拒**
+   （`vcfg2 rc bf=-1 c0=-1 c8=-1 p65=-1`）说明设备图/后端绑定缺口是结构性的。
+   **桥修的是"iOS 有没有出口"，②修的是"出口后面有没有喇叭"，两件事都得有人做。**
+8. **ADT 侧的真缺口**（与 IOKit 名字无关，逐条都有"真机有/我们没有"的对照）：
+   `/product/audio`（已补，ep4 证明**不是**门槛）、`IODTNVRAM` 需要的 `/chosen`
+   几何键（§13，机制级解释已到位，能否无后备存储运行待判）、
+   `AppleKeyStoreUserClient`（真机 2 实例，牵 keystore/AMFI 那条线）。
+9. **DriverKit 那条不再是门槛**：会出声的 iPhone X 上 `IOUserAudioDriverUserClient`
+   实例数为 0（§12.2）⇒ 不再为它花一个回合。
 
 ## 6. 我现在还不知道的事（不许下游把这些当已解决）
 
@@ -536,3 +550,30 @@ crypto-hash-method / system-firmware-version`），**这些一个都没有** ⇒
 （:1224 起，`require(super::start(provider), fail)`）与它的 platform-storage 路径，
 确认能不能跑在空/panic-only 存储上；能，就同样用开关包住（`MARBLE_ADT_*` 那一族），
 不能，就改成"我们自己发布一个最小的 `IODTNVRAM` 派生服务"这种明确的假服务并写明是假的。
+
+---
+
+## 14. 2026-11-03 16:3x：**第一次证因成功**——控制器格式键就是 AOP 会话的闸门（ep7a/ep7b）
+
+同一版内核（`828664d`，v13）跑两次，唯一差别是 `sweetexp`：`7` 表示那 10 个键发布、`3` 表示不发布。
+
+| | ep7a `sweetexp=7` | ep7b `sweetexp=3` |
+|---|---|---|
+| 自检读回 | `bit2=1 cpf=2 isps=16000` **ok** | `bit2=0 cpf=0 isps=0` **MISSING** |
+| AOP open | 1 | 1 |
+| **AOP closed / died** | **0 / 0** | **1 / 1** |
+| AOP selector | `sel=0` ×1，**`sel=4` ×5** | `sel=0` ×1 |
+| 处理器执行 | `aop sel=0 ran` ×1，`aop sel=4 ran` ×5 | 仅 `sel=0` |
+| 节点注册 | 5（Speaker/Codec/Actuator/Hawking/Loopback） | 5（同） |
+| map 请求 | type0 ×8、type1 ×1、refused 0 | 同 |
+| notify port | `0x23`、`0x25`×4、`0x27`、`0x29` | 同 |
+| 震动对照 | 12 registered / 4 open | 同 |
+| 有效性 | `graph_start=1`、`done=4`、`tone 30 buffers`、`PSCI SYSTEM_RESET` | 同 |
+
+⇒ 两侧唯一变量是键，行为差在"AOP 客户端是否留下、是否开始查询控制项"。**"键是闸门"从相关性升级为被对照确认的因果**；反过来若两侧一致，这条说法当场作废（判据写在开机前）。
+
+`method_GetControlValue` 的入参按序是 `0x1, 0x0, 0x1, 0x2, 0x0` ⇒ 客户端在**枚举控制项 id**；输出我仍按 0 回答，**不发明语义**。真机 `Kernel` 里 `IOAudio2Device::startIOEngine` 是 selector≥2 的路径，所以"什么时候出现 StartHardware"归到需要真实播放请求那一步（§5 B1/B2）。
+
+### 14.1 顺带抓到自己一个仪器缺陷（已修，但记下来）
+
+`open by pid 28 type 0 on uid=?` 五行全是 `?`——不是笔误：`IOService::open()` 在 **attach 之前**就调 `initWithTask`，那时 `getProvider()` 合法地是 NULL。于是 ep7a 说得出"4 个设备被 open"却说不出是哪 4 个。修法是**把归属打到 attach 之后必然经过的行**（`map requested`、`notify port`），open 行保留诚实的 `?`。ep8 就是拿这一版复现 ep7a 并补这张表。
