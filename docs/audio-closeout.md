@@ -2584,3 +2584,21 @@ v-nopwr（AP=01 + 不发那条自创参数）。
 | `rsp status=0x2`（与新正文同码） | 拒绝与正文**无关** ⇒ 指向"ADSP 里没有校准"这一类结构性缺失 |
 | `no response` | 旧正文在新权限下仍不可读 ⇒ 回区域/句柄语义，另找仪器 |
 字节：`sweetvgraph=1` 与 `sweettdmpwr=2` 同 13 字符 ⇒ cmdline 仍 589。0246 起就带 `vg==1` 分支，**不用重编**。
+
+
+## 预先登记：E-OLD BODY 在 AP=01 下重发（`sweetvgraph=1`）判据 U0–U4
+
+行形与计数抄自已有 ring：`SWEET GLINK: APM graph_open/vendor4 src=0x2010 (shm handle=0xb0d7f408 len=2712)`
+（`ring-vgraph.txt` 等 6 次）、`SWEET MARK: s1ap leaf=0x741`（`ring-w-awfix.txt`）。
+**明确不再犯**：`poll beat` 行数**不作为有效性判据**——它只在"无应答"时出现，应答快就 0 行（Y0 就是这么写坏的）。
+
+| 格 | 检查 | 判读 |
+|---|---|---|
+| **U0** 门 | `boot-args` 回显含 `sweetvgraph=1 sweets1ap=1`；出现 `leaf=0x741`；出现上面那行 `graph_open/vendor4 … len=2712`（=1 次）；`graph_open/ukee2960` **不出现**（证明走的是旧正文分支） | 少任一 ⇒ 仪器/参数未生效，不判正文 |
+| **U1** | `graph_open/vendor4 rsp … status=0` | **旧正文一直可用，② 的全部失败都是 AP** ⇒ 建图开成后看 `graph_start`/tone 是否跟上（并问用户耳朵） |
+| **U2** | `rsp … status=0x2`（与新正文同码） | 拒绝与正文无关 ⇒ 指向 ADSP 侧缺校准（那条 18504 对象），② 在这台机上不可解 |
+| **U3** | `graph_open/vendor4: no response` 且 beat=25 | 新权限下仍读不到 ⇒ 回区域/句柄语义，另设仪器 |
+| **U4** | ring 停在该行之后且 beat<25 | 又出现挂死形态 ⇒ 该形态独占开机，停止与 tone 同版 |
+
+本地门：不换内核（0246 起就有 `vg==1` 分支，当前 `out/kernel.adsp` 是 0248，含该分支——已在产物里 grep `graph_open/vendor4`）；
+`sweetvgraph=1` 与 `sweettdmpwr=2` 同为 13 字符 ⇒ cmdline 仍 589；产物里核 `sweetvgraph=1`、无 `sweettdmpwr`、无 `ukee2960` 参数项。
