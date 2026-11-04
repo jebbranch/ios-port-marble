@@ -2955,3 +2955,26 @@ K 的 cmdline 只有 `sweetaudioprobe=1`，**没有** B1 那批音频 flag；而
 ### 下一枪（L 轮，仍旧零补丁）
 把 K 与 B1 对齐：`sweetampfirst=1 sweetbufs=30 sweets1ap=3 sweetshmhi=1 sweetaudioprobe=1`
 + 同一份 `SWEETIOLOG=mediaserverd,backboardd`。判据：sel=4 是否回来。
+
+
+## L 判据（b1 的配置搬到当前 kernel，唯一变量=补丁版本；开机前写死）
+
+K 的表格里"4 次 open + 无 flag"只有 1 个样本，分不清 flag 与 sel=4 的关系。
+L 就把 **b1 的 cmdline 原样搬过来**（含 `sweetreboot=1`，自动重启拉 ring，不用人碰手机），
+只加 `sweetaudioprobe=1`，**不开追踪**（字节数不够，而且追踪是被动打印、不是本轮变量）。
+
+腾字节只删**已经死掉的仪器**，并写明：`sweetampverify=1`（0237→anchor3 两次开机证明
+它的 GENI 读回两层坏）、`sweetnobb=1`（0241 已判完：只有 bit-bang 之后那段影响可寻址）。
+这两个都只碰 PA 的 I2C 读回，不碰 AOP UC / ADSP 图。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| **L0** | 打包镜像里逐条 grep 到 13 个 flag 且**没有被截半**（`sweetbufs=30` 必须完整、`sweets1va=0x1FFE8000` 必须完整）；总长 ≤590 | 成立 | 参数进产物且没被 607 字节字段切坏 |
+| **L1** | ring 里 `gate flag=1`、`IOAudio2DeviceUserClient open by pid` = 4 | 成立 | 探针与 4 台设备这次都到位（与 ep6+ 同形） |
+| **L2** | `AppleAOPAudioUserClient sel=4` 的次数（b1/b2/ep6–ep9 的形是 **5 次，输入 0/0x1/0x2**） | **≥1（期望 5）** | sel=4 跟着**音频 flag**走 ⇒ K 上"没有 sel=4"由 flag 解释，与追踪/探针无关；B1 那条形状在 0249 kernel 上仍然成立 |
+| | | **0** | flag 不是原因 ⇒ 只剩"0246–0249 之间补丁漂移"这一个解释，那就**回源读代码**（那几个补丁都没碰 `SweetAudioProbe.cpp`），不靠开机找 |
+| **L3** | 顺带（不是本轮变量）：`SWEET MARK: s1ap leaf=`、`graph_start rsp … status=0`、`data_buffer …` 三条音频基线是否仍绿 | 记录 | 这是当前 kernel 上第一次"b1 配置 + 探针同轮"，音频侧 iOS/kernel 两半第一次能对齐看 |
+| **L4** | 机器活着：ring 长度正常、最后一条 `sweet_log_sync()` 存在 | 成立 | 自动重启轮的老判据 |
+
+开机次数：20 里已用 11，本次第 12。**这轮不许得到的结论**：sel=4 的语义仍未复原
+（B2 还缺原料），L2 只判"它跟 flag 还是跟补丁版本"。
