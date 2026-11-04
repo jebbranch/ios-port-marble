@@ -3375,3 +3375,17 @@ walk consumed 80 of 80 -> EXACT
 开机次数：120 里已用 14，本次第 15。
 **这轮不许得到的结论**：C2 只判"APM 接不接受这个容器"。它**不**告诉我们厂商 18 KB 里
 装的是哪些参数——那是内容问题，仍然一个字节都没有。
+
+
+### C/N 共享一次开机（写清楚，免得事后当成两个独立样本）
+本轮构建 `405f8d5` 同时包含 **0251 v3**（dtprop 仪器，重入守卫已修）与 **0252**（`cc_batch`），
+而 L/M/N 的配置本来就带 `sweetaudioprobe=1`。所以**第 15 次开机一次拿两个读数**：
+
+- **N 的重做**：`SWEET MARK: dtprop <comm> <key> -> hit|miss`，看 mediaserverd 在
+  `IODeviceTree:/product` 上读什么（N1/N2 的判据原样适用，含"launchd 式对照"改成
+  **任意两个不同调用者都算对照**：dtprop 是按条目名过滤、不按进程名，所以
+  `kernel_task`/`system_server` 之类只要出现就是仪器活着的证据）。
+- **C**：`cc_batch` 的 `status=`。
+
+两者的机制路径互不相交（一个是 IOKit 属性读，一个是 GPR/APM 发包），所以不互为混杂；
+但**样本数是 1**，两个读数来自同一台同一次 boot，写结论时要这么标注。
