@@ -1,5 +1,8 @@
 # 从这里开始（marble / Redmi Note 12 Turbo，XNU 8796 + iOS 16）
 
+> **工作守则 / 踩坑清单 / 已验证事实的单一入口在仓库根的 `../../AGENTS.md`**（`marble-ios/AGENTS.md`）。
+> 本文件保留"已知-good 配置与复现命令"，其余纪律以 AGENTS.md 为准。
+
 > 目标：**只做 `fastboot boot`（纯 RAM 运行，不刷分区、不动 GPT）**，把
 > Redmi Note 12 Turbo（marble，SM7475）跑到 iOS 16 用户态，最终能当一台
 > 能用的机器（显示/触摸/USB/电池/RTC），并让扬声器出声。
