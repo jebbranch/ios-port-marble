@@ -2780,3 +2780,40 @@ B4 的仪器线冻结，回到 ②（内核侧与 iOS 侧都常驻、出声仍�
 **这次不许得到的结论**（预先划界）：`IOK` 只记录"匹配/通知/registry 路径/open"三类调用，
 它**不能**告诉我们 backboardd 拿到服务之后为什么不再发 selector；I2 只能把"缺服务"
 和"不缺服务"分开。开机次数：20 里已用 8，本次第 9。
+
+
+## I 判决（`logs/ring-i-iolog.txt`，2026-11-04，第 9 次开机，未花 CI）
+
+| 判据 | 读数 | 结论 |
+|---|---|---|
+| **I0** | 产物里 `sweetiolog=backboardd,launchd` 命中 1 次、`sweetiolog=-` 0 次 | 替换（不是追加）成立 |
+| **I1** | `IOK launchd:` = **0 行**，而 `IOK backboardd:` = **785 行** | **判据写错了**：我拿 launchd 当阳性对照，实际仪器由 backboardd 自己那 785 行证明活着（`IOLog` 在这个阶段仍能进 ring）。所以本轮**不是非证据**；但**不许**把"launchd 0 行"写成"launchd 没做过 IOKit 匹配" |
+| **I2** | 785 行里**没有任何一条 haptics 类的查询**；haptics 侧只有一条 `open AppleAOPAudioButtonHapticDevice type 0 -> 0x0`（成功），随后就是 `sel=1`、`asset count 18` | **"没有第二个 selector"不是"缺一个我们没发布的服务名"**。backboardd 已经拿到并打开了我们的壳，它停在自己进程内部，不是停在匹配上 |
+| **I3** | 长 dict 被 ring 的 ~240 字节上限切断：`matching +0 <dict…IOAcceleratorES…>` 只剩头部，结果 `-> 0 found` 掉到下一段（`grep -o` 数到 303 个 `0 found`、另有 `=end 129 -> none` 这类残段）。按 `IOK <name>` 分开数了 | 数法成立。785 行 > 我按注释以为的"400 行/boot 上限" ⇒ **上限的单位还没读代码确认**，本轮不据此说"被截断" |
+| **I4** | `play 0xf04c<-` 40 == `fault after clear=` 40 == `fault during play=` 40；`registered` 8 行；`sel=1` 1 事件 | 换参数没动行为 ✔ |
+
+### 本轮真正的意外：backboardd 在一个查不到加速器的循环里
+`IOK backboardd: matching` 共 728 行，其中按 `IOProviderClass` 归类：
+
+| 它在找的类 | 次数 | 结果 |
+|---|---|---|
+| `IOAcceleratorES` | **330** | `0 found` |
+| `IOAcceleratorESLegacy` | 27 | `0 found` |
+| `AGXAccelerator` | 2 | `none` |
+| `ApplePearlSEPDriver` | 1 | `none` |
+| `AppleM2ScalerCSCDriver` | 1 | `none` |
+| `AppleHIDKeyboardEventDriverV2` / `IOAccessoryIDBusHIDDevice` / `IOHIDDevice` | 4/4/3 | 混合 |
+| `path IODeviceTree:/arm-io/pearl-sep` | 1 | `none` |
+
+循环贯穿整场：第一条在 ring 第 **891** 行，最后一条在 **3485** 行（全 ring 4110 行），
+而 haptics 的 `open`（1807）和 `sel=1`（1812）都在它中间正常发生。
+⇒ 这些类我们**一个都没发布**（GPU 线是冻结的），backboardd 为它们反复重试。
+**边界**：它"因为拿不到加速器所以不发第二个 selector"这条**没有被证明**——
+时间线上 haptics 的 open 就夹在循环中间且成功了。
+
+### 已关闭 / 不许重走
+- ~~"iOS 不提交是因为我们的壳类名/服务名不对"~~ ⇒ I2 否证：它直接 open 成功。
+- ~~"4 个实例导致 backboardd attach 错对象"~~ ⇒ 它 attach 的是第 4 个（`prov` 命中），
+  而且 open 成功、sel=1 有答；去重降为**卫生问题**，不再是 B4 的候选病因。
+- 仪器坏不掉这一点已被 785 行自证：以后要问"某进程查了什么"，
+  `SWEETIOLOG=<name>` 是**零补丁**手段（415 字节，预算 590）。
