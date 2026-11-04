@@ -1,0 +1,123 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 668d55b..a8c8595 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5448,6 +5448,98 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+ 	return g_apm_cmd(src_port, mod_iid, pl, plen, APM_CMD_SET_CFG, what);
+ }
+ 
++/*
++ * One SET_CFG carried in shared memory: the OOB form.
++ *
++ * Same 16-byte apm_module_param_data_t records as the in-band list, but the
++ * packet carries an apm_cmd_header_t {offset, 0, handle, len} instead of the
++ * body, and the body is read out of the region we already mapped.  That is how
++ * the vendor's 18 KB configuration reaches the APM, and APM writes each record's
++ * error_code back into the region, so one packet answers "which of these module
++ * instance ids does this graph have".
++ *
++ * Every record here carries the same param id and the same payload, so the only
++ * variable between records is the module instance id; the first three are
++ * instances this graph definitely contains and act as the positive control.
++ */
++#define SWEET_OOB_OFF   0x3000u
++#define SWEET_OOB_RECS  9
++
++static const uint32_t g_oob_miids[SWEET_OOB_RECS] = {
++	0x428fu, 0x40bdu, 0x42d3u,		/* present in our graph: control */
++	0x40bfu, 0x40c0u, 0x40c8u, 0x4165u, 0x4308u,	/* never seen in our container */
++	0x428fu		/* repeated control: 9 records x 32 = 288 > the 256 in-band cap */
++};
++
++static int
++g_apm_set_cfg_oob(uint32_t src_port, const char *what)
++{
++	uint8_t body[SWEET_OOB_RECS * 32];
++	uint8_t pkt[24 + 16];
++	uint32_t off = 0;
++	uint32_t i;
++
++	if (!g_shm_mapped || !g_shm_va) {
++		printf("SWEET MARK: oobcfg v1 no mapping\n");
++		return (-1);
++	}
++	memset(body, 0, sizeof(body));
++	memset(pkt, 0, sizeof(pkt));
++	for (i = 0; i < SWEET_OOB_RECS; i++) {
++		g_put32(body + off + 0, g_oob_miids[i]);
++		g_put32(body + off + 4, 0x08001017u);
++		g_put32(body + off + 8, 12);
++		g_put32(body + off + 12, 0);	/* error_code, written by the DSP */
++		g_put32(body + off + 16, 96000);
++		g_put32(body + off + 20, 0x30020);
++		g_put32(body + off + 24, 1);
++		off += 32;
++	}
++	memcpy((void *)(g_shm_va + SWEET_OOB_OFF), body, off);
++	__asm__ volatile("dsb sy" ::: "memory");
++
++	g_put32(pkt + 0, (6u << 4) | (sizeof(pkt) << 8));
++	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
++	g_put32(pkt + 8, src_port);
++	g_put32(pkt + 12, 1);
++	g_put32(pkt + 16, 0x400u);
++	g_put32(pkt + 20, APM_CMD_SET_CFG);
++	g_put32(pkt + 24 + 0, SWEET_OOB_OFF);
++	g_put32(pkt + 24 + 4, 0);
++	g_put32(pkt + 24 + 8, g_shm_handle);
++	g_put32(pkt + 24 + 12, off);
++	printf("SWEET MARK: oobcfg v1 off=%#x len=%u recs=%u handle=%#x\n",
++	    SWEET_OOB_OFF, off, SWEET_OOB_RECS, g_shm_handle);
++	sweet_log_sync();
++	g_rsp_ready = 0;
++	g_rsp_len = 0;
++	g_send_gpr(pkt, sizeof(pkt));
++	for (unsigned n = 0; n < 5000; n += 5) {
++		g_drain(0);
++		if (g_rsp_ready) {
++			break;
++		}
++		g_wait(5);
++	}
++	if (!g_rsp_ready) {
++		printf("SWEET GLINK: %s: no response\n", what);
++		return (-1);
++	}
++	printf("SWEET GLINK: %s rsp op=%#x status=%#x\n", what,
++	    g_le32(g_rsp + 24), g_le32(g_rsp + 28));
++	__asm__ volatile("dsb sy" ::: "memory");
++	for (i = 0; i < SWEET_OOB_RECS; i++) {
++		const uint8_t *rec = (const uint8_t *)g_shm_va + SWEET_OOB_OFF +
++		    i * 32;
++
++		printf("SWEET MARK: oobcfg v1 rec %u iid=%#x param=%#x size=%u err=%#x\n",
++		    i, g_le32(rec + 0), g_le32(rec + 4), g_le32(rec + 8),
++		    g_le32(rec + 12));
++	}
++	sweet_log_sync();
++	return (0);
++}
++
+ /*
+  * A SET_CFG carrying more than one parameter record.
+  *
+@@ -6618,6 +6710,19 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 			    "cc_batch");
+ 		}
+ 	}
++	/*
++	 * sweetoobcfg=1 only, and not together with sweetcccfg: one container per
++	 * round.  9 records x 32 bytes = 288 > 256, so this is the form that has to
++	 * go through shared memory; 8 records would sit exactly on the in-band cap.
++	 */
++	{
++		int on = 0;
++
++		(void)PE_parse_boot_argn("sweetoobcfg", &on, sizeof(on));
++		if (on != 0) {
++			(void)g_apm_set_cfg_oob(src_port, "oob_batch");
++		}
++	}
+ 
+ 	g_put32(mf + 0, 96000);
+ 	g_put32(mf + 4, 32u | (3u << 16));
