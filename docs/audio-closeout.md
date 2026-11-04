@@ -2535,3 +2535,26 @@ W3"PA 不被编程"与"这个对象从没发过"是**相容**的（AW 模块的�
 - `/vendor` `/odm` `/apex` 里**没有** 18504/18128/18088 字节的文件；也**没有** `*acf*` / `*aw882*` 文件。
 - 抓取需要 tracefs，而这台 ROM 的 root 连 `setenforce`/`mount debugfs` 都被拒 ⇒ **这条正文在当前设备上不可得**。
 ⇒ 结论要直说：**② 的下一步（补这个 18504 对象）在现有条件下做不了**，不是"还没想到怎么试"。
+
+
+## 预先登记：E-NOPWR（`sweettdmpwr=2`）判据 V0–V4 —— 数字全部从 `ring-w-awfix.txt` 抄来
+
+（这轮我栽了三次才换做法：门的每条数字都必须来自**已存在 ring 的真实打印形态**。）
+基准 `logs/ring-w-awfix.txt`（3543 行）实测：`ampread pre-stream`=8 行、`ampread post-stream`=8 行、
+`vp/tdm_power`=2 行（发出+rsp）、`geni amp`=4、`data_buffer send`=501、`pcm tone done`=1、
+`graph_start rsp`=1、`SWEET MARK: s1ap leaf`=1、`SWEET MARK: tone gain`=1、`tdm_power skipped`=0。
+
+**单一变量**：不发我们自创的 `0x08001176`（值 0）——厂商 trace 里这条参数**一次都没出现**。
+`sweetvgraph=2` 换成 `sweettdmpwr=2`（同长 13 字符 ⇒ cmdline 仍 **589 ≤ 590**）。
+不需要重编（0248 已带开关，`out/kernel.adsp` 就是 0248 核）。
+
+| 格 | 检查（数字=基准实测值） | 判读 |
+|---|---|---|
+| **V0** 有效性门 | `tdm_power skipped` = **1**；`vp/tdm_power` = **0**（对比基准 2）；`ampread pre-stream` = **8** 且 `post-stream` = **8**；`data_buffer send` = **501**；`pcm tone done (500 buffers)` = 1；`SWEET MARK: s1ap leaf=0x741` = 1；`graph_start rsp … status=0` = 1 | 少任一 ⇒ 记「仪器未生效」，**不许**判"这条参数无关" |
+| **V1** | pre/post 的 8 对里**出现任何差异** | 不发那条包之后 DSP 开始编程 PA ⇒ 档④ 就是墙，下一枪沿 PA 增益/使能追 |
+| **V2** | 两包都 `status=0` 但 pre/post **仍全同** | 便宜嫌疑穷尽 ⇒ 扬声器侧只剩 #11 的能力墙（要那 18504 正文），转 B4 震动或换可抓 tracefs 的环境 |
+| **V3** | `graph_start` 或 tone 不再完成（对比基准有） | 不发 0x08001176 **破坏了原本能跑的东西** ⇒ 立刻回到基准形态，这条参数不是可有可无 |
+| **V4** | 用户听到 | 同 W1：**只证明喇叭通路可听**，不等于 goal 的"真实播放" |
+
+上机前本地门：不换内核（0248 已核过 marker/CNTP）；镜像产物里 grep `sweettdmpwr=2` 且**无** `sweetvgraph`、
+其余 5 个关键项齐、cmdline 字节数从 build log 核；V 表先 commit。
