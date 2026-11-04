@@ -3406,3 +3406,24 @@ size=0  -> bad size at 0                                         rc=-1   (不发
 ```
 所以 C1 改为：ring 里必须出现 `dst=1 inband recs=2 len=80` **和两条 rec 行**；
 若出现 `walk … != …` 或 `bad size`，说明是**我们自己的容器不自洽**，那一次不算对 APM 的测试。
+
+
+## N 轮仪器（0251）**撤回并从序列里删除**——我上一轮给的原因是错的
+
+- 第一次 panic 后我说"守卫放在 `getName()` 之后导致递归"。那不是（唯一）根因：
+  `IORegistryEntry::copyProperty()` 的 `wrap2` 宏是
+  `PLOCK; obj = getProperty(aKey); if (obj) obj->retain(); PUNLOCK;`
+  ⇒ `getProperty()` **本身就在 property 锁内被调用**。我在里面做 `getName()`
+  （再进 copyProperty，再拿同一把锁）+ `proc_selfname()` + `IOLog`，
+  是"嵌套锁 + 持锁打印"。v3 只修了守卫顺序，所以**第二轮（C 轮）照样 panic**：
+  两次 lr 都落在同一函数区（`0xfffffe00079dc5c0` / `…79dc77c`，差 0x1bc 正是我插码造成的位移）。
+- 结论：**这个挂点不行**。要量"用户态读 /product 的哪个属性"，必须挂在
+  **不持 property 锁**的层（IOKitServer 的 MIG 属性读入口，本机没有该文件；
+  或者 wrap2/wrap4 里 **PUNLOCK 之后**再打印）。在那之前不再开这一枪。
+
+## 同时记一条假信号（差点让我拿旧数据打分）
+C 轮 panic 后没写 ring，`pull_logs.sh` 返回的是**上一轮 M 的 ring**
+（`sweettime=1793775261`，而镜像是 `1793802313`）。⇒ **每轮拉完日志必须先对
+`sweettime` 与本轮 build log 里的 cmdline**，不一致就当"本轮无数据"处理。
+这条已经进 AGENTS.md 的判据习惯。开机记账：120 里已用 15（第 15 次 = 0251 的
+第二次 panic，非证据）。

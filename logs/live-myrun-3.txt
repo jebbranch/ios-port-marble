@@ -1,0 +1,715 @@
+===== session start 2026-10-27 18:57:03 iface=en14 port=5140 =====
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET SURF: mediaserverd create id 3 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[214] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x104078000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x16c384ff0 fp 0x16c3852e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+exec xpcproxy
+exec parsecd
+exec xpcproxy
+exec itunescloudd
+exec xpcproxy
+exec osanalyticshelper
+exec SiriTTSSynthesizerAU
+CRASH SiriTTSSynthesiz[218] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x1020e8000
+CRASH SiriTTSSynthesiz pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16dd15e90 fp 0x16dd15eb0 far 0x1f4f1ee28
+CRASH SiriTTSSynthesiz bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[218] crashed: SiriTTSSynthesiz. Too many corpses being created.
+exec KonaSynthesizer
+CRASH KonaSynthesizer[219] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x1040d8000
+CRASH KonaSynthesizer pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16bd25e90 fp 0x16bd25eb0 far 0x1f4f1ee28
+CRASH KonaSynthesizer bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[219] crashed: KonaSynthesizer. Too many corpses being created.
+exec MacinTalkAUSP
+CRASH MacinTalkAUSP[220] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x104478000
+CRASH MacinTalkAUSP pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16b985ec0 fp 0x16b985ee0 far 0x1f4f1ee28
+CRASH MacinTalkAUSP bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+Process[220] crashed: MacinTalkAUSP. Too many corpses being created.
+exec xpcproxy
+exec fairplayd.H2
+exec xpcproxy
+exec bluetoothd
+exec xpcproxy
+exec aggregated
+exec xpcproxy
+exec watchdogd
+SWEET MARBLE TOUCH: map gcc=0xfffffe402579c000 gpio=0xfffffe4025994000 se=0xfffffe4025c94000
+SWEET MARBLE TOUCH: GCC read in 2s
+exec xpcproxy
+exec rtcreportingd
+SWEET MARBLE TOUCH: gcc vote=0x400283c0 core_halt=0x4220 se4_halt=0x80004220
+SWEET MARBLE TOUCH: se4 rcg cmd=0x80000000 cfg=0x100000 m=0 n=0 d=0 dfs=0x21
+SWEET MARBLE TOUCH: se4 RCG is DFS-owned; not rewriting
+SWEET MARBLE TOUCH: voting QUP0 clocks
+exec xpcproxy
+exec mediaserverd
+SWEET SURF: mediaserverd create id 4 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[226] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x102c30000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x16d2e0ff0 fp 0x16d2e12e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[226] crashed: mediaserverd. Too many corpses being created.
+exec SiriTTSSynthesizerAU
+CRASH SiriTTSSynthesiz[227] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x1009cc000
+CRASH SiriTTSSynthesiz pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16f431ea0 fp 0x16f431ec0 far 0x1f4f1ee28
+CRASH SiriTTSSynthesiz bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[227] crashed: SiriTTSSynthesiz. Too many corpses being created.
+exec KonaSynthesizer
+CRASH KonaSynthesizer[228] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x100624000
+CRASH KonaSynthesizer pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16f7d9e90 fp 0x16f7d9eb0 far 0x1f4f1ee28
+CRASH KonaSynthesizer bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[228] crashed: KonaSynthesizer. Too many corpses being created.
+exec MacinTalkAUSP
+CRASH MacinTalkAUSP[229] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x104054000
+CRASH MacinTalkAUSP pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16bda9ec0 fp 0x16bda9ee0 far 0x1f4f1ee28
+CRASH MacinTalkAUSP bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+Process[229] crashed: MacinTalkAUSP. Too many corpses being created.
+SWEET MARBLE TOUCH: gcc vote=0x4002c3c0 (mask 0x43c0)
+SWEET MARBLE TOUCH: halt 0x33000 clear value=0x4220
+SWEET MARBLE TOUCH: halt 0x3300c clear value=0x4220
+SWEET MARBLE TOUCH: halt 0x27004 clear value=0
+SWEET MARBLE TOUCH: halt 0x27008 TIMEOUT value=0x80000002
+SWEET MARBLE TOUCH: halt 0x274dc clear value=0x4220
+SWEET MARBLE TOUCH: SE after-clock read in 2s
+exec xpcproxy
+exec dasd
+CRASH dasd[230] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x102694000
+CRASH dasd pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16d76b2e0 fp 0x16d76b300 far 0x1f4f1ee28
+CRASH dasd bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8a3d4 0x1a3c44794 0x1a3c14ddc 0x1026d1cfc 0x1026defd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[230] crashed: dasd. Too many corpses being created.
+SWEET MARBLE TOUCH: SE after-clock fw=0x102 protocol=1 revision=2
+SWEET MARBLE TOUCH: SE after-clock status=0 if_dis=0x1 hwtx=0x20102864 hwrx=0x20104800
+SWEET MARBLE TOUCH: SE after-clock tx_count=0 rx_count=0 ios=0 clk_sel=0 m_clk_cfg=0x11
+SWEET MARBLE TOUCH: SE after-clock irq=0
+SWEET MARBLE TOUCH: rails in 1s
+exec xpcproxy
+exec coresymbolicationd
+SWEET RPMH: rsc=0x17a20000 tcs=0x17a20d00 DRV=2 id=0x20700 solver=0x4010100 config=0x800c8104 TCS=8 ncpt=16
+SWEET RPMH: ACTIVE TCS0 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: ACTIVE TCS1 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: TCS0 ACTIVE 1800 mV mode=7 enable=1 irq-enable=0x1
+SWEET RPMH: TCS0 done=1 irq=0 idle=0x1 control=0x1010000 cmd-status=0x10101/0x10101/0x10101
+SWEET RPMH: L11C ACTIVE vote complete (rail voltage requires hardware verification)
+SWEET MARBLE TOUCH: ldoc2 err=0
+SWEET RPMH: rsc=0x17a20000 tcs=0x17a20d00 DRV=2 id=0x20700 solver=0x4010100 config=0x800c8104 TCS=8 ncpt=16
+SWEET RPMH: ACTIVE TCS0 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: ACTIVE TCS1 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: TCS0 ACTIVE 3224 mV mode=7 enable=1 irq-enable=0x1
+SWEET RPMH: TCS0 done=1 irq=0 idle=0x1 control=0x1010000 cmd-status=0x10101/0x10101/0x10101
+SWEET RPMH: L11C ACTIVE vote complete (rail voltage requires hardware verification)
+SWEET MARBLE TOUCH: ldoc9 err=0
+SWEET MARBLE TOUCH: IC reset low in 1s
+exec xpcproxy
+exec mediaserverd
+SWEET SURF: mediaserverd create id 5 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[232] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x104adc000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x16bd80ff0 fp 0x16bd812e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[232] crashed: mediaserverd. Too many corpses being created.
+exec xpcproxy
+exec fairplayd.H2
+SWEET MARBLE TOUCH: IC reset done gpio20=0x3 gpio21=0
+SWEET MARBLE TOUCH: se4 fw=0x102 proto=1 fifodis=1 depth=16 width=32
+SWEET MARBLE TOUCH: SE4 not usable for SPI
+SWEET MARBLE TOUCH: geni spi unavailable (mux=1)
+SWEET MARBLE TOUCH: pre-confirm: 21 86 e7 e4 6f a5 64 18
+exec xpcproxy
+SWEET MARBLE TOUCH: post-confirm: aa aa aa aa aa aa aa aa MATCH
+exec bluetoothd
+SWEET MARBLE TOUCH: ver first=42
+SWEET MARBLE TOUCH: ver 0000: 42 45 52 4c 49 4e 02 00 04 00 39 39 31 36 52 00 00 00 00 80 02 94 00 ff 00 00 02 05 71 45 32 43  |BERLIN....9916R.............qE2C|
+SWEET MARBLE TOUCH: ver pid=BERLIN patch=9916R sum=0x502 want=0x502 ok
+SWEET MARBLE TOUCH: icinfo first=bf len=191 raw=bf 00 01 00
+SWEET MARBLE TOUCH: icinfo len=191 off=47 touch_data_addr=0x10308
+SWEET MARBLE TOUCH: polling IRQ gpio21
+exec xpcproxy
+exec mediaserverd
+exec SiriTTSSynthesizerAU
+CRASH SiriTTSSynthesiz[236] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x102498000
+CRASH SiriTTSSynthesiz pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16d965e90 fp 0x16d965eb0 far 0x1f4f1ee28
+CRASH SiriTTSSynthesiz bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[236] crashed: SiriTTSSynthesiz. Too many corpses being created.
+exec KonaSynthesizer
+exec MacinTalkAUSP
+CRASH KonaSynthesizer[237] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x100b6c000
+CRASH KonaSynthesizer pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16f291e90 fp 0x16f291eb0 far 0x1f4f1ee28
+CRASH KonaSynthesizer bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[237] crashed: KonaSynthesizer. Too many corpses being created.
+CRASH MacinTalkAUSP[238] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x1005c4000
+CRASH MacinTalkAUSP pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16f839ec0 fp 0x16f839ee0 far 0x1f4f1ee28
+CRASH MacinTalkAUSP bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+Process[238] crashed: MacinTalkAUSP. Too many corpses being created.
+SWEET SURF: mediaserverd create id 6 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[235] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x1020e4000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x16e430ff0 fp 0x16e4312e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[235] crashed: mediaserverd. Too many corpses being created.
+exec xpcproxy
+exec dasd
+CRASH dasd[239] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x10283c000
+CRASH dasd pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16d5c32e0 fp 0x16d5c3300 far 0x1f4f1ee28
+CRASH dasd bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8a3d4 0x1a3c44794 0x1a3c14ddc 0x102879cfc 0x102886fd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[239] crashed: dasd. Too many corpses being created.
+exec xpcproxy
+exec coresymbolicationd
+exec xpcproxy
+exec fairplayd.H2
+exec xpcproxy
+exec mediaserverd
+exec xpcproxy
+exec bluetoothd
+SWEET SURF: mediaserverd create id 7 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[242] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x10401c000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x16ca70ff0 fp 0x16ca712e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[242] crashed: mediaserverd. Too many corpses being created.
+SWEET USB: ue0 rx 136 tx 149 frames
+exec xpcproxy
+exec mediaserverd
+SWEET SURF: mediaserverd create id 8 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[244] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x1047ac000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x16bbc4ff0 fp 0x16bbc52e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[244] crashed: mediaserverd. Too many corpses being created.
+exec xpcproxy
+exec dasd
+CRASH dasd[245] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x1049c4000
+CRASH dasd pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16b43b2e0 fp 0x16b43b300 far 0x1f4f1ee28
+CRASH dasd bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8a3d4 0x1a3c44794 0x1a3c14ddc 0x104a01cfc 0x104a0efd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[245] crashed: dasd. Too many corpses being created.
+exec xpcproxy
+exec coresymbolicationd
+exec xpcproxy
+exec fairplayd.H2
+exec SiriTTSSynthesizerAU
+exec KonaSynthesizer
+CRASH SiriTTSSynthesiz[248] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x100954000
+CRASH SiriTTSSynthesiz pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16f4a9e90 fp 0x16f4a9eb0 far 0x1f4f1ee28
+CRASH SiriTTSSynthesiz bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[248] crashed: SiriTTSSynthesiz. Too many corpses being created.
+exec MacinTalkAUSP
+CRASH MacinTalkAUSP[250] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x1002c4000
+CRASH MacinTalkAUSP pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16fb39ec0 fp 0x16fb39ee0 far 0x1f4f1ee28
+CRASH MacinTalkAUSP bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+Process[250] crashed: MacinTalkAUSP. Too many corpses being created.
+exec xpcproxy
+CRASH KonaSynthesizer[249] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x104984000
+CRASH KonaSynthesizer pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16b479e90 fp 0x16b479eb0 far 0x1f4f1ee28
+CRASH KonaSynthesizer bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[249] crashed: KonaSynthesizer. Too many corpses being created.
+exec bluetoothd
+exec xpcproxy
+exec mediaserverd
+SWEET FB: thermalmonitord sel 78 in 2/1788 out 0/0 -> 0x0
+SWEET FB: display on
+SWEET FB: backboardd sel 12 in 1/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 79 in 2/0 out 0/40 -> 0x0
+SWEET FB: backboardd sel 6 in 3/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 27 in 0/0 out 0/3084 -> 0x0
+SWEET FB: backboardd sel 17 in 0/3084 out 0/0 -> 0x0
+SWEET FB: backboardd sel 84 in 0/4 out 0/0 -> 0x0
+SWEET FB: backboardd sel 50 in 2/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 68 in 1/8 out 0/0 -> 0x0
+SWEET SURF: backboardd create id 9 1125x2436 fmt 0x42475241 bpe 4 bpr 4608 planes 0 size 11239424 keys 11 -> 0x0
+SWEET SURF: backboardd sel 9
+SWEET SURF: backboardd sel 5
+SWEET SURF: backboardd trap 2
+SWEET SURF: backboardd trap 3
+SWEET FB: backboardd sel 4 in 0/0 out 1/0 -> 0x0
+SWEET FB: backboardd sel 68 in 1/8 out 0/0 -> 0x0
+SWEET FB: backboardd sel 5 in 0/1132 out 0/0 -> 0x0
+SWEET FB: backboardd sel 3 in 2/0 out 1/0 -> 0x0
+SWEET SURF: backboardd sel 34
+SWEET FB: backboardd sel 55 in 1/72 out 0/0 -> 0x0
+SWEET SURF: backboardd create id 10 1125x2436 fmt 0x42475241 bpe 4 bpr 4608 planes 0 size 11239424 keys 11 -> 0x0
+exec xpcproxy
+SWEET FB: swap 2 layer 0 surface 10 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+exec xpcproxy
+exec com.apple.CallKit.CallDirectoryM
+exec vmd
+SWEET SURF: mediaserverd create id 11 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+SWEET FB: swap 4 layer 0 surface 9 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+CRASH mediaserverd[252] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x104504000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x16c240ff0 fp 0x16c2412e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[252] crashed: mediaserverd. Too many corpses being created.
+SWEET Sandbox: SpringBoard privilege 1007 denied
+exec xpcproxy
+exec localizationswitcherd
+SWEET FB: swap 5 layer 0 surface 10 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+SWEET FB: display off
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec watchlistd
+exec languageassetd
+exec matd
+exec CommCenterMobileHelper
+SWEET SURF: SpringBoard sel 40
+exec xpcproxy
+exec extensionkitservice
+exec com.apple.mobilenotes.WidgetExte
+exec NewsToday2
+exec LockScreenPeopleWidget_iOSExtens
+exec BooksWidgetExtension
+CRASH BooksWidgetExten[264] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x104dd4000
+CRASH BooksWidgetExten pc 0x1ba720ee4 lr 0x1ba72abcc sp 0x16b02a820 fp 0x16b02a860 far 0x106408000
+CRASH BooksWidgetExten bt 0x1ba72abfc 0x1ba6d3f1c 0x1ba6d2468 0x1ba6d02e0 0x0
+CRASH BooksWidgetExten reason ns 6 code 0x1: Library not loaded: @rpath/BookCore.framework/BookCore
+  Referenced from: <86D82639-0664-3478-85E8-D8927607BDDC> /private/var/containers/Bundle/Application/929C8B50-44C0-4B02-8622-C92B6DD65309/Books.app/PlugIns/BooksWidgetExtension.appex/BooksWidgetExtension
+  Reason: tried: '/System/Library/Frameworks/BookCore.framework/BookCore' (no such file, not in dyld cache), (security policy does not allow @ path expansion)
+Process[264] crashed: BooksWidgetExten. Too many corpses being created.
+exec FitnessWidget
+exec xpcproxy
+exec fontservicesd
+exec xpcproxy
+exec UserFontManager
+SWEET Sandbox: fileproviderd op 7
+exec MacinTalkAUSP
+exec SiriTTSSynthesizerAU
+CRASH MacinTalkAUSP[268] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x1044dc000
+CRASH MacinTalkAUSP pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16b921ec0 fp 0x16b921ee0 far 0x1f4f1ee28
+CRASH MacinTalkAUSP bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+Process[268] crashed: MacinTalkAUSP. Too many corpses being created.
+exec KonaSynthesizer
+CRASH SiriTTSSynthesiz[269] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x102b20000
+CRASH SiriTTSSynthesiz pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16d2dde90 fp 0x16d2ddeb0 far 0x1f4f1ee28
+CRASH SiriTTSSynthesiz bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[269] crashed: SiriTTSSynthesiz. Too many corpses being created.
+CRASH KonaSynthesizer[270] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x1028c4000
+CRASH KonaSynthesizer pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16d539e90 fp 0x16d539eb0 far 0x1f4f1ee28
+CRASH KonaSynthesizer bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[270] crashed: KonaSynthesizer. Too many corpses being created.
+exec BooksWidgetExtension
+CRASH BooksWidgetExten[271] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x100328000
+CRASH BooksWidgetExten pc 0x1ba720ee4 lr 0x1ba72abcc sp 0x16fad6820 fp 0x16fad6860 far 0x1f37b5eb0
+CRASH BooksWidgetExten bt 0x1ba72abfc 0x1ba6d3f1c 0x1ba6d2468 0x1ba6d02e0 0x0
+CRASH BooksWidgetExten reason ns 6 code 0x1: Library not loaded: @rpath/BookCore.framework/BookCore
+  Referenced from: <86D82639-0664-3478-85E8-D8927607BDDC> /private/var/containers/Bundle/Application/929C8B50-44C0-4B02-8622-C92B6DD65309/Books.app/PlugIns/BooksWidgetExtension.appex/BooksWidgetExtension
+  Reason: tried: '/System/Library/Frameworks/BookCore.framework/BookCore' (no such file, not in dyld cache), (security policy does not allow @ path expansion)
+Process[271] crashed: BooksWidgetExten. Too many corpses being created.
+exec xpcproxy
+exec mediaserverd
+SWEET SURF: mediaserverd create id 12 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[272] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x100f34000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x16f6f8ff0 fp 0x16f6f92e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[272] crashed: mediaserverd. Too many corpses being created.
+SWEET Sandbox: aggregated privilege 1002 denied
+exec PosterBoard
+exec xpcproxy
+exec dasd
+CRASH dasd[274] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x100638000
+CRASH dasd pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16f7c72e0 fp 0x16f7c7300 far 0x1f4f1ee28
+CRASH dasd bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8a3d4 0x1a3c44794 0x1a3c14ddc 0x100675cfc 0x100682fd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[274] crashed: dasd. Too many corpses being created.
+exec xpcproxy
+exec extensionkitservice
+exec GradientPosterExtension
+exec CollectionsPoster
+exec ExtragalacticPoster
+exec xpcproxy
+exec coresymbolicationd
+exec WeatherPoster
+exec EmojiPosterExtension
+exec PridePosterExtension
+exec UnityPosterExtension
+exec PhotosPosterProvider
+exec xpcproxy
+exec assetsd
+CRASH assetsd[285] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x1007b0000
+CRASH assetsd pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16f87acd0 fp 0x16f87acf0 far 0x1f4f1ee28
+CRASH assetsd bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8a3d4 0x1a3c44794 0x1a3c1bd48 0x1a3c1b480 0x1a3c28c68
+CRASH assetsd reason ns 2 code 0x6: (none)
+Process[285] crashed: assetsd. Too many corpses being created.
+exec xpcproxy
+exec assetsd
+CRASH assetsd[286] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x102a24000
+CRASH assetsd pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16d692cd0 fp 0x16d692cf0 far 0x1f4f1ee28
+CRASH assetsd bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8a3d4 0x1a3c44794 0x1a3c1bd48 0x1a3c1b480 0x1a3c28c68
+CRASH assetsd reason ns 2 code 0x6: (none)
+Process[286] crashed: assetsd. Too many corpses being created.
+exec xpcproxy
+exec assetsd
+exec xpcproxy
+exec fairplayd.H2
+exec xpcproxy
+exec bluetoothd
+exec xpcproxy
+exec mediaserverd
+SWEET SURF: mediaserverd create id 13 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[290] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x100d38000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x16f264ff0 fp 0x16f2652e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[290] crashed: mediaserverd. Too many corpses being created.
+exec xpcproxy
+exec iconservicesagent
+exec MacinTalkAUSP
+exec SiriTTSSynthesizerAU
+CRASH MacinTalkAUSP[292] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x100a6c000
+CRASH MacinTalkAUSP pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16f391ec0 fp 0x16f391ee0 far 0x1f4f1ee28
+CRASH MacinTalkAUSP bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+Process[292] crashed: MacinTalkAUSP. Too many corpses being created.
+CRASH SiriTTSSynthesiz[293] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x102574000
+CRASH SiriTTSSynthesiz pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16d889e90 fp 0x16d889eb0 far 0x1f4f1ee28
+CRASH SiriTTSSynthesiz bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[293] crashed: SiriTTSSynthesiz. Too many corpses being created.
+exec KonaSynthesizer
+CRASH KonaSynthesizer[294] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x104908000
+CRASH KonaSynthesizer pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16b4f5e90 fp 0x16b4f5eb0 far 0x1f4f1ee28
+CRASH KonaSynthesizer bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8cda0 0x1e7b8cd60 0x196179d58 0x19cf7f704 0x1c0fe5d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[294] crashed: KonaSynthesizer. Too many corpses being created.
+SWEET ADSP: firmware blob at 0x8424ec000 size 0x15a8000
+SWEET ADSP: MDT phnum=27 entry=0x86300000
+SWEET ADSP:   seg  1 paddr=0x86300000 filesz=0x1a68 memsz=0x2000 flags=0x8000005
+SWEET ADSP:   seg  2 paddr=0x86302000 filesz=0x291624 memsz=0x292000 flags=0x8000007
+SWEET ADSP:   seg  3 paddr=0x86594000 filesz=0x64f8 memsz=0x7000 flags=0x8000005
+SWEET ADSP:   seg  4 paddr=0x8659b000 filesz=0x8748 memsz=0x9000 flags=0x8000007
+SWEET ADSP:   seg  5 paddr=0x865a4000 filesz=0x5c000 memsz=0x5c000 flags=0x8000004
+SWEET ADSP:   seg  6 paddr=0x86600000 filesz=0xdc memsz=0x1000 flags=0x8000005
+SWEET ADSP:   seg  7 paddr=0x86601000 filesz=0x131c memsz=0x2000 flags=0x8000006
+SWEET ADSP:   seg  8 paddr=0x86603000 filesz=0x22e868 memsz=0x22f000 flags=0x8000005
+SWEET ADSP:   seg  9 paddr=0x86832000 filesz=0x3a008 memsz=0x4d42c0 flags=0x8000006
+SWEET ADSP:   seg 10 paddr=0x86d062c0 filesz=0x2d0 memsz=0xd40 flags=0x8000006
+SWEET ADSP:   seg 11 paddr=0x86d07000 filesz=0x2748 memsz=0x3000 flags=0x8000004
+SWEET ADSP:   seg 12 paddr=0x86d0a000 filesz=0x203e0 memsz=0x21000 flags=0x8000006
+SWEET ADSP:   seg 13 paddr=0x86d2b000 filesz=0x145d4 memsz=0x15000 flags=0x8000005
+SWEET ADSP:   seg 14 paddr=0x86d40000 filesz=0x4d300 memsz=0x4d300 flags=0x8000004
+SWEET ADSP:   seg 15 paddr=0x86e00000 filesz=0x32e7e4 memsz=0x32f000 flags=0x8000005
+SWEET ADSP:   seg 16 paddr=0x8712f000 filesz=0x1a4ec memsz=0xde000 flags=0x8000006
+SWEET ADSP:   seg 17 paddr=0x8720d000 filesz=0x118 memsz=0x1000 flags=0x8000006
+SWEET ADSP:   seg 18 paddr=0x8720e000 filesz=0x332c4 memsz=0x34000 flags=0x8000004
+SWEET ADSP:   seg 19 paddr=0x87300000 filesz=0xaf4b58 memsz=0xaf5000 flags=0x8000005
+SWEET ADSP:   seg 20 paddr=0x87df5000 filesz=0x7c008 memsz=0xce9000 flags=0x8000006
+SWEET ADSP:   seg 21 paddr=0x88ade000 filesz=0x790 memsz=0x1000 flags=0x8000006
+SWEET ADSP:   seg 22 paddr=0x88adf000 filesz=0x2a694 memsz=0x2b000 flags=0x8000004
+SWEET ADSP:   seg 23 paddr=0x88b0a000 filesz=0x15728 memsz=0x16000 flags=0x8000006
+SWEET ADSP:   seg 24 paddr=0x88b20000 filesz=0x8941c memsz=0x8a000 flags=0x8000005
+SWEET ADSP:   seg 25 paddr=0x88baa000 filesz=0 memsz=0x856000 flags=0x8000004
+SWEET ADSP: image 0x86300000..0x89400000 (49 MiB), region 0x9fd00000+51380224
+SWEET ADSP: metadata 0x394+0x13b8 at 0x8461b8000
+SWEET ADSP: scm 2/1 resumed 3 times
+SWEET ADSP: pas_init_image -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: pas_mem_setup -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: loaded adsp2.b01 0x1a68 bytes -> 0x9fd00000
+exec xpcproxy
+exec mediaserverd
+SWEET ADSP: loaded adsp2.b02 0x291624 bytes -> 0x9fd02000
+SWEET ADSP: loaded adsp2.b03 0x64f8 bytes -> 0x9ff94000
+SWEET ADSP: loaded adsp2.b04 0x8748 bytes -> 0x9ff9b000
+SWEET ADSP: loaded adsp2.b05 0x5c000 bytes -> 0x9ffa4000
+SWEET SURF: mediaserverd create id 14 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[295] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x100234000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x1701c8ff0 fp 0x1701c92e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[295] crashed: mediaserverd. Too many corpses being created.
+SWEET ADSP: loaded adsp2.b06 0xdc bytes -> 0xa0000000
+SWEET ADSP: loaded adsp2.b07 0x131c bytes -> 0xa0001000
+SWEET ADSP: loaded adsp2.b08 0x22e868 bytes -> 0xa0003000
+SWEET ADSP: loaded adsp2.b09 0x3a008 bytes -> 0xa0232000
+SWEET ADSP: loaded adsp2.b10 0x2d0 bytes -> 0xa07062c0
+SWEET ADSP: loaded adsp2.b11 0x2748 bytes -> 0xa0707000
+SWEET ADSP: loaded adsp2.b12 0x203e0 bytes -> 0xa070a000
+SWEET ADSP: loaded adsp2.b13 0x145d4 bytes -> 0xa072b000
+exec xpcproxy
+exec dasd
+SWEET ADSP: loaded adsp2.b14 0x4d300 bytes -> 0xa0740000
+exec xpcproxy
+exec coresymbolicationd
+CRASH dasd[296] sig 6 code 0x0 sub 0x0 slide 0x160ac000 mh 0x1045d8000
+CRASH dasd pc 0x1d86c3198 lr 0x1e7c525f8 sp 0x16b8272e0 fp 0x16b827300 far 0x1f4f1ee28
+CRASH dasd bt 0x1a3d084b8 0x1e7b8af54 0x1e7b7ba4c 0x19617eafc 0x1e7b8a424 0x1e7b8a3d4 0x1a3c44794 0x1a3c14ddc 0x104615cfc 0x104622fd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[296] crashed: dasd. Too many corpses being created.
+SWEET ADSP: loaded adsp2.b15 0x32e7e4 bytes -> 0xa0800000
+SWEET ADSP: loaded adsp2.b16 0x1a4ec bytes -> 0xa0b2f000
+SWEET ADSP: loaded adsp2.b17 0x118 bytes -> 0xa0c0d000
+SWEET ADSP: loaded adsp2.b18 0x332c4 bytes -> 0xa0c0e000
+SWEET ADSP: loaded adsp2.b19 0xaf4b58 bytes -> 0xa0d00000
+SWEET ADSP: loaded adsp2.b20 0x7c008 bytes -> 0xa17f5000
+SWEET ADSP: loaded adsp2.b21 0x790 bytes -> 0xa24de000
+SWEET ADSP: loaded adsp2.b22 0x2a694 bytes -> 0xa24df000
+SWEET ADSP: loaded adsp2.b23 0x15728 bytes -> 0xa250a000
+SWEET ADSP: loaded adsp2.b24 0x8941c bytes -> 0xa2520000
+|SpringBoard| 1969-12-31 16:01:41.-49 SpringBoard[26:251] 
+|SpringBoard| Unbalanced calls to begin/end appearance transitions for <SBCoverSheetPrimarySlidingViewController: 0x10780c000>.
+|SpringBoard| 
+exec xpcproxy
+exec fairplayd.H2
+|SpringBoard| ACM: LibCall_ACMContextCreate: returning, err = -5.
+SWEET ADSP: loaded adsp2.b25 0 bytes -> 0xa25aa000
+exec xpcproxy
+exec bluetoothd
+SWEET ADSP: scm 2/5 resumed 17 times
+SWEET ADSP: pas_auth_and_reset -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: Q6 released, waiting 3s
+exec xpcproxy
+exec mediaserverd
+|SpringBoard| 1969-12-31 16:01:44.-40 SpringBoard[26:3577] 
+|SpringBoard| ### Failed to Soft Linked: /System/Library/Frameworks/CarKit.framework/CarKit
+|SpringBoard| 
+SWEET SURF: mediaserverd create id 15 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+exec xpcproxy
+SWEET FB: display on
+SWEET FB: backboardd sel 79 in 2/0 out 0/40 -> 0x0
+SWEET FB: swap 8 layer 0 surface 10 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+|SpringBoard| 1969-12-31 16:01:45.-938 SpringBoard[26:251] 
+|SpringBoard| #configurationUpdateManager longPressBehavior: 0 previousValue: 0
+|SpringBoard| 
+CRASH mediaserverd[300] sig 11 code 0x100000001 sub 0x0 slide 0x160ac000 mh 0x10246c000
+CRASH mediaserverd pc 0x0 lr 0x1aabe458c sp 0x16e2d8ff0 fp 0x16e2d92e0 far 0x0
+CRASH mediaserverd bt 0x1aabe4924 0x1aaa8d884 0x1aaa4f114 0x1aaa4ef10 0x1b8212508 0x1b8212800 0x1a3c44780 0x1a3c26a50 0x1b821276c 0x1b8212128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[300] crashed: mediaserverd. Too many corpses being created.
+exec webbookmarksd
+SWEET GLINK: shm high word 0x1
+SWEET GLINK: ===== minimal GLINK/GPR client =====
+SWEET AUDIO: build v91 (battmgr property offset, RTC note)
+SWEET RTC: clock set from sweettime=1793098514
+SWEET BATTERY: SPMI arb=0x70000000 APIDs=768 obs-stride=0x20 hap-rev=0x2
+SWEET BATTERY: ppid 0x8 apid=4 map=0x1000800 owner=4
+SWEET BATTERY: ppid 0x4c1 apid=247 map=0x104c100 owner=4
+SWEET BATTERY: ppid 0x61 apid=51 map=0x1006100 owner=4
+SWEET BATTERY: ppid 0x3f0 apid=465 map=0x103f000 owner=0
+SWEET BATTERY: ppid 0x3f1 apid=466 map=0x103f100 owner=0
+SWEET BATTERY: ppid 0x3f2 apid=400 map=0x103f200 owner=3
+SWEET BATTERY: ppid 0x319 apid=454 map=0x1031900 owner=0
+SWEET BATTERY: ppid 0x71 apid=412 map=0x1007100 owner=0
+SWEET BATTERY: ppid 0x7d apid=414 map=0x1007d00 owner=0
+SWEET BATTERY: ppid 0x9d apid=428 map=0x1009d00 owner=0
+SWEET BATTERY: ppid 0x39d absent from the APID map
+exec xpcproxy
+SWEET BATTERY: gpio subtype stride20=0x82 stride80=0 (want 0x11)
+SWEET HAP: cfg=0/0x2 ptn=0x2 boost-vreg=0 hboost-follow=0xe0
+SWEET BATTERY: RW slot verified at stride 0x1000
+exec xpcproxy
+SWEET HAP: vmax 0xf048<-48 rc=0
+SWEET HAP: wave 0xf049<-01 rc=0
+exec xpcproxy
+SWEET HAP: tlra 0x498 rc=0
+SWEET HAP: direct amplitude 0xf126<-ff rc=0
+SWEET HAP: autores off 0xf063<-8a rc=0
+SWEET HAP: boost vreg=0
+SWEET HAP: hboost trigger rc=0/0
+exec ospredictiond
+exec xpcproxy
+SWEET HAP: boost vreg now=0x80
+exec pkreporter
+SWEET HAP: vreg ready 0xf068<-01 rc=0
+exec xpcproxy
+SWEET HAP: fault clear 0xf066<-07 rc=0
+SWEET HAP: enable 0xf046<-80 rc=0
+exec xpcproxy
+exec IMAutomaticHistoryDeletionAgent
+SWEET HAP: play 0xf04c<-81 rc=0
+exec addaily
+exec DayStreamProcessorService
+exec HistoricalAnalyzerService
+SWEET SURF: SpringBoard create id 16 272x184 fmt 0x42475241 bpe 4 bpr 1088 planes 0 size 212992 keys 6 -> 0x0
+SWEET SURF: SpringBoard create id 17 312x202 fmt 0x4c413038 bpe 2 bpr 640 planes 0 size 131072 keys 6 -> 0x0
+SWEET SURF: SpringBoard create id 18 230x186 fmt 0x4c413038 bpe 2 bpr 480 planes 0 size 98304 keys 6 -> 0x0
+SWEET HAP: fault during play=0
+SWEET HAP: stop 0xf04c<-00 rc=0
+SWEET HAP: disable 0xf046<-00 rc=0
+SWEET HAP: fault=0 auto_res=0x26/0x5b irt=0x8
+SWEET HAP: final en=0
+SWEET RTC: pmic=63698074 raw (EE4-owned; AP cannot set it, calendar from sweettime)
+SWEET SPMI: rtc sid=0 base=0x6100: 6100=00 6101=05 6102=00 6103=00 6104=07 6105=01 6106=00 6107=00 6108=80 6109=00 610a=00 610b=00 610c=00 610d=00 610e=00 610f=00
+SWEET SPMI: hap sid=3 base=0xf000: f000=00 f001=02 f002=00 f003=05 f004=15 f005=0a f006=00 f007=00 f008=00SWEET SURF: SpringBoard sel 35
+ f009=26 f00a=5b f00b=00 f00c=00 f00d=00 f00e=00 f00f=00
+SWEET SPMI: hap sid=3 base=0xf100: f100=00 f101=02 f102=00 f103=00 f104=15 f105=0b f106=00 f107=00 f108=01 f109=08 f10a=00 f10b=00 f10c=00 f10d=00 f10e=00 f10f=00
+SWEET MMIO: apps_smmu @0x15000000: +00=00200406 +04=00000000 +08=00000000 +0c=00000000 +10=0000001c +14=00000000 +18=00000000 +1c=00000000
+SWEET GLINK: smem sbl version 0xc0000 initialized 1
+SWEET GLINK: ptable version 1 entries 19
+SWEET GLINK: part[0] off=0x1ff000 size=0x1000 hosts=65535,65535
+SWEET GLINK: part[1] off=0x1cf000 size=0x30000 hosts=0,2
+SWEET GLINK: part[2] off=0x1af000 size=0x20000 hosts=0,5
+SWEET GLINK: part[3] off=0x17f000 size=0x30000 hosts=0,3
+SWEET GLINK: part[4] off=0x173000 size=0xc000 hosts=2,3
+SWEET GLINK: part[5] off=0x16b000 size=0x8000 hosts=0,8
+SWEET GLINK: part[6] off=0x167000 size=0x4000 hosts=7,11
+SWEET GLINK: part[7] off=0x165000 size=0x2000 hosts=7,5
+SWEET GLINK: part[8] off=0x163000 size=0x2000 hosts=7,2
+SWEET GLINK: part[9] off=0x161000 size=0x2000 hosts=7,1
+SWEET GLINK: part[10] off=0x15f000 size=0x2000 hosts=7,3
+SWEET GLINK: part[11] off=0x15b000 size=0x4000 hosts=1,11
+SWEET GLINK: part[12] off=0xdf000 size=0x7c000 hosts=0,1
+SWEET GLINK: part[13] off=0xbf000 size=0x20000 hosts=1,2
+SWEET GLINK: part[14] off=0xaf000 size=0x10000 hosts=1,3
+SWEET GLINK: part[15] off=0xad000 size=0x2000 hosts=0,14
+SWEET GLINK: part[16] off=0xab000 size=0x2000 hosts=1,14
+SWEET GLINK: part[17] off=0x1000 size=0xaa000 hosts=65534,65534
+SWEET GLINK: partition apps/adsp free_uncached=0x9368
+SWEET GLINK: descriptor 0x1cf030 (32 bytes): 0 0 0 8
+SWEET GLINK: tx 0x1cf060 (16384) rx 0x1d31d8 (16384)
+SWEET GLINK: item 478 size 32
+SWEET GLINK: item 479 size 16384
+SWEET GLINK: item 443 size 344
+SWEET GLINK: item 480 size 16384
+SWEET GLINK: item 606 size 32
+SWEET GLINK: item 613 size 32
+SWEET GLINK: item 611 size 4096
+SWEET GLINK: item 624 size 56
+SWEET GLINK: item 634 size 200
+SWEET GLINK: 9 items scanned
+SWEET GLINK: remote VERSION 1 features 0x7
+SWEET GLINK: version ok
+SWEET GLINK: VERSION_ACK 1 features 0x1
+SWEET GLINK: remote OPEN rcid=1 name=pcie_drv
+SWEET GLINK: remote OPEN rcid=2 name=IPCRTR
+SWEET GLINK: remote OPEN rcid=3 name=adsp_apps
+SWEET GLINK: remote OPEN rcid=4 name=fastrpcglink-apps-dsp
+SWEET GLINK: remote OPEN rcid=5 name=LOOPBACK_CTL_LPASS
+SWEET GLINK: OPEN_ACK lcid=1
+SWEET GLINK: open ack=1 remote_open=1 rcid=3
+SWEET GLINK: OPEN_ACK sent for rcid=3
+SWEET GLINK: 8 intents advertised
+SWEET GLINK: remote intent id=0 size=128
+SWEET GLINK: remote intent id=1 size=128
+SWEET GLINK: remote intent id=2 size=128
+SWEET GLINK: remote intent id=3 size=128
+SWEET GLINK: remote intent id=4 size=128
+SWEET GLINK: remote intent id=5 size=128
+SWEET GLINK: remote intent id=6 size=128
+SWEET GLINK: remote intent id=7 size=128
+SWEET GLINK: remote intent id=8 size=128
+SWEET GLINK: remote intent id=9 size=128
+SWEET GLINK: remote intent id=10 size=128
+SWEET GLINK: remote intent id=11 size=128
+SWEET GLINK: remote intent id=12 size=128
+SWEET GLINK: remote intent id=13 size=128
+SWEET GLINK: remote intent id=14 size=128
+SWEET GLINK: remote intent id=15 size=128
+SWEET GLINK: remote intent id=16 size=128
+SWEET GLINK: remote intent id=17 size=128
+SWEET GLINK: remote intent id=18 size=128
+SWEET GLINK: remote intent id=19 size=128
+SWEET GLINK: remote intent id=20 size=128
+SWEET GLINK: remote intent id=21 size=128
+SWEET GLINK: remote intent id=22 size=128
+SWEET GLINK: remote intent id=23 size=128
+SWEET GLINK: remote intent id=24 size=128
+SWEET GLINK: remote intent id=25 size=128
+SWEET GLINK: remote intent id=26 size=128
+SWEET GLINK: remote intent id=27 size=128
+SWEET GLINK: remote intent id=28 size=128
+SWEET GLINK: remote intent id=29 size=128
+SWEET GLINK: remote intent id=30 size=128
+SWEET GLINK: remote intent id=31 size=128
+SWEET GLINK: remote intent id=32 size=128
+SWEET GLINK: remote intent id=33 size=128
+SWEET GLINK: remote intent id=34 size=128
+SWEET GLINK: remote intent id=35 size=128
+SWEET GLINK: remote intent id=36 size=128
+SWEET GLINK: remote intent id=37 size=128
+SWEET GLINK: remote intent id=38 size=128
+SWEET GLINK: remote intent id=39 size=128
+SWEET GLINK: remote intent id=40 size=128
+SWEET GLINK: remote intent id=41 size=128
+SWEET GLINK: remote intent id=42 size=128
+SWEET GLINK: remote intent id=43 size=128
+SWEET GLINK: remote intent id=44 size=128
+SWEET GLINK: remote intent id=45 size=128
+SWEET GLINK: remote intent id=46 size=128
+SWEET GLINK: remote intent id=47 size=128
+SWEET GLINK: remote intent id=48 size=128
+SWEET GLINK: remote intent id=49 size=128
+SWEET GLINK: remote intent id=50 size=128
+SWEET GLINK: remote intent id=51 size=128
+SWEET GLINK: remote intent id=52 size=128
+SWEET GLINK: remote intent id=53 size=128
+SWEET GLINK: remote intent id=54 size=128
+SWEET GLINK: remote intent id=55 size=128
+SWEET GLINK: remote intent id=56 size=128
+SWEET GLINK: remote intent id=57 size=128
+SWEET GLINK: remote intent id=58 size=128
+SWEET GLINK: remote intent id=59 size=128
+SWEET GLINK: remote intent id=60 size=128
+SWEET GLINK: remote intent id=61 size=128
+SWEET GLINK: remote intent id=62 size=128
+SWEET GLINK: remote intent id=63 size=128
+SWEET GLINK: remote intent id=64 size=512
+SWEET GLINK: remote intent id=65 size=512
+SWEET GLINK: remote intent id=66 size=512
+SWEET GLINK: remote intent id=67 size=512
+SWEET GLINK: remote intent id=68 size=512
+SWEET GLINK: remote intent id=69 size=512
+SWEET GLINK: remote intent id=70 size=512
+SWEET GLINK: remote intent id=71 size=512
+SWEET GLINK: remote intent id=72 size=512
+SWEET GLINK: remote intent id=73 size=512
+SWEET GLINK: remote intent id=74 size=512
+SWEET GLINK: remote intent id=75 size=512
+SWEET GLINK: remote intent id=76 size=512
+SWEET GLINK: remote intent id=77 size=512
+SWEET GLINK: remote intent id=78 size=512
+SWEET GLINK: remote intent id=79 size=512
+SWEET GLINK: remote intent id=80 size=512
+SWEET GLINK: remote intent id=81 size=512
+SWEET GLINK: remote intent id=82 size=512
+SWEET GLINK: remote intent id=83 size=512
+SWEET GLINK: remote intent id=84 size=512
+SWEET GLINK: remote intent id=85 size=512
+SWEET GLINK: remote intent id=86 size=512
+SWEET GLINK: remote intent id=87 size=512
+SWEET GLINK: remote intent id=88 size=512
+SWEET GLINK: remote intent id=89 size=512
+SWEET GLINK: remote intent id=90 size=512
+SWEET GLINK: remote intent id=91 size=512
+SWEET GLINK: remote intent id=92 size=512
+SWEET GLINK: remote intent id=93 size=512
+SWEET GLINK: remote intent id=94 size=512
+SWEET GLINK: remote intent id=95 size=512
+SWEET GLINK: remote intent id=96 size=1024
+SWEET GLINK: remote intent id=97 size=1024
+SWEET GLINK: remote intent id=98 size=1024
+SWEET GLINK: remote intent id=99 size=1024
+SWEET GLINK: remote intent id=100 size=1024
+SWEET GLINK: remote intent id=101 size=1024
+SWEET GLINK: remote intent id=102 size=1024
+SWEET GLINK: remote intent id=103 size=1024
+SWEET GLINK: remote intent id=104 size=1024
+SWEET GLINK: remote intent id=105 size=1024
+SWEET GLINK: remote intent id=106 size=1024
+SWEET GLINK: remote intent id=107 size=1024
+SWEET GLINK: remote intent id=108 size=1024
+SWEET GLINK: remote intent id=109 size=1024
+SWEET GLINK: remote intent id=110 size=1024
+SWEET GLINK: remote intent id=111 size=1024
+SWEET GLINK: remote intent id=112 size=4096
+SWEET GLINK: remote intent id=113 size=4096
+SWEET GLINK: remote intent id=114 size=4096
+SWEET GLINK: remote intent id=115 size=4096

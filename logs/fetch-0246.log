@@ -1,0 +1,14 @@
+release page: https://github.com/jebbranch/ios-port-marble/releases/expanded_assets/kernel-latest
+want sha256: c7243b56550fc7cb3c67f2ef7195789c02a4a982fd6a327b68f411b644ae7faf
+attempt 1: got ca23af2f56ef3f584ee4aa7e23563799381d1858f9946862ea7f7ea041c1e489, want c7243b56550fc7cb3c67f2ef7195789c02a4a982fd6a327b68f411b644ae7faf (CDN stale?)
+attempt 2: got ca23af2f56ef3f584ee4aa7e23563799381d1858f9946862ea7f7ea041c1e489, want c7243b56550fc7cb3c67f2ef7195789c02a4a982fd6a327b68f411b644ae7faf (CDN stale?)
+attempt 3: got ca23af2f56ef3f584ee4aa7e23563799381d1858f9946862ea7f7ea041c1e489, want c7243b56550fc7cb3c67f2ef7195789c02a4a982fd6a327b68f411b644ae7faf (CDN stale?)
+attempt 4: got ca23af2f56ef3f584ee4aa7e23563799381d1858f9946862ea7f7ea041c1e489, want c7243b56550fc7cb3c67f2ef7195789c02a4a982fd6a327b68f411b644ae7faf (CDN stale?)
+attempt 5: got ca23af2f56ef3f584ee4aa7e23563799381d1858f9946862ea7f7ea041c1e489, want c7243b56550fc7cb3c67f2ef7195789c02a4a982fd6a327b68f411b644ae7faf (CDN stale?)
+warning: digest mismatch, but the payload looks like a real kernel:
+         got 2daa368cbeb1a90a2edca374eee380dd1e759e69ebe70c914e5ba15501657b90, want c7243b56550fc7cb3c67f2ef7195789c02a4a982fd6a327b68f411b644ae7faf
+         marker: SWEET AUDIO: build v97
+CNTP_CTL occurrences: ['0x4a6348']
+patched CNTP_CTL at 0x4a6348
+ready: /Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/out/kernel.adsp
+fetch exit=0

@@ -1,0 +1,2040 @@
+Darwin Kernel Version 22.6.0: Mon Aug 14 05:06:07 UTC 2023; runner:xnu-8796.141.3
+pmap_startup() init/release time: 16683 microsec
+pmap_startup() delayed init/release of 0 pages
+vm_page_bootstrap: 257364 free pages, 4780 wired pages, (up to 0 of which are delayed free)
+VM boostrap: 97 maps, 204 entries and 512 holes available
+Maximum number of VM swap files: 100
+bsd_pageable            : 0xfffffe10006b8000 - 0xfffffe10049c0000 (67M)
+zone_meta               : 0xfffffe10049c0000 - 0xfffffe100d5b4000 (139M)
+gIOKitPageableFixed3    : 0xfffffe100d5b4000 - 0xfffffe10135b4000 (96M)
+gIOKitPageableFixed1    : 0xfffffe10135b4000 - 0xfffffe10195b4000 (96M)
+io_submap               : 0xfffffe10195b4000 - 0xfffffe101d5b4000 (64M)
+ipc_kernel_copy_map     : 0xfffffe101d5b4000 - 0xfffffe101ddb4000 (8M)
+kmem_sprayqtn_range     : 0xfffffe101ddb4000 - 0xfffffe109c058000 (2018M)
+kmem_ptr_range_meta     : 0xfffffe109c058000 - 0xfffffe109c7d4000 (7M)
+ipc_kernel_map          : 0xfffffe109c7d4000 - 0xfffffe10a07d4000 (64M)
+gIOKitPageableFixed2    : 0xfffffe10a07d4000 - 0xfffffe10a67d4000 (96M)
+bufferhdr               : 0xfffffe10a67d4000 - 0xfffffe10a6a9c000 (2848K)
+gIOKitPageableFixed0    : 0xfffffe10a6a9c000 - 0xfffffe10aca9c000 (96M)
+zones                   : 0xfffffe10aca9c000 - 0xfffffe30aca9c000 (128G)
+kmem_ptr_range          : 0xfffffe30aca9c000 - 0xfffffe449f0dc000 (79G)
+mb                      : 0xfffffe449f0dc000 - 0xfffffe44a50dc000 (96M)
+kmem_data_range         : 0xfffffe44a50dc000 - 0xfffffe7fff794000 (237G)
+compressor              : 0xfffffe7fff794000 - 0xfffffe8fffdfc000 (64G)
+kmem_large_ranges[1]    : 0 - 0 (0B)
+kmem_large_ranges[2]    : 0 - 0 (0B)
+kmem_large_ranges[3]    : 0 - 0 (0B)
+kmem_large_ranges[4]    : 0xfffffe102da08800 - 0xfffffe109c058000 (1766M)
+kmem_large_ranges[5]    : 0xfffffe4c105b3000 - 0xfffffe7fff794000 (207G)
+"vm_compressor_mode" is 4
+zone_init: pgzalloc  0xfffffe10aca9c000:0xfffffe10aea28000 (31M) [1009 slots]
+zone_init: map VM    0xfffffe10aea28000:0xfffffe157b238000 (19G)
+zone_init: map RO    0xfffffe157b238000:0xfffffe1714a3c000 (6G)
+zone_init: map GEN0  0xfffffe1714a3c000:0xfffffe1be124c000 (19G)
+zone_init: map GEN1  0xfffffe1be124c000:0xfffffe20ada5c000 (19G)
+zone_init: map GEN2  0xfffffe20ada5c000:0xfffffe257a26c000 (19G)
+zone_init: map GEN3  0xfffffe257a26c000:0xfffffe2a46a80000 (19G)
+zone_init: map DATA  0xfffffe2a46a80000:0xfffffe30aca9c000 (25G)
+zone_init: metadata  0xfffffe10049d0000:0xfffffe100c9d0000 (128M)
+zone_init: metabits  0xfffffe100c9d0000:0xfffffe100d5a4000 (11M)
+zone_init: extra     0:0 (0B)
+VM bootstrap done: 85 maps, 165 entries and 502 holes left
+Log queues configured: slot count: 64, per-slot size: 32768, total size: 2097152
+OSLog stream configured: stream: 8192 bytes, cache: 2112 bytes
+OSLog stream verification: 0
+Long logs support configured: size: 16384
+Firehose configured: 16 chunks, 8 io pages
+standard timeslicing quantum is 10000 us
+standard background quantum is 2500 us
+mig_table_max_displ = 54 mach_kobj_count = 374
+debug_log_init: Error!! gPanicBase is still not initialized
+debug_log_init: Error!! gPanicBase is still not initialized
+kdp_core zlib memory 0x8000
+Serial requested, consistent debug disabled or debug boot arg not present, configuring debugging over serial
+iBoot version: marble-shim
+"name" not a kext
+"AAPL,phandle" not a kext
+"RAMDisk" not a kext
+SWEET AMFI: built-in interface registered (XML entitlements)
+calling mpo_policy_init for vnguard
+Security policy loaded: Guarded vnode policy (vnguard)
+SWEET: trust caches unavailable (Image4/AMFI not installed)
+keepsyms boot arg specified; keeping linkedit segment for symbols.
+No POST boot-arg set.
+SWEET: starting device-tree platform expert
+SWEET: platform expert registered
+SWEET AKS: AppleKeyStore registered (no passcode, unlocked)
+SWEET WDT: IOWatchdog registered (accepts check-ins, never fires)
+SWEET SURF: IOCoreSurfaceRoot registered
+SWEET AMFI: AppleMobileFileIntegrity service registered
+SWEET HID: buttons registered (test every 0 s)
+SWEET HID: touch registered
+SWEET BATTERY: static fallback, 100% 4200mV external=0 charging=0
+SWEET FB: AppleCLCD 1080x2400 stride 4320 at 0xb8000000, default surface 1, presented as 1125x2436
+SWEET CPU: requested=8 selected=8 (limit=8)
+SWEET CPU: cpu=0 mpidr=0x0 came alive; SGI1 OK
+SWEET CPU: cpu=1 CPU_ON target=0x100 entry_pa=0x841492000 context=1
+SWEET CPU: cpu=1 PSCI CPU_ON rc=0
+SWEET CPU: cpu=1 mpidr=0x100 came alive; SGI1 OK
+SWEET CPU: cpu=2 CPU_ON target=0x200 entry_pa=0x841492000 context=2
+SWEET CPU: cpu=2 PSCI CPU_ON rc=0
+SWEET CPU: cpu=2 mpidr=0x200 came alive; SGI1 OK
+SWEET CPU: cpu=3 CPU_ON target=0x300 entry_pa=0x841492000 context=3
+SWEET CPU: cpu=3 PSCI CPU_ON rc=0
+SWEET CPU: cpu=3 mpidr=0x300 came alive; SGI1 OK
+SWEET CPU: cpu=4 CPU_ON target=0x400 entry_pa=0x841492000 context=4
+SWEET CPU: cpu=4 PSCI CPU_ON rc=0
+SWEET CPU: cpu=4 mpidr=0x400 came alive; SGI1 OK
+SWEET CPU: cpu=5 CPU_ON target=0x500 entry_pa=0x841492000 context=5
+SWEET CPU: cpu=5 PSCI CPU_ON rc=0
+SWEET CPU: cpu=5 mpidr=0x500 came alive; SGI1 OK
+SWEET CPU: cpu=6 CPU_ON target=0x600 entry_pa=0x841492000 context=6
+SWEET CPU: cpu=6 PSCI CPU_ON rc=0
+SWEET CPU: cpu=6 mpidr=0x600 came alive; SGI1 OK
+SWEET CPU: cpu=7 CPU_ON target=0x700 entry_pa=0x841492000 context=7
+SWEET CPU: cpu=7 PSCI CPU_ON rc=0
+SWEET CPU: cpu=7 mpidr=0x700 came alive; SGI1 OK
+SWEET CPU: 8/8 CPUs initialized, SGI1 verified
+Copyright (c) 1982, 1986, 1989, 1991, 1993
+	The Regents of the University of California. All rights reserved.
+
+MAC Framework successfully initialized
+using 5167 buffer headers and 4631 cluster IO buffer headers
+ktriage_register_subsystem_strings: set subsystem 8 strings
+calling mpo_policy_init for SWEET AMFI
+Security policy loaded: SWEET built-in Mobile File Integrity (SWEET AMFI)
+SWEET AMFI: platform binary policy registered (0)
+calling mpo_policy_init for Sandbox
+Security policy loaded: SWEET permissive sandbox stand-in (Sandbox)
+SWEET Sandbox: permissive policy registered (0)
+SWEET HFS: hfs-627.100.6 registered
+mcache: 8 CPU(s), 64 bytes CPU cache line size
+mbinit: done [96 MB total pool size, (64/32) split]
+dlil_init: Waiting for all the create dlil kernel threads to get scheduled at least once.
+dlil_init: All the created dlil kernel threads have been scheduled at least once. Proceeding.
+ifnet_attach: All kernel threads created for interface lo0 have been scheduled at least once. Proceeding.
+ifnet_attach: All kernel threads created for interface gif0 have been scheduled at least once. Proceeding.
+skip attaching fsw to lo0 using legacy TX modelifnet_attach: All kernel threads created for interface stf0 have been scheduled at least once. Proceeding.
+Added memory device md0/rmd0 (01000000/12000000) at FFFFFE00084EC000 for 00000000015A8000
+SWEET UFS: root range override 0x3603600 + 5243387 blocks
+SWEET UFS: "userdata" on LUN 0: first block 0x3603600, 20481 MiB, read-write, DMA at 0x8460b0000
+SWEET LOG: console log to the last 4100 KiB of the partition (block 0x3b033fa)
+SWEET KEYS: pon-subtype=0x8/1 pwr-bit=0x80 res-bit=0x40
+SWEET KEYS: arb=0x70000000 v7 apids=768 pon-apid=536 gpio6-apid=434 pon=0x10/1 gpio=0x1/1 mode=0/1 en=0x80/1 subtype=0x11/1
+SWEET TOUCH: disabled (sweettouch=0)
+SWEET MARBLE TOUCH: stage-9 start in 15s
+SWEET USB: marble clk master       0x00000221 (on)
+SWEET USB: marble clk sleep        0x00000001 (on)
+SWEET USB: marble clk utmi         0x00000001 (on)
+SWEET USB: marble clk cfg-noc      0x00000001 (on)
+SWEET USB: marble clk aggre        0x00000001 (on)
+SWEET USB: marble clk eusb-clkref  0x00000001 (on)
+SWEET USB: marble GDSC 0xf822f000 (on)
+SWEET USB: DWC3 GSNPSID 0x33313130 GCTL 0x00102001 GSTS 0x7e800000 GUSB2PHYCFG 0x00102400
+SWEET USB: DWC3 DCFG 0x0048080c DCTL 0x10f00000 DEVTEN 0x00001277 DSTS 0x00d238ec DALEPENA 0x0000000f
+SWEET USB: DWC3 GEVNTADR 0x00000000fc265000 GEVNTSIZ 0x80001000 GEVNTCOUNT 0x00000000 GHWPARAMS0 0x4020400a
+ifnet_attach: All kernel threads created for interface ue0 have been scheduled at least once. Proceeding.
+skip attaching fsw to ue0 using legacy TX modelSWEET NET: kernel_task ue0 add address 192.168.7.2
+SWEET USB: ue0 192.168.7.2/24 up (err 0)
+SWEET USB: soft reset done after 3 ms, GCTL 0x00102001 DCFG 0x0048080c
+SWEET USB: QSCRATCH HS_PHY_CTRL 0x00000000 SS_PHY_CTRL 0x00000000 GENERAL_CFG 0x00000004
+SWEET USB: VBUS override on: HS_PHY_CTRL 0x10100000 SS_PHY_CTRL 0x01000000
+SWEET USB: running (DSTS 0x00820001 after 0 ms), DMA at 0x8461b4000
+SWEET USB: marble eUSB2 PHY left to ABL
+SWEET USB: livelog thread started at 0
+SWEET AUDIO: disabled (sweetaudio=1 sweetcmddb=1 sweetscm=1)
+BSD root: ufsroot0, major 2, minor 0
+SWEET ADSP: ===== Q6 bring-up, start in 60s =====
+SWEET ADSP: early amp probe
+SWEET I2C: TLMM @0xf138000 scl cfg=0x1 sda cfg=0x1
+SWEET I2C: levels before (rstA=0 spksw=0 scl=1 sda=1 rstB=0 irqA=1 irqB=1)
+SWEET I2C: floating (no pull) scl=1 sda=1
+jnl: b(2, 0): replay_journal: from: 6887424 to: 1657344 (joffset 0x82000)
+SWEET I2C: resets released (A=1 B=1)
+SWEET I2C: sda driven low reads 0
+SWEET I2C: sda driven high reads 1
+SWEET I2C: scl driven low reads 0
+SWEET I2C: scl high reads 1
+SWEET I2C: bus idle, sda=1
+jnl: b(2, 0): journal replay done.
+SWEET USB: event 0x00000000
+hfs: Removed 36 orphaned / unlinked files and 49 directories 
+hfs: mounted iOSRoot on device b(2, 0)
+SWEET: root volume is not authenticated (error 25); continuing unsealed
+No POST boot-arg set.
+load_init_program: attempting to load /usr/appleinternal/sbin/launchd.development
+VM Swap Subsystem is ON
+load_init_program: attempting to load /sbin/launchd
+exec launchd
+shared_region: 0xb913160e252d9867 [1(launchd)] check_np(0x16ba1bbc0) vm_shared_region_start_address() failed
+SWEET Sandbox: launchd op 2
+Darwin Ignition Sequence Version 1.0.0: Tue Jul  2 20:41:23 PDT 2024; root:libignition-51~1974/libignition_core/RELEASE_ARM64
+libignition: 1: arguments           :
+libignition: 1:   ignition level    : 0x5
+libignition: 1:   force dylib root  : 0x0
+libignition: 1:   halt after stage  : n/a
+libignition: 1: ignition blob not available
+libignition: 1: configuration         :
+libignition: 1:   program             : launchd
+libignition: 1:   os environment      : n/a
+libignition: 1:   rd                  : ufsroot0
+SWEET USB: event 0x00000201
+SWEET USB: connected, speed 0
+libignition: 1:   arp0                : n/a
+libignition: 1:   rp                  : n/a
+libignition: 1:   pivot src           : n/a
+libignition: 1:   root ramdisk        : 0x0
+libignition: 1:   restore             : 0x0
+libignition: 1:   root device info    : 0x0
+libignition: 1:   can haz debugger    : 0x1
+libignition: 1:   rootfs mount flags  : 0x480d000
+libignition: 1:   ecid                : 0x0
+libignition: 1:   hardware target     : d22ap
+libignition: 1:   initproc            : 0x1
+libignition: 1:   single user         : 0x0
+libignition: 1:   userspace reboot    : 0x0
+libignition: 1:   secure boot level   : 0x0
+libignition: 1:   os version          : n/a
+libignition: 1: parameters          :
+libignition: 1:   version           : 0x1
+libignition: 1:   argc              : 0x1
+libignition: 1:   log fd            : 0xffffffffffffffff
+libignition: 1:   platform      SWEET I2C: released scan found 0 device(s)
+    : 0x2
+libignition: 1: boot spec           :
+libignition: 1:   name              : local
+libignition: 1:   stage count       : 0x7
+libignition: 1:        hello: commence primary ignition
+libignition: 1:        hello: hello from launchd.1
+libignition: 1:      preboot: mounting preboot
+libignition: 1: failed to lookup preboot: 25
+libignition: 1:      preboot: failed to get preboot device: 25
+libignition: 1:      preboot: ignition failed: 25
+libignition: 1: ignition boot failed: 25
+ignite() returned 25
+shared_region: 0xb913160e252d9867 [1(launchd)] check_np(0x16ba1b150) vm_shared_region_start_address() failed
+SWEET I2C: spksw high
+SWEET USB: event 0x0000c040
+SWEET USB: setup 00 05 0001 0000 len 0
+SWEET USB: address 1
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0100 0000 len 18
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0302 0409 len 2
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0302 0409 len 50
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0301 0409 len 2
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0301 0409 len 20
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0303 0409 len 2
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0303 0409 len 10
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0200 0000 len 9
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0200 0000 len 80
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 00 09 0001 0000 len 0
+SWEET USB: ECM endpoints configured
+SWEET USB: configured (1)
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET I2C: spksw-high scan found 0 device(s)
+SWEET USB: event 0x0000c040
+SWEET USB: setup 01 0b 0000 0001 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: livelog first datagram ok
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 01 0b 0001 0001 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 0000 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0304 0409 len 2
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0304 0409 len 26
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0300 0000 len 255
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0300 0000 len 255
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0300 0000 len 255
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 80 06 0300 0000 len 255
+SWEET USB: event 0x000010c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x000020c0
+SWEET USB: event 0x0000c040
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000c 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000c 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000c04a
+SWEET I2C: asserted scan found 0 device(s)
+SWEET I2C: amp 0x34 no ack
+SWEET I2C: amp 0x35 no ack
+SWEET I2C: 0 amplifier(s) answered 0x2032
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET Sandbox: launchd op 4
+com.apple.xpc.launchd|1969-12-31 16:00:39.320172 <Notice>: hello
+com.apple.xpc.launchd|1969-12-31 16:00:39.326903 <Error>: Could not opt into 50 MB Jetsam high watermark: 22: Invalid argument
+com.apple.xpc.launchd|1969-12-31 16:00:39.327551 <Notice>: Darwin Bootstrapper Version 7.0.0: Thu Feb  1 20:33:09 PST 2024; root:libxpc_executables-2462.140.4.702.1~1/launchd/RELEASE_ARM64
+com.apple.xpc.launchd|1969-12-31 16:00:39.327662 <Notice>: boot-args = debug=0xc serial=3 cpus=8 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 cs_debug=0 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweetkeys=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=1 gicrstride=0x40000 sweetglink=1 sweetsmp=1 sweetsmpn=20 sweetsmpms=1000 sweetglink=0 sweettime=1793092796
+com.apple.xpc.launchd|1969-12-31 16:00:39.339360 (system) <Notice>: entering ondemand mode
+com.apple.xpc.launchd|1969-12-31 16:00:39.341698 (system) <Notice>: created
+SWEET NET: launchd lo0 add address 127.0.0.1
+skip attaching fsw to lo0 using legacy TX modelcom.apple.xpc.launchd|1969-12-31 16:00:39.342808 (mount-phase-1) <Notice>: Doing boot task
+exec mount
+SWEET USB: event 0x0000e044
+failed to get filesystem info
+failed to get filesystem info
+mount: data volume missing, but not required in env: 0
+vnode_create_internal: alias vnode 0xfffffe1714d72680 is in state of change (start)
+vnode_create_internal: alias vnode 0xfffffe1714d72680 is in state of change (end)
+exec mount_hfs
+GetMasterBlock: Error 16 opening /dev/ufsroot0
+/dev/ufsroot0 on / (hfs, local, journaled, noatime)
+com.apple.xpc.launchd|1969-12-31 16:00:39.525854 (data-protection) <Notice>: Doing boot task
+exec seputil
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+init_data_protection: No SEP present on this device
+com.apple.xpc.launchd|1969-12-31 16:00:39.669823 (finish-obliteration) <Notice>: Doing boot task
+exec mobile_obliterator
+SWEET USB: event 0x0000e044
+Obliterator: In INIT check
+Wed Dec 31 16:00:39 1969: checkOblitNVRAMkey: IORegistryEntryFromPath failed [gF: 0x0000000000000000]
+Obliterator: No obliteration needed, continue booting, returning 0
+com.apple.xpc.launchd|1969-12-31 16:00:39.741763 (detect-installed-roots) <Notice>: Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:39.742718 <Notice>: No cookie from system volume
+com.apple.xpc.launchd|1969-12-31 16:00:39.742888 <Notice>: Found cookie: /private/preboot/C5C71F68C1964E946937B34AD1D46185C4CDF5B0DA092400EB84C1587B7548437A7FFE45A962E0D97307E802EDBB59DF/.roots-installed
+com.apple.xpc.launchd|1969-12-31 16:00:39.742919 <Notice>: Found roots installed cookie
+com.apple.xpc.launchd|1969-12-31 16:00:39.742970 (commit-boot-mode) <Notice>: Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:39.742999 <Notice>: boot-mode committed: (null)
+com.apple.xpc.launchd|1969-12-31 16:00:39.743026 (restore-datapartition) <Notice>: Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:39.745303 (restore-datapartition) <Notice>: optional boot task not present
+com.apple.xpc.launchd|1969-12-31 16:00:39.745365 (mount-phase-2) <Notice>: Doing boot task
+exec mount
+failed to get filesystem info
+failed to get filesystem info
+mount: data volume missing, but not required in env: 0
+ERROR: BindFS bindfs_mount: lookup of /private/var/hardware/Pearl/System/Library/Pearl/ReferenceFrames failed error: 2
+ERROR: BindFS bindfs_mount: lookup of /private/var/hardware/FactoryData/System/Library/Caches/com.apple.factorydata failed error: 2
+com.apple.xpc.launchd|1969-12-31 16:00:39.761536 (init-with-data-volume) <Notice>: Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:39.762570 (MSUEarlyBootTask) <Notice>: Doing boot task
+exec MSUEarlyBootTask
+MSUEarlyBootTask: MSUEarlyBootTask running
+main: Content from the ramdisk will be present at /private/var/MobileSoftwareUpdate//c5c71f68c1964e946937b34ad1d46185c4cdf5b0da092400eb84c1587b7548437a7ffe45a962e0d97307e802edbb59df-MSUData if it exists
+MSUEarlyBootTask: I have nothing to do. Goodbye!!
+com.apple.xpc.launchd|1969-12-31 16:00:39.879080 (fips) <Notice>: Doing boot task
+exec cc_fips_test
+SWEET USB: event 0x0000e044
+About to call the FIPS_POST function in the corecrypto.dylib
+Tracing: disabled
+FIPSPOST_USER [765953875] fipspost_post:152: [FIPSPOST][Module-ID] Apple corecrypto Module v13.0 [Apple ARM, User, Software, SL1]
+FIPSPOST_USER [766007659] fipspost_post:160: PASSED: (2 ms) - fipspost_post_hmac
+FIPSPOST_USER [766124121] fipspost_post:164: PASSED: (5 ms) - fipspost_post_integrity
+FIPSPOST_USER [766133603] fipspost_post:168: PASSED: (0 ms) - fipspost_post_indicator
+FIPSPOST_USER [766139542] fipspost_post:169: PASSED: (0 ms) - fipspost_post_aes_ecb
+FIPSPOST_USER [766145165] fipspost_post:170: PASSED: (0 ms) - fipspost_post_aes_cbc
+FIPSPOST_USER [766397279] fipspost_post:171: PASSED: (12 ms) - fipspost_post_rsa_sig
+FIPSPOST_USER [766836082] fipspost_post:172: PASSED: (22 ms) - fipspost_post_ecdsa
+FIPSPOST_USER [766856836] fipspost_post:173: PASSED: (0 ms) - fipspost_post_ecdh
+FIPSPOST_USER [766862544] fipspost_post:174: PASSED: (0 ms) - fipspost_post_aes_ccm
+FIPSPOST_USER [766868352] fipspost_post:175: PASSED: (0 ms) - fipspost_post_aes_cmac
+FIPSPOST_USER [766875563] fipspost_post:176: PASSED: (0 ms) - fipspost_post_hkdf
+FIPSPOST_USER [767527255] fipspost_post:177: PASSED: (33 ms) - fipspost_post_pbkdf
+FIPSPOST_USER [767534478] fipspost_post:178: PASSED: (0 ms) - fipspost_post_drbg_hmac
+FIPSPOST_USER [767540997] fipspost_post:180: PASSED: (0 ms) - fipspost_post_kdf_ctr
+FIPSPOST_USER [767546673] fipspost_post:181: PASSED: (0 ms) - fipspost_post_aes_gcm
+FIPSPOST_USER [767552284] fipspost_post:182: PASSED: (0 ms) - fipspost_post_aes_xts
+FIPSPOST_USER [767559052] fipspost_post:183: PASSED: (0 ms) - fipspost_post_tdes_ecb
+FIPSPOST_USER [767564953] fipspost_post:184: PASSED: (0 ms) - fipspost_post_drbg_ctr
+FIPSPOST_USER [768474227] fipspost_post:186: PASSED: (47 ms) - fipspost_post_ffdh
+SWEET USB: event 0x0000e044
+FIPSPOST_USER [768968434] fipspost_post:187: PASSED: (25 ms) - fipspost_post_rsa_enc_dec
+FIPSPOST_USER [768974229] fipspost_post:206: all tests PASSED (157 ms)
+SWEET USB: event 0x0000c046
+Returned from calling the FIPS_POST function in the corecrypto.dylib: result = true
+com.apple.xpc.launchd|1969-12-31 16:00:40.052011 (keybag) <Notice>: Doing boot tSWEET USB: event 0x0000c046
+ask
+SWEET USB: event 0x0000c046
+exec keybagd
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+****** IN MKB_INIT ****
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+MKB_INIT: mount is with NO CPROTECT:0x1480d000 on  (/private/var/)
+MKB_INIT: mount point (/private/var/) does not support Data Protection
+MKB_INIT: System Keybag loaded
+MKB_INIT: Could not get options entry from the device tree
+Unable to set /private/var//tmp to class D!****** DONE MKB_INIT ****
+com.apple.xpc.launchd|1969-12-31 16:00:40.139330 (usermanagerd) <Notice>: Doing boot task
+exec usermanagerd
+SWEET USB: event 0x0000c046
+****** IN UMD_INIT ****
+****** STARTING EARLYBOOT SETUP ****
+UMD_INIT: STARTING EARLYBOOT SETUP
+SWEET USB: event 0x0000e044
+UMD_INIT: LOADING USER SESSIONS
+UMD_INIT: Device Configuration Type:0
+UMD_INIT: BOOTEDUSER is:501
+UMD_INIT: diskLoadUserSessions, APNSID:, set to 18446744073709551615
+SWEET USB: event 0x0000c046
+UMD_INIT: Reloaded _gUserSessionTable (
+        {
+        MKBUserSessionCreateTimeStamp = "1970-01-01 00:00:48 +0000";
+        MKBUserSessionDirty = 0;
+        MKBUserSessionDisplayName = mobile;
+        MKBUserSessionFirstName = mobile;
+        MKBUserSessionForeground = 1;
+        MKBUserSessionGroupID = 501;
+        MKBUserSessionID = 501;
+SWEET USB: event 0x0000c046
+        MKBUserSessionLanguage = "en_US";
+        MKBUserSessionLastName = mobile;
+        MKBUserSessionLibinfoHomeDir = "/var/mobile";
+        MKBUserSessionLoginTimeStamp = "1970-01-01 00:00:48 +0000";
+        MKBUserSessionLoginUser = 0;
+        MKBUserSessionName = mobile;
+        MKBUserSessionNeedsMount = 1;
+SWEET USB: event 0x0000c046
+        MKBUserSessionShortName = mobile;
+        MKBUserSessionType = UserSessionOther;
+        MKBUserSessionUUID = "10E32093-E439-4E22-ABD1-E3AD9BC5B152";
+        MKBUserSessionVolumeFSType = UserVolumeAPFSNative;
+        MKBUserSessionisAdminKey = 1;
+        MKBUserSessionisPrimary = 1;
+    }
+SWEET USB: event 0x0000c046
+)
+UMD_INIT: FOUND NO SYNC BUBBLE UIDS:0
+UMD_INIT: FOUND NO LRU TABLE UIDS:0
+UMD_INIT: FOUND NO VOLUMETYPE, setting up volume type
+UMD_INIT: Set the new volume type to APFSNativeDevice
+UMD_INIT: SAVING SESSION TODISK
+UMD_INIT: SESSION TABLE TO BLOB
+UMD_INIT: NOTHING TO SAVE IN LRU UID LIST
+UMD_INIT: diskSaveUserSessions Success
+UMD_INIT: Read user sessions in _gUserSessionTable (
+        {
+        MKBUserSessionCreateTimeStamp = "1970-01-01 00:00:48 +0000";
+        MKBUserSessionDirty = 0;
+        MKBUserSessionDisplayName = mobile;
+        MKBUserSessionFirstName = mobile;
+        MKBUserSessionForeground = 1;
+        MKBUserSessionGroupID = 501;
+        MKBUserSessionID = 501;
+        MKBUserSessionLanguage = "en_US";
+        MKBUserSessionLastName = mobile;
+        MKBUserSessionLibinfoHomeDir = "/var/mobile";
+        MKBUserSessionLoginTimeStamp = "1970-01-01 00:00:48 +0000";
+        MKBUserSessionLoginUser = 0;
+        MKBUserSessionName = mobile;
+        MKBUserSessionNeedsMount = 1;
+        MKBUserSessionShortName = mobile;
+        MKBUserSessionType = UserSessionOther;
+        MKBUserSessionUUID = "10E32093-E439-4E22-ABD1-E3AD9BC5B152";
+        MKBUserSessionVolumeFSType = UserVolumeAPFSNative;
+        MKBUserSessionisAdminKey = 1;
+        MKBUserSessionisPrimary = 1;
+    }
+)
+UMD_INIT: LOADED USER SESSIONS
+UMD_INIT: failed to read nextsession dict
+UMD_INIT: Unable to Obtained foreground, curFG:502, nextID:-1
+UMD_INIT: Failed to get next session, booting with default id to be Loginwindow UID
+UMD_INIT: BootedUser is:501
+UMD_INIT: Regular mode Setup for user:501: Num Sessions:1, CurrentsessionID:-1
+UMD_INIT: FAILED to Set Foreground ID + multiuser in commpage successfully
+UMD_INIT: LOADING PERSONA..
+UMD_INIT: Manifest version: 1
+UMD_INIT: Loaded Persona Generation ID from manifest:1
+SWEET USB: event 0x0000e044
+UMD_INIT: Adding 200 entry to persona Table for user:10E32093-E439-4E22-ABD1-E3AD9BC5B152
+UMD_INIT: Adding 100 entry to persona Table for user:10E32093-E439-4E22-ABD1-E3AD9BC5B152
+UMD_INIT: Adding 0 entry to persona Table for user:10E32093-E439-4E22-ABD1-E3AD9BC5B152
+UMD_INIT: Adding 1000 entry to persona Table for user:10E32093-E439-4E22-ABD1-E3AD9BC5B152
+UMD_INIT: Adding 99 entry to persona Table for user:FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF
+UMD_INIT: Adding 199 entry to persona Table for user:FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF
+UMD_INIT: Loaded persona manifest
+SWEET USB: event 0x0000e044
+UMD_INIT: Failed to retrieve info for kernel persona 99: No such process
+UMD_INIT: PersonaID:99 not loaded, loading..
+UMD_INIT: Allocated kernel persona with ID: 99, Type: 4, UID: 4294967295
+UMD_INIT: Failed to retrieve info for kernel persona 199: No such process
+UMD_INIT: PersonaID:199 not loaded, loading..
+UMD_INIT: Allocated kernel persona with ID: 199, Type: 6, UID: 4294967295
+UMD_INIT: Failed to retrieve info for kernel persona 200: No such process
+UMD_INIT: PersonaID:200 not loaded, loading..
+UMD_INIT: Allocated kernel persona with ID: 200, Type: 6, UID: 501
+UMD_INIT: Failed to retrieve info for kernel persona 100: No such process
+UMD_INIT: PersonaID:100 not loaded, loading..
+UMD_INIT: Allocated kernel persona with ID: 100, Type: 4, UID: 501
+UMD_INIT: Failed to retrieve info for kernel persona 1000: No such process
+UMD_INIT: PersonaID:1000 not loaded, loading..
+UMD_INIT: Allocated kernel persona with ID: 1000, Type: 5, UID: 501
+UMD_INIT: setup kernel personas
+UMD_INIT: Failed to notify_register_check com.apple.mobile.usermanagerd.personageneration_changed: 8
+UMD_INIT: Failed to notify generation changed: Failed to register for darwin notification token
+UMD_INIT: DONE EARLYBOOT SETUP
+****** DONE EARLYBOOT SETUP ****
+****** DONE UMD_INIT ****
+com.apple.xpc.launchd|1969-12-31 16:00:40.396520 (dirs_cleaner) <Notice>: Doing boot task
+exec dirs_cleaner
+dc_reset: /tmp: Invalid argument
+dc_reset: /var/run: Invalid argument
+exec xpcroleaccountd
+exec init_featureflags
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+[System Event] [776630927] [INFO] [Subsystem: launchd] [Event: mount-phase-1] Doing boot task
+[System Event] [776637638] [INFO] [Subsystem: launchd] [Event: data-protection] Doing boot task
+SWEET USB: event 0x0000c046
+[System Event] [776648795] [INFO] [Subsystem: launchd] [Event: finish-obliteration] Doing boot task
+[System Event] [776655451] [INFO] [Subsystem: launchd] [Event: detect-installed-roots] Doing boot task
+SWEET USB: event 0x0000c046
+[System Event] [776664450] [INFO] [Subsystem: launchd] [Event: commit-boot-mode] Doing boot task
+[System Event] [776666030] [INFO] [Subsystem: launchd] [Event: restore-datapartition] Doing boot task
+[System Event] [776666989] [INFO] [Subsystem: launchd] [Event: restore-datapartition] optional boot task not present
+[System Event] [776668020] [INFO] [Subsystem: launchd] [Event: mount-phase-2] Doing boot task
+[System Event] [776668973] [INFO] [Subsystem: launchd] [Event: init-with-data-volume] Doing boot task
+[System Event] [776669921] [INFO] [Subsystem: launchd] [Event: MSUEarlyBootTask] Doing boot task
+[System Event] [776670878] [INFO] [Subsystem: launchd] [Event: fips] Doing boot task
+[System Event] [776671821] [INFO] [Subsystem: launchd] [Event: keybag] Doing boot task
+[System Event] [776672756] [INFO] [Subsystem: launchd] [Event: usermanagerd] Doing boot task
+[System Event] [776673678] [INFO] [Subsystem: launchd] [Event: dirs_cleaner] Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:40.407321 <Notice>: launchd logging initialized. name: com.apple.xpc.launchd pid: 1
+com.apple.xpc.launchd|1969-12-31 16:00:40.407330 (xpcroleaccountd) <Notice>: Doing boot task
+[System Event] [776675966] [INFO] [Subsystem: launchd] [Event: xpcroleaccountd] Doing boot task
+com.apple.xpc.launchd|1969-12-31 16:00:40.423128 (init_featureflags) <Notice>: Doing boot task
+[System Event] [776679253] [INFO] [Subsystem: launchd] [Event: init_featureflags] Doing boot task
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000c046
+com.apple.xpc.launchd|1969-12-31 16:00:40.691382 (auearlyboot) <Notice>: Doing boot task
+[System Event] [781284761] [INFO] [Subsystem: launchd] [Event: auearlyboot] Doing boot task
+exec auearlyboot
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c040
+SWEET USB: setup 21 43 000e 0000 len 0
+SWEET USB: event 0x000020c2
+SWEET USB: event 0x0000c042
+SWEET USB: event 0x0000e044
+auearlyboot: -[FudEarlyBoot doFUDEarlyBoot:](): Starting Early Boot
+auearlyboot: -[AppleFirmwareUpdateController getEarlyBootListInternal:]: Pending critical earlyBoot entries (
+)
+auearlyboot: No Early Boot Accessories
+auearlyboot: -[FudEarlyBoot calculateTimeTakenForEarlyBootEntries] Time Taken to wait for critical earlyBoot entries: 0.000000 sec
+auearlyboot: -[FudEarlyBoot doFUDEarlyBoot:](): End Early Boot
+auearlyboot: Exitng Early Boot
+com.apple.xpc.launchd|1969-12-31 16:00:40.742397 (tzinit) <Notice>: Doing boot task
+[System Event] [782263585] [INFO] [Subsystem: launchd] [Event: tzinit] Doing boot task
+exec tzinit
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+com.apple.xpc.launchd|1969-12-31 16:00:40.755934 (finish-restore) <Notice>: Doing boot task
+[System Event] [782522502] [INFO] [Subsystem: launchd] [Event: finish-restore] Doing boot task
+exec FinishRestoreFromBackup
+com.apple.xpc.launchd|1969-12-31 16:00:40.765193 (finish-demo-restore) <Notice>: Doing boot task
+[System Event] [782702657] [INFO] [Subsystem: launchd] [Event: finish-demo-restore] Doing boot task
+exec finish_demo_restore
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+com.apple.xpc.launchd|1969-12-31 16:00:40.789217 (sysstatuscheck) <Notice>: Doing boot task
+[System Event] [783161983] [INFO] [Subsystem: launchd] [Event: sysstatuscheck] Doing boot task
+SWEET USB: event 0x0000e044
+exec sysstatuscheck
+SWEET USB: event 0x0000e044
+com.apple.xpc.launchd|1969-12-31 16:00:40.799542 (prng_seedctl) <Notice>: Doing boot task
+[System Event] [783359768] [INFO] [Subsystem: launchd] [Event: prng_seedctl] Doing boot task
+exec prng_seedctl
+kern.prng.user_reseed_count: (-1) (2) No such file or directory
+failed to load virtual random: (-147) (-536870212)
+com.apple.xpc.launchd|1969-12-31 16:00:40.811028 (launchd_cache_loader) <Notice>: Doing boot task
+[System Event] [783580573] [INFO] [Subsystem: launchd] [Event: launchd_cache_loader] Doing boot task
+exec launchd_cache_loader
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+0 Found valid port: 7683 Valid: 1
+1 Found valid port: 0 Valid: 0
+2 Found valid port: 0 Valid: 0
+Using default cache paths
+Code: /System/Library/xpc/launchd.plist Sig: /System/Library/xpc/launchd.plist.sig
+cdhash: {length = 20, bytes = 0x17f4f2e748701d9e2d79ec16fdfd96a76e528bc2} is trusted
+Attached signature to file, checking ...
+Trying to send bytes to launchd: 7683 16384
+Sending validated cache to launchd
+CODE SIGNING: cs_invalid_page(0x104000000): p=22[launchd_cache_lo] final status 0x22000000, allowing (remove VALID) page
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+Cache sent to launchd successfully
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+com.apple.xpc.launchd|1969-12-31 16:00:41.167875 <Notice>: launchd UUID: 5C15DB07-B3BC-3DF3-B62F-3E498B993B8E
+com.apple.xpc.launchd|1969-12-31 16:00:41.167944 (boot) <Notice>: Early boot complete. Continuing system boot.
+[System Event] [790441044] [INFO] [Subsystem: launchd] [Event: boot] Early boot complete. Continuing system boot.
+exec xpcproxy
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec SpringBoard
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+SWEET USB: event 0x0000c046
+exec xpcproxy
+SWEET USB: event 0x0000e044
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec UserEventAgent
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+exec logd
+exec mediaserverd
+exec accessoryupdaterd
+exec keybagd
+exec configd
+exec routined
+exec wifid
+exec remoted
+exec amfid
+exec lockdownd
+exec DumpPanic
+exec usermanagerd
+exec misd
+exec runningboardd
+exec driverkitd
+exec atc
+exec fairplayd.H2
+exec fseventsd
+exec seld
+exec locationd
+exec bluetoothd
+exec notifyd
+exec IOMFB_FDR_Loader
+exec distnoted
+exec watchdogd
+exec ptpd
+exec containermanagerd
+exec cloudpaird
+exec timed
+exec thermalmonitord
+exec sharingd
+exec mtmergeprops
+exec rapportd
+exec remindd
+exec AppleCredentialManagerDaemon
+exec mobiletimerd
+exec OTACrashCopier
+exec peakpowermanagerd
+exec safetyalertsd
+exec bluetoothuserd
+exec nfcd
+exec sleepd
+exec imagent
+exec dasd
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+exec identityservicesd
+exec backboardd
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000c046
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+SWEET USB: event 0x0000e044
+exec healthd
+exec powerd
+SWEET Sandbox: logd privilege 1002 denied
+exec xpcproxy
+exec cfprefsd
+SWEET WDT: watchdogd sel 0 in 0/0 out 1/0 -> ok
+exec xpcproxy
+SWEET Sandbox: distnoted op 28
+exec xpcproxy
+exec passd
+exec mobileassetd
+SWEET Sandbox: cfprefsd op 12
+exec xpcproxy
+exec xpcproxy
+exec contextstored
+exec PowerUIAgent
+exec xpcproxy
+exec xpcproxy
+exec com.apple.datamigrator
+exec ACCHWComponentAuthService
+exec axassetsd
+KextLog: kernelmanagerd is not active
+KextLog: Loading FileSet KC(s)
+deferred rematching count 0
+KextLog: kernelmanagerd is active
+exec xpcproxy
+exec MobileGestaltHelper
+exec apfs_iosd
+exec WirelessRadioManagerd
+exec xpcproxy
+exec nanoregistryd
+exec xpcproxy
+exec xpcproxy
+exec lsd
+exec xpcproxy
+exec biomed
+exec coreduetd
+SWEET Sandbox: containermanager op 16
+SWEET Sandbox: containermanager op 15
+exec WiFiCloudAssetsXPCService
+exec wcd
+exec xpcproxy
+exec accountsd
+|backboardd| objc[57]: Class _GCHapticEvent is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906ee20) and /System/Library/HIDPlugins/ServicePlugins/DualShock4HIDServicePlugin.|backboardd| ck4HIDServicePlugin (0x109092bc0). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCHapticMotor is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906ee70) and /System/Library/HIDPlugins/ServicePlugins/DualShock4HIDServicePlugin.p|backboardd| k4HIDServicePlugin (0x109092c10). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCGamepadHIDServicePlugin is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906eec0) and /System/Library/HIDPlugins/ServicePlugins/DualShock4HIDSer|backboardd| gin/DualShock4HIDServicePlugin (0x109092cb0). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCGamepadHIDServicePlugin is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906eec0) and /System/Library/HIDPlugins/ServicePlugins/GenericGamepadHI|backboardd| .plugin/GenericGamepadHIDServicePlugin (0x1090b6a88). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCHapticMotor is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906ee70) and /System/Library/HIDPlugins/ServicePlugins/GenericGamepadHIDServicePlug|backboardd| ricGamepadHIDServicePlugin (0x1090b6ad8). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class _GCHapticEvent is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906ee20) and /System/Library/HIDPlugins/ServicePlugins/GenericGamepadHIDServicePlu|backboardd| ericGamepadHIDServicePlugin (0x1090b6b78). One of the two will be used. Which one is undefined.
+exec xpcproxy
+exec xpcproxy
+exec nehelper
+|backboardd| objc[57]: Class GCGamepadHIDServicePlugin is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906eec0) and /System/Library/HIDPlugins/ServicePlugins/JoyConHIDService|backboardd| JoyConHIDServicePlugin (0x109116ba0). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCHapticMotor is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906ee70) and /System/Library/HIDPlugins/ServicePlugins/JoyConHIDServicePlugin.plugi|backboardd| vicePlugin (0x109116bf0). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class _GCHapticEvent is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906ee20) and /System/Library/HIDPlugins/ServicePlugins/JoyConHIDServicePlugin.plug|backboardd| rvicePlugin (0x109116c40). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class _GCHapticEvent is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906ee20) and /System/Library/HIDPlugins/ServicePlugins/LunaHIDServicePlugin.plugin|backboardd| ePlugin (0x1090d2628). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCHapticMotor is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906ee70) and /System/Library/HIDPlugins/ServicePlugins/LunaHIDServicePlugin.plugin/|backboardd| Plugin (0x1090d2678). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCGamepadHIDServicePlugin is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906eec0) and /System/Library/HIDPlugins/ServicePlugins/LunaHIDServicePl|backboardd| naHIDServicePlugin (0x1090d2718). One of the two will be used. Which one is undefined.
+exec apsd
+|backboardd| objc[57]: Class _GCHapticEvent is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906ee20) and /System/Library/HIDPlugins/ServicePlugins/XboxOneHIDServicePlugin.plu|backboardd| ServicePlugin (0x109136780). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCHapticMotor is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906ee70) and /System/Library/HIDPlugins/ServicePlugins/XboxOneHIDServicePlugin.plug|backboardd| ervicePlugin (0x1091367d0). One of the two will be used. Which one is undefined.
+|backboardd| objc[57]: Class GCGamepadHIDServicePlugin is implemented in both /System/Library/HIDPlugins/ServicePlugins/DualSenseHIDServicePlugin.plugin/DualSenseHIDServicePlugin (0x10906eec0) and /System/Library/HIDPlugins/ServicePlugins/XboxOneHIDServic|backboardd| /XboxOneHIDServicePlugin (0x109136870). One of the two will be used. Which one is undefined.
+SWEET HID: SweetHIDTouch open by IOHIDEventServiceUserClient -> 1
+exec xpcproxy
+exec xpcproxy
+exec nsurlsessiond
+exec donotdisturbd
+SWEET HID: SweetHIDButtons open by IOHIDEventServiceUserClient -> 1
+SWEET FB: backboardd sel 57 in 0/0 out 1/0 -> 0x0
+SWEET FB: backboardd sel 15 in 2/0 out 1/0 -> 0x0
+SWEET FB: backboardd sel 22 in 1/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 8 in 0/0 out 2/0 -> 0x0
+SWEET FB: backboardd sel 28 in 0/0 out 1/0 -> 0x0
+SWEET FB: backboardd sel 29 in 0/0 out 0/8 -> 0x0
+SWEET FB: backboardd sel 33 in 1/0 out 0/0 -> 0x0
+ifnet_attach: Waiting for all kernel threads created for interface utun0 to get scheduled at least once.
+ifnet_attach: All kernel threads created for interface utun0 have been scheduled at least once. Proceeding.
+_dlil_attach_flowswitch_nexus: not attaching flowswitch to utun0
+SWEET NET: configd lo0 add address 127.0.0.1
+SWEET NET: configd route add 127.0.0.0 gw 127.0.0.1 ifindex 0 flags 0x901
+SWEET FB: backboardd sel 79 in 2/0 out 0/1580 -> 0x0
+SWEET FB: backboardd sel 74 in 1/0 out 1/64 -> 0x0
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+SWEET NET: configd route add 224.0.0.0 gw 0.0.0.0 ifindex 0 flags 0x901
+exec siriactionsd
+exec seserviced
+exec navd
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec CircleJoinRequested
+exec xpcproxy
+exec profiled
+exec xpcproxy
+exec xpcproxy
+exec ind
+exec remotepairingdeviced
+exec xpcproxy
+exec assistantd
+exec installcoordinationd
+exec xpcproxy
+exec xpcproxy
+exec dmd
+exec xpcproxy
+exec corespeechd
+exec xpcproxy
+exec calaccessd
+exec xpcproxy
+exec adprivacyd
+exec xpcproxy
+exec appleaccountd
+exec ScreenTimeAgent
+exec CloudKeychainProxy
+exec mapspushd
+exec aggregated
+exec xpcproxy
+exec liveactivitiesd
+exec chronod
+exec akd
+exec securityd
+exec tccd
+exec xpcproxy
+exec analyticsd
+exec audioclocksyncd
+exec xpcproxy
+exec syncdefaultsd
+SWEET Sandbox: tccd op 22
+SWEET Sandbox: tccd op 1
+exec xpcproxy
+exec awdd
+exec xpcproxy
+exec xpcproxy
+SWEET Sandbox: rapportd privilege 12000 denied
+exec symptomsd
+exec mobileactivationd
+exec xpcproxy
+exec xpcproxy
+exec findmydeviced
+exec fmflocatord
+exec xpcproxy
+SWEET Sandbox: tccd op 5
+exec cloudd
+exec xpcproxy
+exec xpcproxy
+exec amsaccountsd
+exec xpcproxy
+exec coreidvd
+exec pfd
+exec xpcproxy
+exec xpcproxy
+exec mDNSResponder
+exec symptomsd-diag
+exec CallHistorySyncHelper
+exec xpcproxy
+exec xpcproxy
+exec amsengagementd
+exec xpcproxy
+exec siriknowledged
+exec SafariBookmarksSyncAgent
+exec xpcproxy
+exec xpcproxy
+exec FamilyControlsAgent
+exec xpcproxy
+exec xpcproxy
+exec askpermissiond
+exec xpcproxy
+exec xpcproxy
+exec transparencyd
+exec fmfd
+exec xpcproxy
+exec xpcproxy
+exec kbd
+exec xpcproxy
+exec fitcored
+exec sociallayerd
+exec nanotimekitcompaniond
+exec xpcproxy
+exec xpcproxy
+exec suggestd
+exec triald
+exec familycircled
+exec gamed
+exec xpcproxy
+exec cdpd
+exec ManagedSettingsAgent
+exec xpcproxy
+exec xpcproxy
+exec homed
+exec ContextService
+exec xpcproxy
+exec adid
+exec xpcproxy
+exec xpcproxy
+exec coreauthd
+exec xpcproxy
+exec xpcproxy
+exec announced
+exec com.apple.siri.embeddedspeech
+exec IMDPersistenceAgent
+exec xpcproxy
+exec duetexpertd
+exec xpcproxy
+exec misagent
+exec xpcproxy
+exec xpcproxy
+exec contactsd
+exec followupd
+exec xpcproxy
+exec searchd
+exec xpcproxy
+exec deleted
+exec xpcproxy
+exec fileproviderd
+exec xpcproxy
+exec geod
+exec xpcproxy
+exec pkd
+exec xpcproxy
+exec ckdiscretionaryd
+exec xpcproxy
+exec xpcproxy
+exec nesessionmanager
+exec swcd
+SWEET Sandbox: healthd privilege 1002 denied
+ifnet_attach: Waiting for all kernel threads created for interface utun1 to get scheduled at least once.
+ifnet_attach: All kernel threads created for interface utun1 have been scheduled at least once. Proceeding.
+SWEET Sandbox: identityservicesd privilege 12001 denied
+_dlil_attach_flowswitch_nexus: not attaching flowswitch to utun1
+exec xpcproxy
+exec nearbyd
+exec xpcproxy
+SWEET Sandbox: symptomsd privilege 10003 denied
+exec mediaremoted
+exec xpcproxy
+exec searchpartyd
+SWEET Sandbox: identityservicesd privilege 12000 denied
+ifnet_attach: Waiting for all kernel threads created for interface utun2 to get scheduled at least once.
+ifnet_attach: All kernel threads created for interface utun2 have been scheduled at least once. Proceeding.
+_dlil_attach_flowswitch_nexus: not attaching flowswitch to utun2
+_dlil_attach_flowswitch_nexus: not attaching flowswitch to utun2
+exec xpcproxy
+exec countryd
+exec xpcproxy
+exec pipelined
+exec privacyaccountingd
+exec xpcproxy
+exec sosd
+exec nanoprefsyncd
+exec peopled
+exec familynotificationd
+exec callservicesd
+exec softwareupdated
+exec UsageTrackingAgent
+exec xpcproxy
+exec networkserviceproxy
+exec xpcproxy
+exec nanoregistrylaunchd
+exec xpcproxy
+exec xpcproxy
+exec fitnesscoachingd
+exec com.apple.MobileSoftwareUpdate.C
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec UARPUpdaterServiceAFU
+exec UARPUpdaterServiceUSBPD
+exec UARPUpdaterServiceLegacyAudio
+exec UARPUpdaterServiceHID
+exec xpcproxy
+exec linkd
+exec xpcproxy
+exec carkitd
+exec xpcproxy
+exec mobilerepaird
+SWEET Sandbox: cloudd privilege 1002 denied
+exec xpcproxy
+exec xpcproxy
+exec siriinferenced
+exec xpcproxy
+exec parsec-fbf
+exec voiced
+exec xpcproxy
+exec CAReportingService
+exec xpcproxy
+exec com.apple.siri.embeddedspeech
+CRASH dasd[68] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x104a0c000
+CRASH dasd pc 0x205e47198 lr 0x2153d65f8 sp 0x16b3f32e0 fp 0x16b3f3300 far 0x104540000
+CRASH dasd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d1398ddc 0x104a49cfc 0x104a56fd4
+CRASH dasd reason ns 2 code 0x6: (none)
+exec xpcproxy
+exec xpcproxy
+exec ReportCrash
+exec dasd
+exec xpcproxy
+exec intelligenceplatformd
+exec xpcproxy
+exec contactsdonationagent
+SWEET Sandbox: rapportd privilege 1002 denied
+CRASH dasd[198] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x100930000
+CRASH dasd pc 0x205e47198 lr 0x2153d65f8 sp 0x16f4cf2e0 fp 0x16f4cf300 far 0x2226a2e28
+CRASH dasd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d1398ddc 0x10096dcfc 0x10097afd4
+CRASH dasd reason ns 2 code 0x6: (none)
+exec xpcproxy
+exec wifianalyticsd
+exec xpcproxy
+exec xpcproxy
+exec ProtectedCloudKeySyncing
+exec backupd
+exec xpcproxy
+exec com.apple.FaceTime.FTConversatio
+exec xpcproxy
+exec appstored
+exec xpcproxy
+exec useractivityd
+exec xpcproxy
+exec itunesstored
+exec xpcproxy
+exec promotedcontentd
+SWEET Sandbox: cloudd privilege 10001 denied
+exec xpcproxy
+exec coresymbolicationd
+exec xpcproxy
+exec parsecd
+exec xpcproxy
+exec itunescloudd
+exec xpcproxy
+exec osanalyticshelper
+SWEET SURF: mediaserverd sel 13
+SWEET SURF: mediaserverd create id 2 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+SWEET SURF: mediaserverd trap 0
+SWEET SURF: mediaserverd sel 27
+CRASH mediaserverd[28] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x104a9c000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16c108ff0 fp 0x16c1092e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+exec xpcproxy
+exec mediaserverd
+SWEET SURF: mediaserverd create id 3 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[214] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x100b00000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16f758ff0 fp 0x16f7592e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+exec SiriTTSSynthesizerAU
+CRASH SiriTTSSynthesiz[215] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x100518000
+CRASH SiriTTSSynthesiz pc 0x205e47198 lr 0x2153d65f8 sp 0x16f8e5e90 fp 0x16f8e5eb0 far 0x2226a2e28
+CRASH SiriTTSSynthesiz bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+exec MacinTalkAUSP
+CRASH MacinTalkAUSP[216] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x102618000
+CRASH MacinTalkAUSP pc 0x205e47198 lr 0x2153d65f8 sp 0x16d7e5ec0 fp 0x16d7e5ee0 far 0x2226a2e28
+CRASH MacinTalkAUSP bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+Process[216] crashed: MacinTalkAUSP. Too many corpses being created.
+exec xpcproxy
+exec aggregated
+exec KonaSynthesizer
+CRASH KonaSynthesizer[218] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x102b98000
+CRASH KonaSynthesizer pc 0x205e47198 lr 0x2153d65f8 sp 0x16d265e90 fp 0x16d265eb0 far 0x2226a2e28
+CRASH KonaSynthesizer bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[218] crashed: KonaSynthesizer. Too many corpses being created.
+exec xpcproxy
+exec bluetoothd
+exec xpcproxy
+exec xpcproxy
+exec watchdogd
+exec fairplayd.H2
+SWEET MARBLE TOUCH: map gcc=0xfffffe10197f8000 gpio=0xfffffe10199f0000 se=0xfffffe1019cf0000
+SWEET MARBLE TOUCH: GCC read in 2s
+exec xpcproxy
+exec rtcreportingd
+SWEET MARBLE TOUCH: gcc vote=0x400283c0 core_halt=0x4220 se4_halt=0x80004220
+SWEET MARBLE TOUCH: se4 rcg cmd=0x80000000 cfg=0x100000 m=0 n=0 d=0 dfs=0x21
+SWEET MARBLE TOUCH: se4 RCG is DFS-owned; not rewriting
+SWEET MARBLE TOUCH: voting QUP0 clocks
+exec xpcproxy
+exec mediaserverd
+exec SiriTTSSynthesizerAU
+CRASH SiriTTSSynthesiz[224] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x100e48000
+CRASH SiriTTSSynthesiz pc 0x205e47198 lr 0x2153d65f8 sp 0x16efb5e90 fp 0x16efb5eb0 far 0x2226a2e28
+CRASH SiriTTSSynthesiz bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[224] crashed: SiriTTSSynthesiz. Too many corpses being created.
+exec MacinTalkAUSP
+CRASH MacinTalkAUSP[225] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x104798000
+CRASH MacinTalkAUSP pc 0x205e47198 lr 0x2153d65f8 sp 0x16b665ec0 fp 0x16b665ee0 far 0x2226a2e28
+CRASH MacinTalkAUSP bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+Process[225] crashed: MacinTalkAUSP. Too many corpses being created.
+SWEET SURF: mediaserverd create id 4 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[223] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x100894000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16fadcff0 fp 0x16fadd2e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[223] crashed: mediaserverd. Too many corpses being created.
+exec KonaSynthesizer
+CRASH KonaSynthesizer[226] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x100d14000
+CRASH KonaSynthesizer pc 0x205e47198 lr 0x2153d65f8 sp 0x16f0e9e90 fp 0x16f0e9eb0 far 0x2226a2e28
+CRASH KonaSynthesizer bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[226] crashed: KonaSynthesizer. Too many corpses being created.
+SWEET MARBLE TOUCH: gcc vote=0x4002c3c0 (mask 0x43c0)
+SWEET MARBLE TOUCH: halt 0x33000 clear value=0x4220
+SWEET MARBLE TOUCH: halt 0x3300c clear value=0x4220
+SWEET MARBLE TOUCH: halt 0x27004 clear value=0
+SWEET MARBLE TOUCH: halt 0x27008 TIMEOUT value=0x80000002
+SWEET MARBLE TOUCH: halt 0x274dc clear value=0x4220
+SWEET MARBLE TOUCH: SE after-clock read in 2s
+exec xpcproxy
+exec dasd
+CRASH dasd[227] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x100248000
+CRASH dasd pc 0x205e47198 lr 0x2153d65f8 sp 0x16fbb72e0 fp 0x16fbb7300 far 0x2226a2e28
+CRASH dasd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d1398ddc 0x100285cfc 0x100292fd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[227] crashed: dasd. Too many corpses being created.
+SWEET MARBLE TOUCH: SE after-clock fw=0x102 protocol=1 revision=2
+SWEET MARBLE TOUCH: SE after-clock status=0 if_dis=0x1 hwtx=0x20102864 hwrx=0x20104800
+SWEET MARBLE TOUCH: SE after-clock tx_count=0 rx_count=0 ios=0 clk_sel=0 m_clk_cfg=0x11
+SWEET MARBLE TOUCH: SE after-clock irq=0
+SWEET MARBLE TOUCH: rails in 1s
+exec xpcproxy
+exec coresymbolicationd
+SWEET RPMH: rsc=0x17a20000 tcs=0x17a20d00 DRV=2 id=0x20700 solver=0x4010100 config=0x800c8104 TCS=8 ncpt=16
+SWEET RPMH: ACTIVE TCS0 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: ACTIVE TCS1 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: TCS0 ACTIVE 1800 mV mode=7 enable=1 irq-enable=0x1
+SWEET RPMH: TCS0 done=1 irq=0 idle=0x1 control=0x1010000 cmd-status=0x10101/0x10101/0x10101
+SWEET RPMH: L11C ACTIVE vote complete (rail voltage requires hardware verification)
+SWEET MARBLE TOUCH: ldoc2 err=0
+SWEET RPMH: rsc=0x17a20000 tcs=0x17a20d00 DRV=2 id=0x20700 solver=0x4010100 config=0x800c8104 TCS=8 ncpt=16
+SWEET RPMH: ACTIVE TCS0 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: ACTIVE TCS1 idle=0x1 control=0 enable=0 wait=0
+SWEET RPMH: TCS0 ACTIVE 3224 mV mode=7 enable=1 irq-enable=0x1
+SWEET RPMH: TCS0 done=1 irq=0 idle=0x1 control=0x1010000 cmd-status=0x10101/0x10101/0x10101
+SWEET RPMH: L11C ACTIVE vote complete (rail voltage requires hardware verification)
+SWEET MARBLE TOUCH: ldoc9 err=0
+SWEET MARBLE TOUCH: IC reset low in 1s
+exec xpcproxy
+exec mediaserverd
+SWEET MARBLE TOUCH: IC reset done gpio20=0x3 gpio21=0
+exec xpcproxy
+exec bluetoothd
+SWEET MARBLE TOUCH: se4 fw=0x102 proto=1 fifodis=1 depth=16 width=32
+SWEET MARBLE TOUCH: SE4 not usable for SPI
+SWEET MARBLE TOUCH: geni spi unavailable (mux=1)
+SWEET MARBLE TOUCH: pre-confirm: 21 86 e7 e4 ef a5 64 08
+SWEET MARBLE TOUCH: post-confirm: aa aa aa aa aa aa aa aa MATCH
+SWEET MARBLE TOUCH: ver first=42
+SWEET MARBLE TOUCH: ver 0000: 42 45 52 4c 49 4e 02 00 04 00 39 39 31 36 52 00 00 00 00 80 02 94 00 ff 00 00 02 05 71 45 32 43  |BERLIN....9916R.............qE2C|
+SWEET MARBLE TOUCH: ver pid=BERLIN patch=9916R sum=0x502 want=0x502 ok
+SWEET MARBLE TOUCH: icinfo first=bf len=191 raw=bf 00 01 00
+SWEET MARBLE TOUCH: icinfo len=191 off=47 touch_data_addr=0x10308
+SWEET MARBLE TOUCH: polling IRQ gpio21
+exec xpcproxy
+exec fairplayd.H2
+SWEET SURF: mediaserverd create id 5 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[229] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x100a78000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16fa10ff0 fp 0x16fa112e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[229] crashed: mediaserverd. Too many corpses being created.
+exec SiriTTSSynthesizerAU
+CRASH SiriTTSSynthesiz[232] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x102b50000
+CRASH SiriTTSSynthesiz pc 0x205e47198 lr 0x2153d65f8 sp 0x16d2ade90 fp 0x16d2adeb0 far 0x2226a2e28
+CRASH SiriTTSSynthesiz bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[232] crashed: SiriTTSSynthesiz. Too many corpses being created.
+exec MacinTalkAUSP
+CRASH MacinTalkAUSP[233] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x100e70000
+CRASH MacinTalkAUSP pc 0x205e47198 lr 0x2153d65f8 sp 0x16ef8dec0 fp 0x16ef8dee0 far 0x2226a2e28
+CRASH MacinTalkAUSP bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+Process[233] crashed: MacinTalkAUSP. Too many corpses being created.
+exec KonaSynthesizer
+CRASH KonaSynthesizer[234] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x102c94000
+CRASH KonaSynthesizer pc 0x205e47198 lr 0x2153d65f8 sp 0x16d169e90 fp 0x16d169eb0 far 0x2226a2e28
+CRASH KonaSynthesizer bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[234] crashed: KonaSynthesizer. Too many corpses being created.
+exec xpcproxy
+exec mediaserverd
+SWEET SURF: mediaserverd create id 6 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[235] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x102ea8000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16d43cff0 fp 0x16d43d2e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[235] crashed: mediaserverd. Too many corpses being created.
+exec xpcproxy
+exec dasd
+CRASH dasd[236] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x1049e8000
+CRASH dasd pc 0x205e47198 lr 0x2153d65f8 sp 0x16b4172e0 fp 0x16b417300 far 0x2226a2e28
+CRASH dasd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d1398ddc 0x104a25cfc 0x104a32fd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[236] crashed: dasd. Too many corpses being created.
+exec xpcproxy
+exec coresymbolicationd
+exec xpcproxy
+exec bluetoothd
+exec xpcproxy
+exec fairplayd.H2
+exec xpcproxy
+exec mediaserverd
+SWEET USB: ue0 rx 169 tx 150 frames
+SWEET SURF: mediaserverd create id 7 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[240] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x102104000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16e26cff0 fp 0x16e26d2e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[240] crashed: mediaserverd. Too many corpses being created.
+exec xpcproxy
+exec mediaserverd
+SWEET SURF: mediaserverd create id 8 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[241] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x10269c000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16d98cff0 fp 0x16d98d2e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[241] crashed: mediaserverd. Too many corpses being created.
+exec xpcproxy
+exec dasd
+CRASH dasd[242] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x1004e0000
+CRASH dasd pc 0x205e47198 lr 0x2153d65f8 sp 0x16f91f2e0 fp 0x16f91f300 far 0x2226a2e28
+CRASH dasd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d1398ddc 0x10051dcfc 0x10052afd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[242] crashed: dasd. Too many corpses being created.
+exec xpcproxy
+exec coresymbolicationd
+exec SiriTTSSynthesizerAU
+exec MacinTalkAUSP
+exec KonaSynthesizer
+CRASH SiriTTSSynthesiz[244] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x1045cc000
+CRASH SiriTTSSynthesiz pc 0x205e47198 lr 0x2153d65f8 sp 0x16b831e90 fp 0x16b831eb0 far 0x2226a2e28
+CRASH SiriTTSSynthesiz bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[244] crashed: SiriTTSSynthesiz. Too many corpses being created.
+CRASH MacinTalkAUSP[245] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x1044fc000
+CRASH MacinTalkAUSP pc 0x205e47198 lr 0x2153d65f8 sp 0x16b901ec0 fp 0x16b901ee0 far 0x2226a2e28
+CRASH MacinTalkAUSP bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+CRASH KonaSynthesizer[246] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x104af8000
+CRASH KonaSynthesizer pc 0x205e47198 lr 0x2153d65f8 sp 0x16b305ea0 fp 0x16b305ec0 far 0x2226a2e28
+CRASH KonaSynthesizer bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+Process[245] crashed: MacinTalkAUSP. Too many corpses being created.
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[246] crashed: KonaSynthesizer. Too many corpses being created.
+exec xpcproxy
+exec bluetoothd
+exec xpcproxy
+exec fairplayd.H2
+exec xpcproxy
+exec mediaserverd
+SWEET FB: thermalmonitord sel 78 in 2/1788 out 0/0 -> 0x0
+SWEET FB: display on
+SWEET FB: backboardd sel 12 in 1/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 79 in 2/0 out 0/40 -> 0x0
+SWEET FB: backboardd sel 6 in 3/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 27 in 0/0 out 0/3084 -> 0x0
+SWEET FB: backboardd sel 17 in 0/3084 out 0/0 -> 0x0
+SWEET FB: backboardd sel 84 in 0/4 out 0/0 -> 0x0
+SWEET FB: backboardd sel 50 in 2/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 68 in 1/8 out 0/0 -> 0x0
+SWEET SURF: backboardd create id 9 1125x2436 fmt 0x42475241 bpe 4 bpr 4608 planes 0 size 11239424 keys 11 -> 0x0
+SWEET SURF: backboardd sel 9
+SWEET SURF: backboardd sel 5
+SWEET SURF: backboardd trap 2
+SWEET SURF: backboardd trap 3
+SWEET FB: backboardd sel 4 in 0/0 out 1/0 -> 0x0
+SWEET FB: backboardd sel 68 in 1/8 out 0/0 -> 0x0
+SWEET FB: backboardd sel 5 in 0/1132 out 0/0 -> 0x0
+SWEET FB: backboardd sel 3 in 2/0 out 1/0 -> 0x0
+SWEET SURF: backboardd sel 34
+SWEET FB: backboardd sel 55 in 1/72 out 0/0 -> 0x0
+exec xpcproxy
+SWEET FB: swap 2 layer 0 surface 9 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+exec com.apple.CallKit.CallDirectoryM
+exec xpcproxy
+exec vmd
+SWEET SURF: backboardd create id 10 1125x2436 fmt 0x42475241 bpe 4 bpr 4608 planes 0 size 11239424 keys 11 -> 0x0
+SWEET SURF: mediaserverd create id 11 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+SWEET FB: swap 4 layer 0 surface 10 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+SWEET Sandbox: SpringBoard privilege 1007 denied
+CRASH mediaserverd[249] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x104b9c000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16bd4cff0 fp 0x16bd4d2e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[249] crashed: mediaserverd. Too many corpses being created.
+exec xpcproxy
+exec localizationswitcherd
+SWEET FB: display off
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec watchlistd
+exec matd
+exec languageassetd
+exec xpcproxy
+exec CommCenterMobileHelper
+SWEET SURF: SpringBoard sel 40
+exec xpcproxy
+exec extensionkitservice
+exec com.apple.mobilenotes.WidgetExte
+exec NewsToday2
+exec ScreenTimeWidgetExtension
+exec FitnessWidget
+exec BooksWidgetExtension
+CRASH BooksWidgetExten[262] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x1045a0000
+CRASH BooksWidgetExten pc 0x1e7ea4ee4 lr 0x1e7eaebcc sp 0x16b85e820 fp 0x16b85e860 far 0x220f39eb0
+CRASH BooksWidgetExten bt 0x1e7eaebfc 0x1e7e57f1c 0x1e7e56468 0x1e7e542e0 0x0
+CRASH BooksWidgetExten reason ns 6 code 0x1: Library not loaded: @rpath/BookCore.framework/BookCore
+  Referenced from: <86D82639-0664-3478-85E8-D8927607BDDC> /private/var/containers/Bundle/Application/929C8B50-44C0-4B02-8622-C92B6DD65309/Books.app/PlugIns/BooksWidgetExtension.appex/BooksWidgetExtension
+  Reason: tried: '/System/Library/Frameworks/BookCore.framework/BookCore' (no such file, not in dyld cache), (security policy does not allow @ path expansion)
+Process[262] crashed: BooksWidgetExten. Too many corpses being created.
+exec LockScreenPeopleWidget_iOSExtens
+exec xpcproxy
+exec fontservicesd
+exec xpcproxy
+exec UserFontManager
+exec CalendarWidgetExtension
+exec GCWidgets
+exec WeatherWidget
+exec xpcproxy
+exec bird
+SWEET Sandbox: fileproviderd op 7
+exec xpcproxy
+exec Ciconia
+exec KonaSynthesizer
+CRASH KonaSynthesizer[271] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x104068000
+CRASH KonaSynthesizer pc 0x205e47198 lr 0x2153d65f8 sp 0x16bd95e90 fp 0x16bd95eb0 far 0x2226a2e28
+CRASH KonaSynthesizer bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[271] crashed: KonaSynthesizer. Too many corpses being created.
+exec MacinTalkAUSP
+CRASH MacinTalkAUSP[272] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x100abc000
+CRASH MacinTalkAUSP pc 0x205e47198 lr 0x2153d65f8 sp 0x16f341ec0 fp 0x16f341ee0 far 0x2226a2e28
+CRASH MacinTalkAUSP bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+exec SiriTTSSynthesizerAU
+Process[272] crashed: MacinTalkAUSP. Too many corpses being created.
+CRASH SiriTTSSynthesiz[273] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x100e50000
+CRASH SiriTTSSynthesiz pc 0x205e47198 lr 0x2153d65f8 sp 0x16efade90 fp 0x16efadeb0 far 0x2226a2e28
+CRASH SiriTTSSynthesiz bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[273] crashed: SiriTTSSynthesiz. Too many corpses being created.
+exec BooksWidgetExtension
+CRASH BooksWidgetExten[274] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x102480000
+CRASH BooksWidgetExten pc 0x1e7ea4ee4 lr 0x1e7eaebcc sp 0x16d97e820 fp 0x16d97e860 far 0x220f39eb0
+CRASH BooksWidgetExten bt 0x1e7eaebfc 0x1e7e57f1c 0x1e7e56468 0x1e7e542e0 0x0
+CRASH BooksWidgetExten reason ns 6 code 0x1: Library not loaded: @rpath/BookCore.framework/BookCore
+  Referenced from: <86D82639-0664-3478-85E8-D8927607BDDC> /private/var/containers/Bundle/Application/929C8B50-44C0-4B02-8622-C92B6DD65309/Books.app/PlugIns/BooksWidgetExtension.appex/BooksWidgetExtension
+  Reason: tried: '/System/Library/Frameworks/BookCore.framework/BookCore' (no such file, not in dyld cache), (security policy does not allow @ path expansion)
+Process[274] crashed: BooksWidgetExten. Too many corpses being created.
+exec xpcproxy
+exec mediaserverd
+SWEET SURF: mediaserverd create id 12 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[275] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x100b40000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16f3d0ff0 fp 0x16f3d12e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[275] crashed: mediaserverd. Too many corpses being created.
+exec xpcproxy
+exec dasd
+CRASH dasd[276] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x100eec000
+CRASH dasd pc 0x205e47198 lr 0x2153d65f8 sp 0x16ef132e0 fp 0x16ef13300 far 0x2226a2e28
+CRASH dasd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d1398ddc 0x100f29cfc 0x100f36fd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[276] crashed: dasd. Too many corpses being created.
+exec PosterBoard
+SWEET Sandbox: aggregated privilege 1002 denied
+exec xpcproxy
+exec coresymbolicationd
+exec xpcproxy
+exec extensionkitservice
+exec GradientPosterExtension
+SWEET Sandbox: kernel_task privilege 10001 denied
+exec CollectionsPoster
+exec ExtragalacticPoster
+exec WeatherPoster
+exec EmojiPosterExtension
+exec PridePosterExtension
+exec UnityPosterExtension
+exec PhotosPosterProvider
+exec xpcproxy
+exec assetsd
+CRASH assetsd[288] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x104cb4000
+CRASH assetsd pc 0x205e47198 lr 0x2153d65f8 sp 0x16b1d2cd0 fp 0x16b1d2cf0 far 0x2226a2e28
+CRASH assetsd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d139fd48 0x1d139f480 0x1d13acc68
+CRASH assetsd reason ns 2 code 0x6: (none)
+Process[288] crashed: assetsd. Too many corpses being created.
+exec xpcproxy
+exec assetsd
+CRASH assetsd[289] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x104720000
+CRASH assetsd pc 0x205e47198 lr 0x2153d65f8 sp 0x16b996cd0 fp 0x16b996cf0 far 0x2226a2e28
+CRASH assetsd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d139fd48 0x1d139f480 0x1d13acc68
+CRASH assetsd reason ns 2 code 0x6: (none)
+Process[289] crashed: assetsd. Too many corpses being created.
+exec xpcproxy
+exec assetsd
+exec xpcproxy
+exec bluetoothd
+exec xpcproxy
+exec fairplayd.H2
+exec xpcproxy
+exec mediaserverd
+SWEET SURF: mediaserverd create id 13 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[293] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x102550000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16d934ff0 fp 0x16d9352e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[293] crashed: mediaserverd. Too many corpses being created.
+exec xpcproxy
+exec iconservicesagent
+exec KonaSynthesizer
+exec MacinTalkAUSP
+CRASH KonaSynthesizer[295] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x10265c000
+CRASH KonaSynthesizer pc 0x205e47198 lr 0x2153d65f8 sp 0x16d7a1e90 fp 0x16d7a1eb0 far 0x2226a2e28
+CRASH KonaSynthesizer bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH KonaSynthesizer reason ns 2 code 0x6: (none)
+Process[295] crashed: KonaSynthesizer. Too many corpses being created.
+exec SiriTTSSynthesizerAU
+CRASH MacinTalkAUSP[296] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x104414000
+CRASH MacinTalkAUSP pc 0x205e47198 lr 0x2153d65f8 sp 0x16b9e9ec0 fp 0x16b9e9ee0 far 0x2226a2e28
+CRASH MacinTalkAUSP bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH MacinTalkAUSP reason ns 2 code 0x6: (none)
+Process[296] crashed: MacinTalkAUSP. Too many corpses being created.
+CRASH SiriTTSSynthesiz[297] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x10257c000
+CRASH SiriTTSSynthesiz pc 0x205e47198 lr 0x2153d65f8 sp 0x16d881e90 fp 0x16d881eb0 far 0x2226a2e28
+CRASH SiriTTSSynthesiz bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x215310da0 0x215310d60 0x1c38fdd58 0x1ca703704 0x1ee769d5c
+CRASH SiriTTSSynthesiz reason ns 2 code 0x6: (none)
+Process[297] crashed: SiriTTSSynthesiz. Too many corpses being created.
+SWEET HID: touch 0 down at 319,845
+SWEET HID: touch 1 down at 576,639
+SWEET ADSP: firmware blob at 0x8424ec000 size 0x15a8000
+SWEET ADSP: MDT phnum=27 entry=0x86300000
+SWEET ADSP:   seg  1 paddr=0x86300000 filesz=0x1a68 memsz=0x2000 flags=0x8000005
+SWEET ADSP:   seg  2 paddr=0x86302000 filesz=0x291624 memsz=0x292000 flags=0x8000007
+SWEET ADSP:   seg  3 paddr=0x86594000 filesz=0x64f8 memsz=0x7000 flags=0x8000005
+SWEET ADSP:   seg  4 paddr=0x8659b000 filesz=0x8748 memsz=0x9000 flags=0x8000007
+SWEET ADSP:   seg  5 paddr=0x865a4000 filesz=0x5c000 memsz=0x5c000 flags=0x8000004
+SWEET ADSP:   seg  6 paddr=0x86600000 filesz=0xdc memsz=0x1000 flags=0x8000005
+SWEET ADSP:   seg  7 paddr=0x86601000 filesz=0x131c memsz=0x2000 flags=0x8000006
+SWEET ADSP:   seg  8 paddr=0x86603000 filesz=0x22e868 memsz=0x22f000 flags=0x8000005
+SWEET ADSP:   seg  9 paddr=0x86832000 filesz=0x3a008 memsz=0x4d42c0 flags=0x8000006
+SWEET ADSP:   seg 10 paddr=0x86d062c0 filesz=0x2d0 memsz=0xd40 flags=0x8000006
+SWEET ADSP:   seg 11 paddr=0x86d07000 filesz=0x2748 memsz=0x3000 flags=0x8000004
+SWEET ADSP:   seg 12 paddr=0x86d0a000 filesz=0x203e0 memsz=0x21000 flags=0x8000006
+SWEET ADSP:   seg 13 paddr=0x86d2b000 filesz=0x145d4 memsz=0x15000 flags=0x8000005
+SWEET ADSP:   seg 14 paddr=0x86d40000 filesz=0x4d300 memsz=0x4d300 flags=0x8000004
+SWEET ADSP:   seg 15 paddr=0x86e00000 filesz=0x32e7e4 memsz=0x32f000 flags=0x8000005
+SWEET ADSP:   seg 16 paddr=0x8712f000 filesz=0x1a4ec memsz=0xde000 flags=0x8000006
+SWEET ADSP:   seg 17 paddr=0x8720d000 filesz=0x118 memsz=0x1000 flags=0x8000006
+SWEET ADSP:   seg 18 paddr=0x8720e000 filesz=0x332c4 memsz=0x34000 flags=0x8000004
+SWEET ADSP:   seg 19 paddr=0x87300000 filesz=0xaf4b58 memsz=0xaf5000 flags=0x8000005
+SWEET ADSP:   seg 20 paddr=0x87df5000 filesz=0x7c008 memsz=0xce9000 flags=0x8000006
+SWEET ADSP:   seg 21 paddr=0x88ade000 filesz=0x790 memsz=0x1000 flags=0x8000006
+SWEET ADSP:   seg 22 paddr=0x88adf000 filesz=0x2a694 memsz=0x2b000 flags=0x8000004
+SWEET ADSP:   seg 23 paddr=0x88b0a000 filesz=0x15728 memsz=0x16000 flags=0x8000006
+SWEET ADSP:   seg 24 paddr=0x88b20000 filesz=0x8941c memsz=0x8a000 flags=0x8000005
+SWEET ADSP:   seg 25 paddr=0x88baa000 filesz=0 memsz=0x856000 flags=0x8000004
+SWEET ADSP: image 0x86300000..0x89400000 (49 MiB), region 0x9fd00000+51380224
+SWEET ADSP: metadata 0x394+0x13b8 at 0x8461b8000
+SWEET ADSP: scm 2/1 resumed 4 times
+SWEET ADSP: pas_init_image -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: pas_mem_setup -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: loaded adsp2.b01 0x1a68 bytes -> 0x9fd00000
+SWEET ADSP: loaded adsp2.b02 0x291624 bytes -> 0x9fd02000
+SWEET ADSP: loaded adsp2.b03 0x64f8 bytes -> 0x9ff94000
+SWEET ADSP: loaded adsp2.b04 0x8748 bytes -> 0x9ff9b000
+SWEET ADSP: loaded adsp2.b05 0x5c000 bytes -> 0x9ffa4000
+SWEET ADSP: loaded adsp2.b06 0xdc bytes -> 0xa0000000
+SWEET ADSP: loaded adsp2.b07 0x131c bytes -> 0xa0001000
+exec xpcproxy
+exec dasd
+SWEET ADSP: loaded adsp2.b08 0x22e868 bytes -> 0xa0003000
+SWEET HID: touch 2 down at 336,1079
+exec xpcproxy
+SWEET HID: touch 0 up at 530,1101
+exec mediaserverd
+CRASH dasd[298] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x102770000
+CRASH dasd pc 0x205e47198 lr 0x2153d65f8 sp 0x16d68f2e0 fp 0x16d68f300 far 0x2226a2e28
+CRASH dasd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d1398ddc 0x1027adcfc 0x1027bafd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[298] crashed: dasd. Too many corpses being created.
+SWEET ADSP: loaded adsp2.b09 0x3a008 bytes -> 0xa0232000
+SWEET ADSP: loaded adsp2.b10 0x2d0 bytes -> 0xa07062c0
+SWEET ADSP: loaded adsp2.b11 0x2748 bytes -> 0xa0707000
+SWEET ADSP: loaded adsp2.b12 0x203e0 bytes -> 0xa070a000
+SWEET HID: touch 1 up at 332,13
+SWEET ADSP: loaded adsp2.b13 0x145d4 bytes -> 0xa072b000
+exec xpcproxy
+exec coresymbolicationd
+SWEET ADSP: loaded adsp2.b14 0x4d300 bytes -> 0xa0740000
+SWEET HID: touch 0 down at 197,484
+SWEET HID: touch 1 down at 629,352
+SWEET HID: touch 2 up at 311,396
+SWEET SURF: mediaserverd create id 14 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[299] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x104b1c000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16b50cff0 fp 0x16b50d2e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[299] crashed: mediaserverd. Too many corpses being created.
+SWEET ADSP: loaded adsp2.b15 0x32e7e4 bytes -> 0xa0800000
+SWEET ADSP: loaded adsp2.b16 0x1a4ec bytes -> 0xa0b2f000
+SWEET ADSP: loaded adsp2.b17 0x118 bytes -> 0xa0c0d000
+SWEET ADSP: loaded adsp2.b18 0x332c4 bytes -> 0xa0c0e000
+SWEET ADSP: loaded adsp2.b19 0xaf4b58 bytes -> 0xa0d00000
+SWEET HID: touch 0 up at 420,739
+SWEET HID: touch 1 up at 679,473
+SWEET ADSP: loaded adsp2.b20 0x7c008 bytes -> 0xa17f5000
+SWEET ADSP: loaded adsp2.b21 0x790 bytes -> 0xa24de000
+SWEET ADSP: loaded adsp2.b22 0x2a694 bytes -> 0xa24df000
+SWEET ADSP: loaded adsp2.b23 0x15728 bytes -> 0xa250a000
+SWEET ADSP: loaded adsp2.b24 0x8941c bytes -> 0xa2520000
+SWEET ADSP: loaded adsp2.b25 0 bytes -> 0xa25aa000
+|SpringBoard| 1969-12-31 16:01:41.-51 SpringBoard[26:251] 
+|SpringBoard| Unbalanced calls to begin/end appearance transitions for <SBCoverSheetPrimarySlidingViewController: 0x126810600>.
+|SpringBoard| 
+exec xpcproxy
+exec bluetoothd
+exec xpcproxy
+|SpringBoard| ACM: LibCall_ACMContextCreate: returning, err = -5.
+exec fairplayd.H2
+SWEET ADSP: scm 2/5 resumed 15 times
+SWEET ADSP: pas_auth_and_reset -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: Q6 released, waiting 3s
+SWEET HID: touch 0 down at 984,271
+SWEET SMP: sampler ncpu=8 n=20 ms=1000
+SWEET GLINK: disabled (sweetglink=1)
+SWEET ADSP: ===== done =====
+SWEET HID: touch 0 up at 984,271
+exec xpcproxy
+exec mediaserverd
+SWEET HID: touch 0 down at 984,223
+|SpringBoard| 1969-12-31 16:01:45.-358 SpringBoard[26:3684] 
+|SpringBoard| ### Failed to Soft Linked: /System/Library/Frameworks/CarKit.framework/CarKit
+|SpringBoard| 
+exec xpcproxy
+SWEET FB: display on
+SWEET FB: backboardd sel 79 in 2/0 out 0/40 -> 0x0
+SWEET FB: swap 8 layer 0 surface 10 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+SWEET SURF: mediaserverd create id 15 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[303] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x10491c000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16b568ff0 fp 0x16b5692e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[303] crashed: mediaserverd. Too many corpses being created.
+exec webbookmarksd
+|SpringBoard| 1969-12-31 16:01:45.-172 SpringBoard[26:251] 
+|SpringBoard| #configurationUpdateManager longPressBehavior: 0 previousValue: 0
+|SpringBoard| 
+SWEET SURF: SpringBoard create id 16 272x184 fmt 0x42475241 bpe 4 bpr 1088 planes 0 size 212992 keys 6 -> 0x0
+SWEET HID: touch 0 up at 775,50
+SWEET SURF: SpringBoard create id 17 312x202 fmt 0x4c413038 bpe 2 bpr 640 planes 0 size 131072 keys 6 -> 0x0
+SWEET SURF: SpringBoard create id 18 230x186 fmt 0x4c413038 bpe 2 bpr 480 planes 0 size 98304 keys 6 -> 0x0
+SWEET USB: bus reset
+SWEET SURF: SpringBoard sel 35
+SWEET USB: connected, speed 0
+SWEET USB: setup 00 05 0001 0000 len 0
+SWEET USB: address 1
+SWEET USB: setup 80 06 0100 0000 len 18
+SWEET USB: setup 80 06 0302 0409 len 2
+SWEET USB: setup 80 06 0302 0409 len 50
+SWEET USB: setup 80 06 0301 0409 len 2
+SWEET USB: setup 80 06 0301 0409 len 20
+SWEET USB: setup 80 06 0303 0409 len 2
+SWEET USB: setup 80 06 0303 0409 len 10
+SWEET USB: setup 80 06 0200 0000 len 9
+SWEET USB: setup 80 06 0200 0000 len 80
+SWEET USB: setup 00 09 0001 0000 len 0
+SWEET USB: configured (1)
+SWEET USB: setup 01 0b 0000 0001 len 0
+SWEET USB: setup 01 0b 0001 0001 len 0
+SWEET USB: setup 21 43 0000 0000 len 0
+SWEET USB: setup 80 06 0304 0409 len 2
+SWEET USB: setup 80 06 0304 0409 len 26
+SWEET USB: setup 80 06 0300 0000 len 255
+SWEET USB: setup 80 06 0300 0000 len 255
+SWEET USB: setup 80 06 0300 0000 len 255
+SWEET USB: setup 80 06 0300 0000 len 255
+SWEET USB: setup 21 43 000c 0000 len 0
+SWEET USB: setup 21 43 000c 0000 len 0
+SWEET USB: setup 21 43 000e 0000 len 0
+exec CollectionsPoster
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: ue0 rx 253 tx 233 frames
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET SURF: SpringBoard sel 41
+exec AccessibilityUIServer
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 down at 147,27 edge
+SWEET HID: touch 0 up at 147,27 edge
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 down at 123,9 edge
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 up at 6,46 edge
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec IMDMessageServicesAgent
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec dasd
+SWEET USB: setup 02 01 0000 0082 len 0
+CRASH dasd[308] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x100184000
+CRASH dasd pc 0x205e47198 lr 0x2153d65f8 sp 0x16fc7b2e0 fp 0x16fc7b300 far 0x2226a2e28
+CRASH dasd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d1398ddc 0x1001c1cfc 0x1001cefd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[308] crashed: dasd. Too many corpses being created.
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec coresymbolicationd
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec mediaserverd
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+|SpringBoard| objc[26]: Class MSDPreferencesFile is implemented in both /System/Library/PrivateFrameworks/MobileStoreDemoKit.framework/MobileStoreDemoKit (0x255695038) and /System/Library/SpringBoardPlugins/StoreDemoPlugin.servicebundle/StoreDemoPlugin (0|SpringBoard| e of the two will be used. Which one is undefined.
+|SpringBoard| objc[26]: Class MSDLogModel is implemented in both /System/Library/PrivateFrameworks/MobileStoreDemoKit.framework/MobileStoreDemoKit (0x255695088) and /System/Library/SpringBoardPlugins/StoreDemoPlugin.servicebundle/StoreDemoPlugin (0x1229f1|SpringBoard| e two will be used. Which one is undefined.
+SWEET SURF: mediaserverd create id 19 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+|SpringBoard| objc[26]: Class MSDTestPreferences is implemented in both /System/Library/PrivateFrameworks/MobileStoreDemoKit.framework/MobileStoreDemoKit (0x258682008) and /System/Library/SpringBoardPlugins/StoreDemoPlugin.servicebundle/StoreDemoPlugin (0|SpringBoard| e of the two will be used. Which one is undefined.
+SWEET FB: swap 10 layer 0 surface 10 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+SWEET USB: setup 02 01 0000 0082 len 0
+CRASH mediaserverd[310] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x1000a4000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16fe6cff0 fp 0x16fe6d2e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[310] crashed: mediaserverd. Too many corpses being created.
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+CRASH CollectionsPoste[305] sig 9 code 0x0 sub 0x0 slide 0x43830000 mh 0x102fe4000
+CRASH CollectionsPoste pc 0x205e41030 lr 0x205e52b18 sp 0x16ce12c80 fp 0x16ce12cd0 far 0x1d87ff1a4
+CRASH CollectionsPoste bt 0x205e52db8 0x205e41524 0x1d87ff260 0x1d87718b8 0x1d4eab994 0x1d87716b4 0x1d87c245c 0x1e95c5f3c 0x1e95c20f4 0x1d13c8780
+CRASH CollectionsPoste reason ns 7 code 0x3: extension check-in timeout
+Process[305] crashed: CollectionsPoste. Too many corpses being created.
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec xpcproxy
+exec bluetoothd
+exec fairplayd.H2
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec mediaserverd
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET FB: swap 12 layer 0 surface 10 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+SWEET SURF: mediaserverd create id 20 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[313] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x102048000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x16ec74ff0 fp 0x16ec752e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[313] crashed: mediaserverd. Too many corpses being created.
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 down at 50,52
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 1 down at 862,2229
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 2 down at 1034,1923 edge
+SWEET HID: touch 0 up at 0,98
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 down at 530,1277
+SWEET HID: touch 0 up at 530,1277
+SWEET HID: touch 0 down at 520,1217
+SWEET HID: touch 0 up at 520,1217
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 down at 624,1170
+SWEET HID: touch 2 up at 583,1235 edge
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 2 down at 629,968
+SWEET HID: touch 0 up at 423,1017
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 down at 489,340
+SWEET HID: touch 1 up at 118,28
+SWEET HID: touch 1 down at 401,99
+SWEET HID: touch 2 up at 432,173
+SWEET HID: touch 1 up at 297,62
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET HID: touch 0 up at 365,190
+SWEET HID: touch 0 down at 253,186
+SWEET HID: touch 1 down at 192,174
+SWEET HID: touch 1 up at 192,174
+SWEET HID: touch 0 up at 255,126
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec dasd
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec coresymbolicationd
+CRASH dasd[314] sig 6 code 0x0 sub 0x0 slide 0x43830000 mh 0x102d4c000
+CRASH dasd pc 0x205e47198 lr 0x2153d65f8 sp 0x16d0b32e0 fp 0x16d0b3300 far 0x2226a2e28
+CRASH dasd bt 0x1d148c4b8 0x21530ef54 0x2152ffa4c 0x1c3902afc 0x21530e424 0x21530e3d4 0x1d13c8794 0x1d1398ddc 0x102d89cfc 0x102d96fd4
+CRASH dasd reason ns 2 code 0x6: (none)
+Process[314] crashed: dasd. Too many corpses being created.
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec mediaserverd
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET FB: swap 14 layer 0 surface 10 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+SWEET SURF: mediaserverd create id 21 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+CRASH mediaserverd[316] sig 11 code 0x100000001 sub 0x0 slide 0x43830000 mh 0x10047c000
+CRASH mediaserverd pc 0x0 lr 0x1d836858c sp 0x17000cff0 fp 0x17000d2e0 far 0x0
+CRASH mediaserverd bt 0x1d8368924 0x1d8211884 0x1d81d3114 0x1d81d2f10 0x1e5996508 0x1e5996800 0x1d13c8780 0x1d13aaa50 0x1e599676c 0x1e5996128
+CRASH mediaserverd reason ns 2 code 0xb: (none)
+Process[316] crashed: mediaserverd. Too many corpses being created.
+|SpringBoard| 1969-12-31 16:02:02.-919 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449bc0> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-919 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449bc0> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-919 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449a60> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-919 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449a60> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-919 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449aa0> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-919 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449aa0> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-919 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449240> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-919 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449240> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-916 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282448f40> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-916 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282448f40> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-916 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449e80> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-916 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449e80> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-916 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824492c0> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-916 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824492c0> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-915 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282448f20> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-915 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282448f20> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-913 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449aa0> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-913 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449aa0> - changing property allowsGroupBlending in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-913 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449a60> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-913 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449a60> - changing property allowsGroupBlending in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-913 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449bc0> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-913 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449bc0> - changing property allowsGroupBlending in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-913 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449240> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-913 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x282449240> - changing property allowsGroupBlending in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-871 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a8ea0> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-871 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a8ea0> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-871 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a8ea0> - changing property backgroundColor in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-870 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a8a60> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-870 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a8a60> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-869 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a8d80> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-869 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a8d80> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-868 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a8e60> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-868 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a8e60> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+exec xpcproxy
+|SpringBoard| 1969-12-31 16:02:02.-864 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a3560> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-864 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a3560> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-863 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a3800> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-863 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x2824a3800> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+SWEET USB: setup 02 01 0000 0082 len 0
+exec xpcproxy
+exec fairplayd.H2
+|SpringBoard| 1969-12-31 16:02:02.-851 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x28255bc20> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-851 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x28255bc20> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-851 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x28255bc20> - changing property backgroundColor in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-851 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x28255bca0> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-850 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x28255bca0> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-850 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x28255bd40> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-850 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x28255bd40> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-850 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x28255bdc0> - changing property allowsEdgeAntialiasing in transform-only layer, will have no effect
+|SpringBoard| 
+|SpringBoard| 1969-12-31 16:02:02.-850 SpringBoard[26:251] 
+|SpringBoard| <CATransformLayer: 0x28255bdc0> - changing property allowsGroupOpacity in transform-only layer, will have no effect
+|SpringBoard| 
+exec bluetoothd
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET USB: setup 02 01 0000 0082 len 0
+SWEET SMP: ncpu=8 samples=20 interval=1000ms
+SWEET SMP: cpu0 busy=10/20 last_tid=201
+SWEET SMP: cpu1 busy=7/20 last_tid=199
+SWEET SMP: cpu2 busy=9/20 last_tid=2862
+SWEET SMP: cpu3 busy=6/20 last_tid=221
+SWEET SMP: cpu4 busy=4/20 last_tid=2862
+SWEET SMP: cpu5 busy=2/20 last_tid=3789
+SWEET SMP: cpu6 busy=1/20 last_tid=3538
+SWEET SMP: cpu7 busy=1/20 last_tid=221
+SWEET SMP: done, resetting

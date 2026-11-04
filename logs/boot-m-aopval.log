@@ -1,0 +1,16 @@
+rebooting to bootloader...
+booting images/m-aopval.img
+Sending 'boot.img' (50064 KB)                      OKAY [  1.187s]
+Booting                                            OKAY [  0.111s]
+Finished. Total time: 1.322s
+waiting for the kernel to reset (2-5 min)...
+SWEET GLINK: lpass read skipped (sweetglinkread=1)
+SWEET GLINK: ===== done =====
+SWEET GLINK: PSCI SYSTEM_RESET
+--- verdict ---
+SWEET GLINK: data_buffer send
+SWEET GLINK: data_buffer send
+SWEET GLINK: data_buffer send
+SWEET GLINK: data_buffer send
+SWEET GLINK: data_buffer send
+SWEET GLINK: data_buffer send

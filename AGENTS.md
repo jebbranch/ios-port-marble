@@ -26,6 +26,12 @@ XNU 8796 / iOS 16 移植到 Redmi Note 12 Turbo（`marble`，SM7475，SoC 名 **
 - 开机预算：用户 2026-11-04 把额度从 20 提到 **120**；已用 14。
   **每一次开机前必须先完成本地验证**（产物 grep、marker、stub 编译、判据表已 commit）。
 - 一次开机一个会话（one-device-one-session）；不要在子智能体里抢设备。
+- **拉完 ring 先对身份**：`grep -m1 -o "sweettime=[0-9]*" logs/ring-<label>.txt` 必须等于本轮
+  build log 里 `cmdline:` 的 `sweettime`。不等 ⇒ panic/早复位没写 ring，`pull_logs.sh` 会
+  **静默返回上一轮的 ring**（2026-11-04 真的发生过，差点把 M 轮数据当成 C 轮打分）。
+- **不要在持锁函数里打印或再进 IOKit**：`IORegistryEntry::copyProperty()` 的 `wrap2` 是
+  `PLOCK; getProperty(...); PUNLOCK` ⇒ 在 `getProperty` 里 `getName()` + `IOLog` 会嵌套拿
+  同一把锁。0251 因此连炸两次开机，已从序列删除。要打印就挂在**解锁之后**的位置。
 
 ---
 

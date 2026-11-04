@@ -1,0 +1,464 @@
+===== session start 2026-10-27 18:40:18 iface=en14 port=5140 =====
+exec fairplayd.H2
+exec xpcproxy
+exec bluetoothd
+exec xpcproxy
+exec CAReportingService
+exec xpcproxy
+exec misagent
+exec askpermissiond
+exec healthd
+exec peakpowermanagerd
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec amsaccountsd
+exec symptomsd-diag
+exec CallHistorySyncHelper
+exec coreidvd
+exec familynotificationd
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec coreauthd
+exec cloudd
+exec xpcproxy
+SWEET HID: touch 0 down at 383,1859
+exec gamed
+exec xpcproxy
+SWEET HID: touch 0 up at 383,1859
+exec triald
+exec xpcproxy
+exec familycircled
+SWEET HID: touch 0 down at 420,1794
+exec xpcproxy
+exec xpcproxy
+exec fmfd
+exec FamilyControlsAgent
+exec callservicesd
+exec misd
+SWEET HID: touch 0 up at 420,1794
+SWEET HID: touch 0 down at 418,1787
+exec xpcproxy
+exec xpcproxy
+exec SafariBookmarksSyncAgent
+exec siriknowledged
+SWEET HID: touch 0 up at 418,1787
+exec mediaremoted
+SWEET HID: touch 0 down at 413,1783
+exec xpcproxy
+exec amsengagementd
+SWEET HID: touch 0 up at 413,1783
+exec kbd
+exec xpcproxy
+exec ManagedSettingsAgent
+SWEET USB: ue0 rx 153 tx 132 frames
+exec xpcproxy
+exec fairplayd.H2
+exec xpcproxy
+exec mobilerepaird
+exec xpcproxy
+exec wifianalyticsd
+exec xpcproxy
+exec followupd
+exec xpcproxy
+exec bluetoothd
+exec xpcproxy
+exec IMDPersistenceAgent
+exec xpcproxy
+exec adid
+exec xpcproxy
+exec remindd
+exec xpcproxy
+exec xpcproxy
+exec suggestd
+exec transparencyd
+exec nanotimekitcompaniond
+exec xpcproxy
+exec sociallayerd
+exec xpcproxy
+exec fitcored
+exec safetyalertsd
+exec xpcproxy
+exec homed
+exec xpcproxy
+exec xpcproxy
+exec ProtectedCloudKeySyncing
+exec cdpd
+exec xpcproxy
+exec backupd
+SWEET HID: touch 0 down at 329,1636
+SWEET HID: touch 0 up at 329,1636
+SWEET HID: touch 0 down at 363,1747
+SWEET HID: touch 0 up at 363,1747
+SWEET HID: touch 0 down at 383,1719
+SWEET HID: touch 0 up at 383,1719
+SWEET HID: touch 0 down at 381,1710
+SWEET HID: touch 0 up at 381,1710
+exec com.apple.datamigrator
+SWEET HID: touch 0 down at 403,1691
+SWEET HID: touch 0 up at 403,1691
+exec xpcproxy
+exec ContextService
+exec xpcproxy
+exec contactsd
+exec accessoryupdaterd
+SWEET Sandbox: cloudd privilege 1002 denied
+exec WirelessRadioManagerd
+exec seld
+exec xpcproxy
+exec announced
+exec xpcproxy
+exec com.apple.siri.embeddedspeech
+exec xpcproxy
+exec deleted
+SWEET FB: display on
+SWEET FB: backboardd sel 12 in 1/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 79 in 2/0 out 0/40 -> 0x0
+SWEET FB: backboardd sel 6 in 3/0 out 0/0 -> 0x0
+SWEET FB: backboardd sel 27 in 0/0 out 0/3084 -> 0x0
+SWEET FB: backboardd sel 17 in 0/3084 out 0/0 -> 0x0
+SWEET FB: backboardd sel 84 in 0/4 out 0/0 -> 0x0
+SWEET FB: backboardd sel 50 in 2/0 out 0/0 -> 0x0
+SWEET SURF: backboardd sel 13
+SWEET FB: backboardd sel 68 in 1/8 out 0/0 -> 0x0
+SWEET SURF: backboardd create id 2 1125x2436 fmt 0x42475241 bpe 4 bpr 4608 planes 0 size 11239424 keys 11 -> 0x0
+SWEET SURF: backboardd sel 9
+SWEET SURF: backboardd sel 27
+SWEET SURF: backboardd sel 5
+SWEET SURF: backboardd trap 2
+SWEET SURF: backboardd trap 3
+SWEET FB: backboardd sel 4 in 0/0 out 1/0 -> 0x0
+SWEET FB: backboardd sel 68 in 1/8 out 0/0 -> 0x0
+SWEET FB: backboardd sel 5 in 0/1132 out 0/0 -> 0x0
+SWEET FB: backboardd sel 3 in 2/0 out 1/0 -> 0x0
+SWEET SURF: backboardd sel 34
+SWEET FB: backboardd sel 55 in 1/72 out 0/0 -> 0x0
+SWEET SURF: mediaserverd create id 3 1024x768 fmt 0x34323066 bpe 1 bpr 1540 planes 2 size 1196032 keys 13 -> 0x0
+SWEET FB: swap 2 layer 0 surface 2 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+exec xpcproxy
+SWEET SURF: mediaserverd trap 0
+exec xpcproxy
+exec xpcproxy
+exec pkd
+SWEET SURF: backboardd create id 4 1125x2436 fmt 0x42475241 bpe 4 bpr 4608 planes 0 size 11239424 keys 11 -> 0x0
+SWEET FB: swap 3 layer 0 surface 4 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+exec localizationswitcherd
+exec fairplayd.H2
+SWEET FB: thermalmonitord sel 78 in 2/1788 out 0/0 -> 0x0
+exec xpcproxy
+exec bluetoothd
+exec nanoprefsyncd
+SWEET FB: swap 4 layer 0 surface 2 1125x2436 fmt 0x42475241 bpr 4608 a 0,0 1125x2436 b 0,0 1125x2436
+SWEET Sandbox: SpringBoard privilege 1007 denied
+SWEET FB: display off
+exec xpcproxy
+exec atc
+exec xpcproxy
+exec xpcproxy
+exec softwareupdated
+exec peopled
+exec ckdiscretionaryd
+exec xpcproxy
+exec xpcproxy
+SWEET SURF: SpringBoard sel 40
+exec xpcproxy
+ifnet_attach: Waiting for all kernel threads created for interface utun1 to get scheduled at least once.
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+exec xpcproxy
+ifnet_attach: All kernel threads created for interface utun1 have been scheduled at least once. Proceeding.
+SWEET Sandbox: identityservicesd privilege 12001 denied
+SWEET ADSP: firmware blob at 0x8424ec000 size 0x15a8000
+SWEET ADSP: MDT phnum=27 entry=0x86300000
+SWEET ADSP:   seg  1 paddr=0x86300000 filesz=0x1a68 memsz=0x2000 flags=0x8000005
+SWEET ADSP:   seg  2 paddr=0x86302000 filesz=0x291624 memsz=0x292000 flags=0x8000007
+SWEET ADSP:   seg  3 paddr=0x86594000 filesz=0x64f8 memsz=0x7000 flags=0x8000005
+SWEET ADSP:   seg  4 paddr=0x8659b000 filesz=0x8748 memsz=0x9000 flags=0x8000007
+SWEET ADSP:   seg  5 paddr=0x865a4000 filesz=0x5c000 memsz=0x5c000 flags=0x8000004
+SWEET ADSP:   seg  6 paddr=0x86600000 filesz=0xdc memsz=0x1000 flags=0x8000005
+SWEET ADSP:   seg  7 paddr=0x86601000 filesz=0x131c memsz=0x2000 flags=0x8000006
+SWEET ADSP:   seg  8 paddr=0x86603000 filesz=0x22e868 memsz=0x22f000 flags=0x8000005
+SWEET ADSP:   seg  9 paddr=0x86832000 filesz=0x3a008 memsz=0x4d42c0 flags=0x8000006
+SWEET ADSP:   seg 10 paddr=0x86d062c0 filesz=0x2d0 memsz=0xd40 flags=0x8000006
+SWEET ADSP:   seg 11 paddr=0x86d07000 filesz=0x2748 memsz=0x3000 flags=0x8000004
+SWEET ADSP:   seg 12 paddr=0x86d0a000 filesz=0x203e0 memsz=0x21000 flags=0x8000006
+SWEET ADSP:   seg 13 paddr=0x86d2b000 filesz=0x145d4 memsz=0x15000 flags=0x8000005
+SWEET ADSP:   seg 14 paddr=0x86d40000 filesz=0x4d300 memsz=0x4d300 flags=0x8000004
+SWEET ADSP:   seg 15 paddr=0x86e00000 filesz=0x32e7e4 memsz=0x32f000 flags=0x8000005
+SWEET ADSP:   seg 16 paddr=0x8712f000 filesz=0x1a4ec memsz=0xde000 flags=0x8000006
+SWEET ADSP:   seg 17 paddr=0x8720d000 filesz=0x118 memsz=0x1000 flags=0x8000006
+SWEET ADSP:   seg 18 paddr=0x8720e000 filesz=0x332c4 memsz=0x34000 flags=0x8000004
+SWEET ADSP:   seg 19 paddr=0x87300000 filesz=0xaf4b58 memsz=0xaf5000 flags=0x8000005
+SWEET ADSP:   seg 20 paddr=0x87df5000 filesz=0x7c008 memsz=0xce9000 flags=0x8000006
+SWEET ADSP:   seg 21 paddr=0x88ade000 filesz=0x790 memsz=0x1000 flags=0x8000006
+SWEET ADSP:   seg 22 paddr=0x88adf000 filesz=0x2a694 memsz=0x2b000 flags=0x8000004
+SWEET ADSP:   seg 23 paddr=0x88b0a000 filesz=0x15728 memsz=0x16000 flags=0x8000006
+SWEET ADSP:   seg 24 paddr=0x88b20000 filesz=0x8941c memsz=0x8a000 flags=0x8000005
+SWEET ADSP:   seg 25 paddr=0x88baa000 filesz=0 memsz=0x856000 flags=0x8000004
+SWEET ADSP: image 0x86300000..0x89400000 (49 MiB), region 0x9fd00000+51380224
+SWEET ADSP: metadata 0x394+0x13b8 at 0x8459cc000
+SWEET ADSP: scm 2/1 resumed 9 times
+SWEET ADSP: pas_init_image -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: scm 2/2 resumed 1 times
+SWEET ADSP: pas_mem_setup -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: loaded adsp2.b01 0x1a68 bytes -> 0x9fd00000
+SWEET ADSP: loaded adsp2.b02 0x291624 bytes -> 0x9fd02000
+SWEET ADSP: loaded adsp2.b03 0x64f8 bytes -> 0x9ff94000
+SWEET ADSP: loaded adsp2.b04 0x8748 bytes -> 0x9ff9b000
+SWEET ADSP: loaded adsp2.b05 0x5c000 bytes -> 0x9ffa4000
+SWEET ADSP: loaded adsp2.b06 0xdc bytes -> 0xa0000000
+SWEET ADSP: loaded adsp2.b07 0x131c bytes -> 0xa0001000
+exec fairplayd.H2
+SWEET ADSP: loaded adsp2.b08 0x22e868 bytes -> 0xa0003000
+SWEET ADSP: loaded adsp2.b09 0x3a008 bytes -> 0xa0232000
+SWEET ADSP: loaded adsp2.b10 0x2d0 bytes -> 0xa07062c0
+SWEET ADSP: loaded adsp2.b11 0x2748 bytes -> 0xa0707000
+SWEET ADSP: loaded adsp2.b12 0x203e0 bytes -> 0xa070a000
+SWEET ADSP: loaded adsp2.b13 0x145d4 bytes -> 0xa072b000
+SWEET ADSP: loaded adsp2.b14 0x4d300 bytes -> 0xa0740000
+SWEET ADSP: loaded adsp2.b15 0x32e7e4 bytes -> 0xa0800000
+SWEET ADSP: loaded adsp2.b16 0x1a4ec bytes -> 0xa0b2f000
+SWEET ADSP: loaded adsp2.b17 0x118 bytes -> 0xa0c0d000
+SWEET ADSP: loaded adsp2.b18 0x332c4 bytes -> 0xa0c0e000
+SWEET ADSP: loaded adsp2.b19 0xaf4b58 bytes -> 0xa0d00000
+SWEET ADSP: loaded adsp2.b20 0x7c008 bytes -> 0xa17f5000
+SWEET ADSP: loaded adsp2.b21 0x790 bytes -> 0xa24de000
+SWEET ADSP: loaded adsp2.b22 0x2a694 bytes -> 0xa24df000
+SWEET ADSP: loaded adsp2.b23 0x15728 bytes -> 0xa250a000
+SWEET ADSP: loaded adsp2.b24 0x8941c bytes -> 0xa2520000
+SWEET ADSP: loaded adsp2.b25 0 bytes -> 0xa25aa000
+SWEET ADSP: scm 2/5 resumed 46 times
+SWEET ADSP: pas_auth_and_reset -> 0x0 (r1=0x0 r2=0x0)
+SWEET ADSP: Q6 released, waiting 3s
+exec appstored
+exec bluetoothd
+exec languageassetd
+exec PosterBoard
+exec CommCenterMobileHelper
+exec watchlistd
+SWEET GLINK: shm high word 0x1
+SWEET GLINK: ===== minimal GLINK/GPR client =====
+SWEET AUDIO: build v91 (battmgr property offset, RTC note)
+SWEET RTC: clock set from sweettime=1793097546
+SWEET BATTERY: SPMI arb=0x70000000 APIDs=768 obs-stride=0x20 hap-rev=0x2
+SWEET BATTERY: ppid 0x8 apid=4 map=0x1000800 owner=4
+SWEET BATTERY: ppid 0x4c1 apid=247 map=0x104c100 owner=4
+SWEET BATTERY: ppid 0x61 apid=51 map=0x1006100 owner=4
+SWEET BATTERY: ppid 0x3f0 apid=465 map=0x103f000 owner=0
+SWEET BATTERY: ppid 0x3f1 apid=466 map=0x103f100 owner=0
+SWEET BATTERY: ppid 0x3f2 apid=400 map=0x103f200 owner=3
+SWEET BATTERY: ppid 0x319 apid=454 map=0x1031900 owner=0
+SWEET BATTERY: ppid 0x71 apid=412 map=0x1007100 owner=0
+SWEET BATTERY: ppid 0x7d apid=414 map=0x1007d00 owner=0
+SWEET BATTERY: ppid 0x9d apid=428 map=0x1009d00 owner=0
+SWEET BATTERY: ppid 0x39d absent from the APID map
+SWEET BATTERY: gpio subtype stride20=0x82 stride80=0 (want 0x11)
+SWEET HAP: cfg=0/0x2 ptn=0x2 boost-vreg=0 hboost-follow=0xe0
+SWEET BATTERY: RW slot verified at stride 0x1000
+SWEET HAP: vmax 0xf048<-48 rc=0
+SWEET HAP: wave 0xf049<-01 rc=0
+SWEET HAP: tlra 0x498 rc=0
+SWEET HAP: direct amplitude 0xf126<-ff rc=0
+SWEET HAP: autores off 0xf063<-8a rc=0
+SWEET HAP: boost vreg=0
+SWEET HAP: hboost trigger rc=0/0
+exec itunescloudd
+SWEET HAP: boost vreg now=0x80
+SWEET HAP: vreg ready 0xf068<-01 rc=0
+SWEET HAP: fault clear 0xf066<-07 rc=0
+SWEET HAP: enable 0xf046<-80 rc=0
+SWEET HAP: play 0xf04c<-81 rc=0
+exec matd
+SWEET HAP: fault during play=0x2
+SWEET KEYS: key=0 down=1 pon=0x81 gpio6:8d10=0x1
+SWEET HAP: stop 0xf04c<-00 rc=0
+SWEET HAP: disable 0xf046<-00 rc=0
+SWEET HAP: fault=0x2 auto_res=0x26/0x5d irt=0x10
+SWEET HAP: final en=0
+SWEET HAP: cfg=0/0x2 ptn=0x2 boost-vreg=0x80 hboost-follow=0xe0
+SWEET HAP: vmax 0xf048<-48 rc=0
+SWEET HAP: wave 0xf049<-01 rc=0
+SWEET HAP: tlra 0x498 rc=0
+SWEET HAP: direct amplitude 0xf126<-ff rc=0
+SWEET HAP: autores off 0xf063<-8a rc=0
+SWEET HAP: boost vreg=0x80
+SWEET HAP: hboost trigger rc=0/0
+SWEET RTC: pmic=63697054 raw (EE4-owned; AP cannot set it, calendar from sweettime)
+SWEET SPMI: rtc sid=0 base=0x6100: 6100=00 6101=05 6102=00 6103=00 6104=07 6105=01 6106=00 6107=00 6108=80 6109=00 610a=00 610b=00 610c=00 610d=00 610e=00 610f=00
+SWEET HAP: boost vreg now=0x80
+SWEET SPMI: hap sid=3 base=0xf000:SWEET HAP: vreg ready 0xf068<-01 rc=0
+SWEET HAP: fault clear 0xf066<-07 rc=0
+SWEET HAP: enable 0xf046<-80 rc=0
+ f000=00 f001=02 f002=00 f003=05 f004=15 f005=0a f006=00 f007=00 f008=00 f009=26 f00a=5d f00b=00 f00c=00 f00d=00 f00e=00 f00f=00
+SWEET HAP: play 0xf04c<-81 rc=0
+SWEET SPMI: hap sid=3 base=0xf100: f100=00 f101=02 f102=00 f103=00 f104=15 f105=0b f106=00 f107=00 f108=01 f109=08 f10a=00 f10b=00 f10c=00 f10d=00 f10e=00 f10f=00
+SWEET MMIO: apps_smmu @0x15000000: +00=00200406 +04=00000000 +08=00000000 +0c=00000000 +10=0000001c +14=00000000 +18=00000000 +1c=00000000
+SWEET GLINK: smem sbl version 0xc0000 initialized 1
+SWEET GLINK: ptable version 1 entries 19
+SWEET GLINK: part[0] off=0x1ff000 size=0x1000 hosts=65535,65535
+SWEET GLINK: part[1] off=0x1cf000 size=0x30000 hosts=0,2
+SWEET GLINK: part[2] off=0x1af000 size=0x20000 hosts=0,5
+SWEET GLINK: part[3] off=0x17f000 size=0x30000 hosts=0,3
+SWEET GLINK: part[4] off=0x173000 size=0xc000 hosts=2,3
+SWEET GLINK: part[5] off=0x16b000 size=0x8000 hosts=0,8
+SWEET GLINK: part[6] off=0x167000 size=0x4000 hosts=7,11
+SWEET GLINK: part[7] off=0x165000 size=0x2000 hosts=7,5
+SWEET GLINK: part[8] off=0x163000 size=0x2000 hosts=7,2
+SWEET GLINK: part[9] off=0x161000 size=0x2000 hosts=7,1
+SWEET GLINK: part[10] off=0x15f000 size=0x2000 hosts=7,3
+SWEET GLINK: part[11] off=0x15b000 size=0x4000 hosts=1,11
+SWEET GLINK: part[12] off=0xdf000 size=0x7c000 hosts=0,1
+SWEET GLINK: part[13] off=0xbf000 size=0x20000 hosts=1,2
+SWEET GLINK: part[14] off=0xaf000 size=0x10000 hosts=1,3
+SWEET GLINK: part[15] off=0xad000 size=0x2000 hosts=0,14
+SWEET GLINK: part[16] off=0xab000 size=0x2000 hosts=1,14
+SWEET GLINK: part[17] off=0x1000 size=0xaa000 hosts=65534,65534
+SWEET GLINK: partition apps/adsp free_uncached=0x9368
+SWEET GLINK: descriptor 0x1cf030 (32 bytes): 0 0 0 8
+SWEET GLINK: tx 0x1cf060 (16384) rx 0x1d31d8 (16384)
+SWEET GLINK: item 478 size 32
+SWEET GLINK: item 479 size 16384
+SWEET GLINK: item 443 size 344
+SWEET GLINK: item 480 size 16384
+SWEET GLINK: item 606 size 32
+SWEET GLINK: item 613 size 32
+SWEET GLINK: item 611 size 4096
+SWEET GLINK: item 624 size 56
+SWEET GLINK: item 634 size 200
+SWEET GLINK: 9 items scanned
+SWEET GLINK: remote VERSION 1 features 0x7
+SWEET GLINK: version ok
+SWEET GLINK: VERSION_ACK 1 features 0x1
+SWEET GLINK: remote OPEN rcid=1 name=pcie_drv
+SWEET GLINK: remote OPEN rcid=2 name=IPCRTR
+SWEET GLINK: remote OPEN rcid=3 name=adsp_apps
+SWEET GLINK: remote OPEN rcid=4 name=fastrpcglink-apps-dsp
+SWEET GLINK: remote OPEN rcid=5 name=LOOPBACK_CTL_LPASS
+SWEET GLINK: OPEN_ACK lcid=1
+SWEET GLINK: open ack=1 remote_open=1 rcid=3
+SWEET GLINK: OPEN_ACK sent for rcid=3
+SWEET GLINK: 8 intents advertised
+SWEET GLINK: remote intent id=0 size=128
+SWEET GLINK: remote intent id=1 size=128
+SWEET GLINK: remote intent id=2 size=128
+SWEET GLINK: remote intent id=3 size=128
+SWEET GLINK: remote intent id=4 size=128
+SWEET GLINK: remote intent id=5 size=128
+SWEET GLINK: remote intent id=6 size=128
+SWEET GLINK: remote intent id=7 size=128
+SWEET GLINK: remote intent id=8 size=128
+SWEET GLINK: remote intent id=9 size=128
+SWEET GLINK: remote intent id=10 size=128
+SWEET GLINK: remote intent id=11 size=128
+SWEET GLINK: remote intent id=12 size=128
+SWEET GLINK: remote intent id=13 size=128
+SWEET GLINK: remote intent id=14 size=128
+SWEET GLINK: remote intent id=15 size=128
+SWEET GLINK: remote intent id=16 size=128
+SWEET GLINK: remote intent id=17 size=128
+SWEET GLINK: remote intent id=18 size=128
+SWEET GLINK: remote intent id=19 size=128
+SWEET GLINK: remote intent id=20 size=128
+SWEET GLINK: remote intent id=21 size=128
+SWEET GLINK: remote intent id=22 size=128
+SWEET GLINK: remote intent id=23 size=128
+SWEET GLINK: remote intent id=24 size=128
+SWEET GLINK: remote intent id=25 size=128
+SWEET GLINK: remote intent id=26 size=128
+SWEET GLINK: remote intent id=27 size=128
+SWEET GLINK: remote intent id=28 size=128
+SWEET GLINK: remote intent id=29 size=128
+SWEET GLINK: remote intent id=30 size=128
+SWEET GLINK: remote intent id=31 size=128
+SWEET GLINK: remote intent id=32 size=128
+SWEET GLINK: remote intent id=33 size=128
+SWEET GLINK: remote intent id=34 size=128
+SWEET GLINK: remote intent id=35 size=128
+SWEET GLINK: remote intent id=36 size=128
+SWEET GLINK: remote intent id=37 size=128
+SWEET GLINK: remote intent id=38 size=128
+SWEET GLINK: remote intent id=39 size=128
+SWEET GLINK: remote intent id=40 size=128
+SWEET GLINK: remote intent id=41 size=128
+SWEET GLINK: remote intent id=42 size=128
+SWEET GLINK: remote intent id=43 size=128
+SWEET GLINK: remote intent id=44 size=128
+SWEET GLINK: remote intent id=45 size=128
+SWEET GLINK: remote intent id=46 size=128
+SWEET GLINK: remote intent id=47 size=128
+SWEET GLINK: remote intent id=48 size=128
+SWEET GLINK: remote intent id=49 size=128
+SWEET GLINK: remote intent id=50 size=128
+SWEET GLINK: remote intent id=51 size=128
+SWEET GLINK: remote intent id=52 size=128
+SWEET GLINK: remote intent id=53 size=128
+SWEET GLINK: remote intent id=54 size=128
+SWEET GLINK: remote intent id=55 size=128
+SWEET GLINK: remote intent id=56 size=128
+SWEET GLINK: remote intent id=57 size=128
+SWEET GLINK: remote intent id=58 size=128
+SWEET GLINK: remote intent id=59 size=128
+SWEET GLINK: remote intent id=60 size=128
+SWEET GLINK: remote intent id=61 size=128
+SWEET GLINK: remote intent id=62 size=128
+SWEET GLINK: remote intent id=63 size=128
+SWEET GLINK: remote intent id=64 size=512
+SWEET GLINK: remote intent id=65 size=512
+SWEET GLINK: remote intent id=66 size=512
+SWEET GLINK: remote intent id=67 size=512
+SWEET GLINK: remote intent id=68 size=512
+SWEET GLINK: remote intent id=69 size=512
+SWEET GLINK: remote intent id=70 size=512
+SWEET GLINK: remote intent id=71 size=512
+SWEET GLINK: remote intent id=72 size=512
+SWEET GLINK: remote intent id=73 size=512
+SWEET GLINK: remote intent id=74 size=512
+SWEET GLINK: remote intent id=75 size=512
+SWEET GLINK: remote intent id=76 size=512
+SWEET GLINK: remote intent id=77 size=512
+SWEET GLINK: remote intent id=78 size=512
+SWEET GLINK: remote intent id=79 size=512
+SWEET GLINK: remote intent id=80 size=512
+SWEET GLINK: remote intent id=81 size=512
+SWEET GLINK: remote intent id=82 size=512
+SWEET GLINK: remote intent id=83 size=512
+SWEET GLINK: remote intent id=84 size=512
+SWEET GLINK: remote intent id=85 size=512
+SWEET GLINK: remote intent id=86 size=512
+SWEET GLINK: remote intent id=87 size=512
+SWEET GLINK: remote intent id=88 size=512
+SWEET GLINK: remote intent id=89 size=512
+SWEET GLINK: remote intent id=90 size=512
+SWEET GLINK: remote intent id=91 size=512
+SWEET GLINK: remote intent id=92 size=512
+SWEET GLINK: remote intent id=93 size=512
+SWEET GLINK: remote intent id=94 size=512
+SWEET GLINK: remote intent id=95 size=512
+SWEET GLINK: remote intent id=96 size=1024
+SWEET GLINK: remote intent id=97 size=1024
+SWEET GLINK: remote intent id=98 size=1024
+SWEET GLINK: remote intent id=99 size=1024
+SWEET GLINK: remote intent id=100 size=1024
+SWEET GLINK: remote intent id=101 size=1024
+SWEET GLINK: remote intent id=102 size=1024
+SWEET GLINK: remote intent id=103 size=1024
+SWEET GLINK: remote intent id=104 size=1024
+SWEET GLINK: remote intent id=105 size=1024
+SWEET GLINK: remote intent id=106 size=1024
+SWEET GLINK: remote intent id=107 size=1024
+SWEET GLINK: remote intent id=108 size=1024
+SWEET GLINK: remote intent id=109 size=1024
+SWEET GLINK: remote intent id=110 size=1024
+SWEET GLINK: remote intent id=111 size=1024
+SWEET GLINK: remote intent id=112 size=4096
+SWEET GLINK: remote intent id=113 size=4096
+SWEET GLINK: remote intent id=114 size=4096
+SWEET GLINK: remote intent id=115 size=4096
+exec xpcproxy
+exec xpcproxy
+SWEET BATT: opening PMIC_RTR_ADSP_APPS
+SWEET GLINK: OPEN_ACK lcid=2
+exec xpcproxy
