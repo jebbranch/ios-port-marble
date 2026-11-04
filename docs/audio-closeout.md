@@ -2978,3 +2978,38 @@ L 就把 **b1 的 cmdline 原样搬过来**（含 `sweetreboot=1`，自动重启
 
 开机次数：20 里已用 11，本次第 12。**这轮不许得到的结论**：sel=4 的语义仍未复原
 （B2 还缺原料），L2 只判"它跟 flag 还是跟补丁版本"。
+
+
+## L 判决（`logs/ring-l-b1config.txt`，2026-11-04，第 12 次开机，零补丁，自动重启轮）
+
+| 判据 | 读数 | 结论 |
+|---|---|---|
+| **L0** | 13 条 flag 逐条在打包镜像里命中，569/590 字节，`sweetbufs=30`、`sweets1va=0x1FFE8000` 都完整 | ✔ |
+| **L1** | `gate flag=1`；`IOAudio2DeviceUserClient open by pid 28` = **4** | 探针 + 4 台设备到位 ✔ |
+| **L2** | `AppleAOPAudioUserClient sel=4` = **5**（输入 **0,0,1,1,2**）、`sel=0` = 1、`aop sel=4 ran in=1 out=1` = 5 | **落在第一格：sel=4 跟着音频 flag 走**，与追踪/探针无关 ⇒ K 上"没 sel=4"由 flag 解释；B1 的形状在 0249 kernel 上原样复现，**没有补丁漂移** |
+| **L3** | `graph_start rsp op=0x1001002 status=0`、`data_buffer: dst=0x40bd done status=0`×40、`pcm tone start` | 内核侧数据面在 b1 配置下仍绿 |
+| **L3 副作用（我删 flag 删出来的，不是新发现）** | `SWEET MARK: ampread pre-stream … r=-2 val=0xa5a5` 八条全 NACK | 因为本轮**没带 `sweetnobb=1`**，bit-bang 又跑了 ⇒ 放大器再次不应答。这等于**反向复现了 0241 的因果**（带上它时 `r=0 val=0x2032`），但**本轮 PA 侧没有任何关于图的证据** |
+
+### 顺着 sel=4 读到的东西（离线读 0244，没开机）
+`sel=4` 在 0244 抄来的 AOP 方法表里是 **`method_GetControlValue`**
+（宽度 `{sin=1, sout=1}`，与实测 `in=1 out=1` 完全吻合；输入 0/1/2 就是三个 control id）。
+而 `sweet_aop_method()` 里写的是：
+
+```c
+for (i = 0; i < arguments->scalarOutputCount ...; i++) {
+        arguments->scalarOutput[i] = 0;      /* 每个 control 都回答 0 */
+}
+return kIOReturnSuccess;
+```
+
+⇒ **"控制值全 0"是我们自己给的答**，而且形状与 B1/ep 系列一致：mediaserverd 问了 5 次，
+我们每次都回 0，然后它就不往下走了（`IOAudio2DeviceUserClient` 全程**没有任何 sel=**，
+只有 open/map/notify）。
+
+**这跟已经修过一次的那个坑同形**：0210 时代 haptics 的 `GetNumberOfSupportedAssets`
+回 0 ⇒ ButtonResolver 直接把服务关掉；后来回 18 才拿到 `open → map → sel=1`。
+
+### M 轮（0250，一行为主）
+加 `sweetaopval=<n>`（**默认 0 = 现在的行为**），把 `GetControlValue` 的输出改成回答 n；
+本轮带 `sweetaopval=1`（cmdline 582/590）。判据是**唯一问题**：
+`IOAudio2DeviceUserClient sel=` 从 0 变成 ≥1 吗？
