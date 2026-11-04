@@ -3303,3 +3303,46 @@ TLV 记录 `{iid, param_id, size} + align8(size)`，记录内容取我们已经*
 - 我们那 18,504 究竟是 custom-config 路径还是 ACDB 直传路径（`1b0dc/1a8e8` 那两条把 SHM 指针直接交给
   `acdb_ioctl`、**没有** 16 字节头）。推断依据是 dst=1 + opcode + 16 对齐 + 首字 0，**不是证明**。
 - 记录内部（`{iid,param_id,size}`）在 custom-config 里到底是 12 B 头还是 16 B 头。
+
+
+## ② 攻坚（续 6）：GPT 核对官方仓库后，**撤回我自己的"正文首字为 0"**，并把三方说法对齐
+
+来源：`AudioReach/audioreach-graphservices`（官方公开实现）。我抓到的原始 kprobe 包：
+
+```
+apm-boot2.txt:437  gprsend p5=0x01001006 p6=2048(0x800) p7=0 p8=0xB0E71628 p9=672  p10..p95=0
+```
+
+### 撤回
+- ~~"4 个 `dst=1` 的 APM 级 SET_CFG 里，18,504 那条正文首字为 0"~~ ⇒ **错，而且是不可能的读数**。
+  这是一条 **OOB 包**：正文在共享内存里，包里只有 `apm_cmd_header_t`，`p10` 往后是**包头后的填充**，
+  96 个字的 kprobe 窗口本来就取不到正文。**我们从没观测过那 18 KB 的第一个字。**
+  （教训归到"仪器不能产生这个数据、就不能这么写"：我把填充当成了内容。）
+
+### 对齐后的官方/厂商一致结论
+| 事项 | 官方实现 | 我这边厂商二进制的对应证据 | 判定 |
+|---|---|---|---|
+| 记录头 | `apm_module_param_data_t{module_instance_id, param_id, param_size, error_code}`，**16 B**，记录间 `GSL_ALIGN_8BYTE` | 子智能体读成 `{id_flag,rsvd,data_len,rsvd}`"外层头" | **子智能体误读**：`ldr w8,[x22,#8]`+`align8`+`add #0x10` 与 `payload_size` 比较，是官方的**单记录判定** `align8(param_size)+16==payload_size ⇒ dst=该记录 miid，否则 dst=APM`；`ldr w4,[x22]` / `mov w4,#1` 就是选 `dst_port`（1=`APM_MODULE_INSTANCE_ID`） |
+| OOB 包里的 16 字节 | `apm_cmd_header_t{payload_address_lsw, msw, mem_map_handle, payload_size}` | 0x187f4/0x18800/0x187e8/0x187fc 四字存储 | **同一个结构**，抓包 `p6..p9` 与之逐字段吻合 ✔ |
+| 阈值 | `payload_size <= 256` 走 inband，`>256` 走 OOB，比较的是**调用者正文长度本身** | `0x18188 cmp w21,#0x100 / b.hi` | 一致 ✔（抓包里 `payload_size=672` 走 OOB ✔） |
+| 正文在映射区的偏移 | 未规定 | `p6 = 0x800`（**不是 0**） | 我们发的时候必须按区域偏移处理，别假定 offset 0 |
+| `property_flag` | 官方按池推导 | `1 << (mem_pool_id-1)`（0x186fc→0x18710） | 一致 ⇒ `sweetshmflag=4` 不是"offset 模式"（已改 START-HERE） |
+
+### 对 0252 的直接影响（比原计划更明确）
+原计划按"外层 16 B custom-config 头 + 12 B TLV 记录"发。现在应改成官方形式：
+
+```
+payload = N 条记录，每条
+  +0x00 u32 module_instance_id      （我们图里的真实 MIID：0x40bd / 0x428f / 0x42d3）
+  +0x04 u32 param_id               （0x0800100C / 0x08001017 / 0x0800101B / 0x10013D2A）
+  +0x08 u32 param_size
+  +0x0C u32 error_code = 0
+  +0x10 data[param_size]，下一条从 align8(param_size) 之后开始
+payload_size = Σ(16 + align8(param_size))
+> 256  ⇒ SHM_MAP(池 3, property_flag=4, 区大小=align4K(payload_size)) + SET_CFG{偏移,handle,size} + SHM_UNMAP
+≤ 256  ⇒ 直接 inband 内联（同一批记录，正文在包里）
+```
+
+**这仍然是"未观测"**：18 KB 的**内容**（哪些 MIID × 哪些 param）我们一次都没拿到过；
+现在拿到的只是**容器的规则**。所以 0252 是"用正确容器发我们已知的那几条记录"，
+测的是 APM 对**容器/路由**的反应，不是复刻那 18 KB。
