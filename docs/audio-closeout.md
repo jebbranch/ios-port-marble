@@ -3061,3 +3061,24 @@ K 轮实测：mediaserverd 在成功 open 四台设备之后，做了 **287 次*
 0049 只 hook 了匹配/通知/路径/open 四类入口。
 0251 要在"用户态取 IORegistry 属性"的内核入口上，**只对 DT 平面里那个 product 节点**打印
 `属性名 + 命中/落空 + 调用者 comm/pid`，其它一律不打，噪声有界（本轮实测 287 次/开机）。
+
+
+## N 判据（0251：`/product` 属性读取仪器；开机前写死）
+
+配置 = L 的 cmdline **逐条照抄、不加不减**（569/590，`sweetaopval` 退回默认 0，因为 M 已否证）。
+0251 只加一个 `sweetaudioprobe` 门控的打印，挂在 `IORegistryEntry::getProperty(const OSSymbol *)`
+（wrap2/wrap4 的 `copyProperty`/`getProperty` 全部经过它）。范围：只有名字等于 `product`
+的条目会打印；每个调用者最多 60 行、最多 8 个调用者；带重入保护（IOLog 自己也能走到这里）。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| **N0** | kernel 与产物里都有 `SWEET MARK: dtprop `；cmdline 与 L 完全一致 | 成立 | 补丁进了镜像，且本轮除了它没有第二个变量 |
+| **N1** | `SWEET MARK: dtprop` 总行数 > 0，**且**除 mediaserverd 之外至少还有一个别的调用者 | 成立 | 仪器活着（别的调用者就是阳性对照——这次不再把对照押在单一进程上） |
+| | | 只有 0 行 | 仪器坏（挂点没被走到），整轮非证据 |
+| **N2** | `dtprop mediaserverd <key> -> hit\|miss` 的**键名集合**与命中情况 | 有 **miss** | 那是一个**具名的缺失 DT 键**。我们自己的 `out/marble.adt` 就是产物 ⇒ 这是可以直接补的东西，也是 NVRAM 之后第一个具名缺口 |
+| | | 全是 hit，且键在重复 | mediaserverd 在**等一个值变化**，不是在缺数据 ⇒ 下一枪问"谁会改这个属性"（很可能是它自己等 ADSP/HAL 回报，或等 notify） |
+| | | mediaserverd 0 行而别的调用者有行 | 它读 `/product` 走的是另一条 API（`IORegistryEntryCreateCFProperties` / 读父节点 / 直接拿 property table）⇒ 挂点不够，需要换层，但**这不是"它没读"** |
+| **N3** | 某个调用者正好 60 行 = **饱和**，不是总数 | 记录 | 不许把 60 读成"它只读了 60 次" |
+| **N4** | 回归：`gate flag=1`、`open by pid 28`=4、`AppleAOPAudioUserClient sel=4`=5、`crashed: mediaserverd`=0、`graph_start rsp … status=0` | 成立 | 与 L/M 同形，本轮唯一变化就是多了打印 |
+
+开机次数：预算已提到 120（2026-11-04 你给的），这是第 14 次。

@@ -201,7 +201,8 @@ jobs:
                    "SWEET HAPID: bhap open self=" \
                    "SWEET HAPID: uc=" \
                    "SWEET HAP: fault after clear=" \
-                   "SWEET MARK: aopval="; do
+                   "SWEET MARK: aopval=" \
+                   "SWEET MARK: dtprop "; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"
               exit 1

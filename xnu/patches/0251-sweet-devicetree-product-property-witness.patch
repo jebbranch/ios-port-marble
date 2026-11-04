@@ -1,0 +1,130 @@
+diff --git a/iokit/Kernel/IORegistryEntry.cpp b/iokit/Kernel/IORegistryEntry.cpp
+index 7f4626f..558d21a 100644
+--- a/iokit/Kernel/IORegistryEntry.cpp
++++ b/iokit/Kernel/IORegistryEntry.cpp
+@@ -40,6 +40,8 @@
+ #include <machine/atomic.h>
+ 
+ #include "IOKitKernelInternal.h"
++#include <pexpert/pexpert.h>
++#include <sys/proc.h>
+ 
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+ 
+@@ -728,6 +730,107 @@ IORegistryEntry::propertyHasValue(const char * aKey,
+ }
+ 
+ 
++/*
++ * DeviceTree property witness, enabled by sweetaudioprobe=1.
++ *
++ * Why this function: the wrap2 / wrap4 copyProperty() and getProperty() wrappers
++ * above all call through here, so every name-based property lookup - including
++ * the ones a user client asks for through IORegistryEntryFromPath() plus a
++ * property read - passes this single point.
++ *
++ * What it is for: after opening four audio user clients, mediaserverd resolves
++ * "IODeviceTree:/product" several hundred times per boot, every time
++ * successfully, and then makes no call that the IOKit query tracer can see.
++ * Which property it then reads, and whether that read hits, is a layer below
++ * the tracer's hooks, so it is invisible in every ring so far.
++ *
++ * Bounds, because this is one of the hottest paths in IOKit: one bool test when
++ * the flag is absent; otherwise only entries named "product" print, at most
++ * SWEET_DTPROP_PER_NAME lines per caller and SWEET_DTPROP_NAMES callers.
++ */
++#define SWEET_DTPROP_NAMES     8
++#define SWEET_DTPROP_PER_NAME  60
++
++struct sweet_dtprop_slot {
++	char name[32];
++	uint32_t count;
++};
++
++static int sweet_dtprop_parsed;
++static int sweet_dtprop_on;
++static struct sweet_dtprop_slot sweet_dtprop_slots[SWEET_DTPROP_NAMES];
++
++static void
++sweet_dtprop_witness(const IORegistryEntry *entry, const OSSymbol *aKey,
++    OSObject *obj)
++{
++	struct sweet_dtprop_slot *slot;
++	const char *nm;
++	char comm[32];
++	size_t n;
++	static int inside;
++
++	/* This path is reachable from IOLog itself, so a print here must not be able
++	 * to re-enter and print again. */
++	if (inside) {
++		return;
++	}
++	if (!sweet_dtprop_parsed) {
++		int on = 0;
++		(void)PE_parse_boot_argn("sweetaudioprobe", &on, sizeof(on));
++		sweet_dtprop_on = on;
++		sweet_dtprop_parsed = 1;
++	}
++	if (!sweet_dtprop_on) {
++		return;
++	}
++	nm = entry->getName();
++	if (NULL == nm || strcmp(nm, "product") != 0) {
++		return;
++	}
++
++	inside = 1;
++	comm[0] = '\0';
++	proc_selfname(comm, sizeof(comm));
++	n = strlen(comm);
++	if (0 == n) {
++		strlcpy(comm, "<none>", sizeof(comm));
++		n = strlen(comm);
++	}
++
++	slot = NULL;
++	for (i = 0; i < SWEET_DTPROP_NAMES; i++) {
++		if (0 == sweet_dtprop_slots[i].count && NULL == slot) {
++			slot = &sweet_dtprop_slots[i];
++		}
++		if (strncmp(sweet_dtprop_slots[i].name, comm, sizeof(sweet_dtprop_slots[i].name)) == 0) {
++			slot = &sweet_dtprop_slots[i];
++			break;
++		}
++	}
++	if (NULL == slot) {
++		inside = 0;
++		return;
++	}
++	if (0 == slot->count) {
++		strlcpy(slot->name, comm, sizeof(slot->name));
++	}
++	if (slot->count >= SWEET_DTPROP_PER_NAME) {
++		inside = 0;
++		return;
++	}
++	slot->count++;
++
++	if (NULL != obj) {
++		IOLog("SWEET MARK: dtprop %s %s -> hit %s\n", comm,
++		    aKey->getCStringNoCopy(), obj->getMetaClass()->getClassName());
++	} else {
++		IOLog("SWEET MARK: dtprop %s %s -> miss\n", comm,
++		    aKey->getCStringNoCopy());
++	}
++	inside = 0;
++}
++
+ OSObject *
+ IORegistryEntry::getProperty( const OSSymbol * aKey) const
+ {
+@@ -737,6 +840,8 @@ IORegistryEntry::getProperty( const OSSymbol * aKey) const
+ 	obj = getPropertyTable()->getObject( aKey );
+ 	PUNLOCK;
+ 
++	sweet_dtprop_witness(this, aKey, obj);
++
+ 	return obj;
+ }
+ 
