@@ -3013,3 +3013,23 @@ return kIOReturnSuccess;
 加 `sweetaopval=<n>`（**默认 0 = 现在的行为**），把 `GetControlValue` 的输出改成回答 n；
 本轮带 `sweetaopval=1`（cmdline 582/590）。判据是**唯一问题**：
 `IOAudio2DeviceUserClient sel=` 从 0 变成 ≥1 吗？
+
+
+## M 判据（0250：把 `GetControlValue` 的回答变成 `sweetaopval`，本轮带 `=1`；开机前写死）
+
+唯一变量 = 我们对 selector 4 的回答值（0 → 1）。配置沿用 L 的 cmdline 原样
++ `sweetaopval=1`（582/590 字节），仍旧 `sweetreboot=1` 自动重启轮，不开追踪（字节不够，
+而且 L 已经证明追踪不影响 sel 形状）。**没有带 `sweetnobb=1`**，所以 PA 读回这一轮
+仍然是 NACK 形状——那部分不是本轮证据。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| **M0** | 下载的 kernel 里有 `SWEET MARK: aopval=`；打包镜像里 `sweetaopval=1` 完整 | 成立 | 补丁进了镜像、参数进了产物 |
+| **M1** | ring 里有 `SWEET MARK: aopval=1 parsed from boot-args` | 有 | flag 真的被 kernel 解析到（这条打印挂在**第一次** AOP 方法调用上，所以它同时要求"至少有一次 aop 调用"——M3 保证这一点） |
+| **M2** | **`IOAudio2DeviceUserClient sel=` 的行数**（L 的基线 = **0**） | **≥1** | 回答非零**改变了 mediaserverd 的行为** ⇒ "控制值全 0"就是那道 iOS 侧的门，接下来按 control id 逐个求真值（haptics 的 asset count 是同形先例） |
+| | | **仍为 0** | 这条假设在"`=1` 这一档"上关闭。**边界**：不能推广成"回答值无所谓"——只证明了 1 这一档没让它前进 |
+| **M3** | 控制不变量：`AppleAOPAudioUserClient sel=4` = **5**、`sel=0` = **1**（与 L 相同） | 相同 | 调用形状没变，M2 才是在"同样的对话"上比回答；**若调用次数也变了**，那本身就是新信息，M2 要和它一起读，不能单独引用 |
+| **M4** | 音频基线仍绿：`graph_start rsp … status=0`、`data_buffer … done status=0` | 成立 | 内核侧数据面没被这个改动破坏 |
+| **M5** | `crashed: mediaserverd` = 0 | 成立 | 本轮属于"能 open 设备"那个总体（L 那 12 个 ring），不是崩环那 24 个；否则 M2 不可读 |
+
+开机次数：20 里已用 12，本次第 13。

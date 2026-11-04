@@ -1,0 +1,33 @@
+diff --git a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
+index 1c74713..0b41a3d 100644
+--- a/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
++++ b/iokit/Kernel/arm/hid/SweetAudioProbe.cpp
+@@ -347,12 +347,27 @@ sweet_aop_method(OSObject *target, void *reference,
+ {
+ 	uint32_t sel = (uint32_t) (uintptr_t) reference;
+ 	uint32_t i;
++	static uint32_t gAopVal = 0xffffffffu;
++	uint32_t out = 0;
+ 
+ 	if (arguments == NULL) {
+ 		return kIOReturnBadArgument;
+ 	}
++	if (gAopVal == 0xffffffffu) {
++		uint32_t v = 0;
++		(void)PE_parse_boot_argn("sweetaopval", &v, sizeof(v));
++		gAopVal = v;
++		IOLog("SWEET MARK: aopval=%u parsed from boot-args\n", v);
++	}
++	/*
++	 * Selector 4 is method_GetControlValue - the only entry in this table with
++	 * both a scalar input and a scalar output, so it is the only answer the
++	 * client can read back.  sweetaopval is that answer; with the flag absent
++	 * it stays 0, which is what every ring up to L has been recording.
++	 */
++	out = (sel == 4) ? gAopVal : 0;
+ 	for (i = 0; i < arguments->scalarOutputCount && arguments->scalarOutput != NULL; i++) {
+-		arguments->scalarOutput[i] = 0;
++		arguments->scalarOutput[i] = out;
+ 	}
+ 	IOLog("SWEET AUDPROBE: aop sel=%u ran in=%u out=%u sin=%#llx\n", sel,
+ 	    (unsigned) arguments->scalarInputCount,
