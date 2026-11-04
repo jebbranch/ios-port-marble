@@ -3389,3 +3389,20 @@ walk consumed 80 of 80 -> EXACT
 
 两者的机制路径互不相交（一个是 IOKit 属性读，一个是 GPR/APM 发包），所以不互为混杂；
 但**样本数是 1**，两个读数来自同一台同一次 boot，写结论时要这么标注。
+
+### C1 加强（0252 v2）
+CI 第一次构建在 clone 上游依赖（bearssl.org 返回 502）时炸了，**与 0252 代码无关**；
+重推时顺手把 C1 变成设备上自证：`g_apm_set_cfg_batch` 现在**按 APM 的方式走一遍链表**，
+每条打印 `SWEET MARK: cccfg v1 rec N iid=… param=… size=…`，并且**走不到末尾或条数对不上就返回 -1、不发包**。
+宿主机用真实函数体验证过三条路径：
+```
+caller built len=80
+SWEET MARK: cccfg v1 dst=1 inband recs=2 len=80
+SWEET MARK: cccfg v1 rec 0 iid=0x428f param=0x08001017 size=12
+SWEET MARK: cccfg v1 rec 1 iid=0x428f param=0x0800101b size=28
+  -> g_apm_cmd dst=0x1 len=80 opcode=0x1001006 tag=cc_batch     rc=0
+len=83  -> walk 80 != len 83                                     rc=-1   (不发包)
+size=0  -> bad size at 0                                         rc=-1   (不发包)
+```
+所以 C1 改为：ring 里必须出现 `dst=1 inband recs=2 len=80` **和两条 rec 行**；
+若出现 `walk … != …` 或 `bad size`，说明是**我们自己的容器不自洽**，那一次不算对 APM 的测试。

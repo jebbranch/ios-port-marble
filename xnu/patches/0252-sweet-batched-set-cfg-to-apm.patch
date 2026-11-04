@@ -1,8 +1,8 @@
 diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
-index 4fa4d89..4af5492 100644
+index 4fa4d89..668d55b 100644
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -5448,6 +5448,31 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+@@ -5448,6 +5448,57 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
  	return g_apm_cmd(src_port, mod_iid, pl, plen, APM_CMD_SET_CFG, what);
  }
  
@@ -28,13 +28,39 @@ index 4fa4d89..4af5492 100644
 +	}
 +	printf("SWEET MARK: cccfg v1 dst=1 inband recs=%u len=%u\n",
 +	    nrec, blen);
++	{
++		/* Walk the list the way the APM does, so the ring itself carries
++		 * the container shape instead of relying on a host-side calc. */
++		uint32_t off = 0;
++		uint32_t i = 0;
++
++		while (off + 16 <= blen) {
++			uint32_t psz = g_le32(body + off + 8);
++			uint32_t step = 16 + ((psz + 7u) & ~7u);
++
++			if (step <= 16) {
++				printf("SWEET MARK: cccfg v1 bad size at %u\n",
++				    off);
++				return (-1);
++			}
++			printf("SWEET MARK: cccfg v1 rec %u iid=%#x param=%#x size=%u\n",
++			    i, g_le32(body + off), g_le32(body + off + 4), psz);
++			off += step;
++			i++;
++		}
++		if (off != blen || i != nrec) {
++			printf("SWEET MARK: cccfg v1 walk %u != len %u (recs %u/%u)\n",
++			    off, blen, i, nrec);
++			return (-1);
++		}
++	}
 +	return (g_apm_cmd(src_port, 1, body, blen, APM_CMD_SET_CFG, what));
 +}
 +
  /* ---- PCM feed: 1 kHz stereo tone ---------------------------------------
   * The vendor HAL puts PCM in the same mapped region and sends DATA_BUFFER_V2
   * (0x0400100A, no APM header, 44-byte payload) to the input module; buf_addr
-@@ -6529,6 +6554,45 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+@@ -6529,6 +6580,45 @@ g_audio_graph_cfg_vp(uint32_t src_port)
  		    tdm_cfg, 28, "vp/tdm_cfg");
  	}
  
