@@ -6,9 +6,23 @@ set -euo pipefail
 bearssl_sha=7bea48e5e850ab4cafbe68d3765cdaba13a86d6f
 bearssl_tmp=$(mktemp -d)
 trap 'rm -rf "$bearssl_tmp"' EXIT
+# Two hosts for the same repository.  www.bearssl.org has been answering 502
+# for the git endpoint while the apex host serves identical objects, so the
+# fetch falls back instead of failing the whole kernel build.  The pinned SHA
+# assertion below is unchanged: whichever host answers, we still build exactly
+# $bearssl_sha or not at all.
 git init -q "$bearssl_tmp"
-git -C "$bearssl_tmp" fetch -q --depth 1 \
-    https://www.bearssl.org/git/BearSSL "$bearssl_sha"
+bearssl_fetched=0
+for bearssl_host in https://bearssl.org/git/BearSSL \
+                    https://www.bearssl.org/git/BearSSL; do
+    if git -C "$bearssl_tmp" fetch -q --depth 1 "$bearssl_host" "$bearssl_sha"; then
+        echo "fetched BearSSL from $bearssl_host"
+        bearssl_fetched=1
+        break
+    fi
+    echo "warning: BearSSL fetch failed from $bearssl_host" >&2
+done
+[[ "$bearssl_fetched" == 1 ]] || { echo "error: no BearSSL host answered" >&2; exit 1; }
 git -C "$bearssl_tmp" checkout -q FETCH_HEAD
 [[ "$(git -C "$bearssl_tmp" rev-parse HEAD)" == "$bearssl_sha" ]]
 python3 - "$bearssl_tmp" <<'PY'
