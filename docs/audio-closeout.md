@@ -2602,3 +2602,32 @@ v-nopwr（AP=01 + 不发那条自创参数）。
 
 本地门：不换内核（0246 起就有 `vg==1` 分支，当前 `out/kernel.adsp` 是 0248，含该分支——已在产物里 grep `graph_open/vendor4`）；
 `sweetvgraph=1` 与 `sweettdmpwr=2` 同为 13 字符 ⇒ cmdline 仍 589；产物里核 `sweetvgraph=1`、无 `sweettdmpwr`、无 `ukee2960` 参数项。
+
+
+## E-OLD BODY 在 AP=01 下的判决（`logs/ring-u-oldbody.txt`）：**U2 —— 两份正文同码 `0x2`，拒绝与正文无关**
+
+```
+U0 全门通过：cmdline sweetvgraph=1 sweets1ap=1 | leaf=0x741 x1 |
+             APM graph_open/vendor4 … len=2712 x1 | graph_open/ukee2960 不出现
+读数：graph_open/vendor4 rsp op=0x1001000 status=0x2   （beat=0 ⇒ 应答很快）
+其余与基准一致：graph_start x1、pcm tone done x1、ampread pre/post 8/8、data_buffer send 501
+```
+⇒ 旧正文（10 月堆拷贝，2712/`0xb0000081`）与新正文（今天 ACDB 拼的 2944/`0xb0000025`）
+在**修好权限之后**得到**同一个 `0x2`**。所以"该发哪一份正文"这个问题到此关闭：
+**APM 不是在拒正文内容**。
+
+### 顺带记一条我查过但**不成立**的线索（防止以后有人再拿它当真）
+想免掉能力墙，就试过"18504 会不会是 ACDB 里的一段"：`MTP_ukee_acdb_cal.acdb` 里确实有 53 处
+等于 18504 的 u32，但上下文是 **连续 ID 序列** `0x4748 / 0x4848 / 0x4849 / 0x484a`
+（=18248/18504/18505/18506）配 module/param id（`0x0700101a`、`0x08001026`…）——**是 ID，不是长度**。
+⇒ 与当年"2712 = aw882xx_acf.bin(2672)+40"同类的巧合。**18504 正文仍不可得。**
+
+### ② 的最终状态（本轮结论，别再重走）
+1. **能读到了**：`sweets1ap=1`（AP=01）把"SHM 正文读不到"修掉，两类正文都拿到快速应答。
+2. **不是正文**：同码 `0x2`。
+3. **剩下的唯一具体缺口**：厂商开设备图后紧跟的那次
+   `SHM_MAP(第二块) → SET_CFG size=18504 → SHM_UNMAP`，其**字节在这台机上不可获取**
+   （tracefs/pstore/debugfs-mount/sysfs 全部 EPERM；`/vendor /odm /apex` 无该尺寸文件；ACDB 里的 0x4848 是 ID）。
+4. 因此 ② 需要的是**能力**，不是又一个假设：(a) 一台能让 tracefs 工作的环境；
+   (b) 或你允许在这台机上加载内核模块（KSU 模块可改 `su` 域的 SELinux 权限，但那是跑第三方内核代码）。
+   两者都没有 ⇒ 扬声器侧我**不再花机时**。
