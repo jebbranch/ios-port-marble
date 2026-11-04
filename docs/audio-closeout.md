@@ -3033,3 +3033,31 @@ return kIOReturnSuccess;
 | **M5** | `crashed: mediaserverd` = 0 | 成立 | 本轮属于"能 open 设备"那个总体（L 那 12 个 ring），不是崩环那 24 个；否则 M2 不可读 |
 
 开机次数：20 里已用 12，本次第 13。
+
+
+## M 判决（`logs/ring-m-aopval.txt`，2026-11-04，第 13 次开机）
+
+配置 = L 的 cmdline 逐条照抄 + 只多一个 `sweetaopval=1`（583/590 字节，14 条 flag 逐个在
+打包镜像里完整命中）。**唯一变量**就是我们回给 `method_GetControlValue` 的那个数。
+
+| 判据 | 读数 | 结论 |
+|---|---|---|
+| **M0** | kernel 里 `SWEET MARK: aopval=`（且 0249 的两个 marker 也还在，是累积）；产物里 14 条 flag 完整 | ✔ 0250 真进了镜像 |
+| **M1** | `SWEET MARK: aopval=1 parsed from boot-args` 1 行 | 参数进了 kernel 并被解析 ✔ |
+| **M2** | `IOAudio2DeviceUserClient sel=` = **0** | **落在第二格：改成回 1 没有让 mediaserverd 前进一格。** 这条假设在"=1 这一档"上关闭 |
+| **M3** | `AppleAOPAudioUserClient sel=4` = **5**、`sel=0` = **1**、`aop sel=4 ran` = 5、`open by pid 28` = 4 | 与 L **逐项相同** ⇒ 不是"它没问"，是"我们答了 1 它也不动"。M2 的读法成立 |
+| **M4** | `graph_start rsp … status=0`、`pcm tone start`、`done status=0` ×4 | 内核侧基线仍绿 |
+| **M5** | `crashed: mediaserverd` = **0** | 本轮与 L 同属"能开设备"那个总体，不是崩环那 24 个 ⇒ M2 可读 |
+| 附 | `gate flag=1 exp=0xf` | 探针开关同 L |
+
+**边界（不许推广）**：M2 只否证了"`=1` 这一档"。要说"回答值无所谓"还差其它档
+（例如按 control id 给不同值、或给全 1 之外的位图）。但在花钱的顺序上，
+**"它压根没调 IOAudio2 方法"比"我回的值对不对"更上游**——所以下一枪去量前者。
+
+### N 轮（0251，仪器轮）：mediaserverd 在 `/product` 上到底读什么
+K 轮实测：mediaserverd 在成功 open 四台设备之后，做了 **287 次**
+`IORegistryEntryFromPath("IODeviceTree:/product")` 并且**每次都成功**，然后在 ring 第 1395 行之后
+再无任何 `IOK mediaserverd` 动作。**"它反复读 /product 的哪个属性"** 是追踪看不到的那一层——
+0049 只 hook 了匹配/通知/路径/open 四类入口。
+0251 要在"用户态取 IORegistry 属性"的内核入口上，**只对 DT 平面里那个 product 节点**打印
+`属性名 + 命中/落空 + 调用者 comm/pid`，其它一律不打，噪声有界（本轮实测 287 次/开机）。
