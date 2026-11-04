@@ -2841,3 +2841,49 @@ cmdline 420 字节（预算 590）。
 开机次数：20 里已用 9，本次第 10。
 **这轮不许得到的结论**：`IOK` 只看匹配/通知/registry 路径/open 四类入口；
 mediaserverd 拿到服务之后为什么不发流，它答不了——J2 只能分"缺不缺具名服务"。
+
+
+## J 判决（`logs/ring-j-msvd.txt`，2026-11-04，第 10 次开机，零补丁）
+
+| 判据 | 读数 | 结论 |
+|---|---|---|
+| **J0** | 产物含 `sweetiolog=mediaserverd,backboardd` | ✔ |
+| **J1a** | `IOK backboardd:` = **209** 行 | 同轮对照活着 ⇒ 仪器可用（上一轮拿 launchd 当对照是选错了人） |
+| **J1b** | `IOK mediaserverd:` = **309** 行 | 可以回答 J2 |
+| **J2** | mediaserverd 落空的查询只有三个：**`AppleEFINVRAM -> none`**、**`IODTNVRAM -> none`**、**`IONameMatch=bluetooth -> none`**；命中的是 `IOPlatformExpertDevice`×3、`path IODeviceTree:/product/audio -> IOService`×3 | 音频侧**不是**缺一个音频类：它要 NVRAM 和 bluetooth，两者我们都没有 |
+| **J3** | 按名字分开数；`=end NNN -> 结果` 残段单独计（backboardd 104 行未归属、mediaserverd 20 行） | 数法成立 |
+| **J4** | `registered` 8 行；`play` = `after clear` = `during play` = **30** | 没动行为 ✔ |
+
+### 三条要单独写下来的读数
+1. **mediaserverd 卡在 `/product` 上**：`path IODeviceTree:/product -> IOPlatformDevice` **276 行**
+   （ring 第 886–1474 行，两个进程都算上），每次**都成功**。这是"成功但反复查"，
+   不是失败；**本轮不能据此说它在循环里卡死**——要看它后面还有没有别的动作，
+   而音频侧的动作（`IOAudio2DeviceUserClient open/map/uid=`）这轮**根本没打**（见第 3 条）。
+2. **NVRAM 这条缺口第一次被直接测到**（以前是 §12.4 从真机对比推出来的）。
+   但顺序上它**不是** mediaserverd 的停止点：`AppleEFINVRAM/IODTNVRAM -> none` 在 ring 第
+   1012–1015 行，之后它还做了 bluetooth(1020)、DriverKit `IOUserAudioDriverUserClient`
+   的 FirstMatch/Terminate(1172–1177)、`IOPlatformExpertDevice`×3(1179–1184)、
+   USB `bInterfaceSubClass=0x2a` / `USBDeviceFunction=Valeria`(1185–1195)、`/product/audio`×3(1196)。
+   ⇒ "NVRAM 拿不到所以它不往下走"**没有证据**；它继续走了 180 多行。
+3. **对照差点错位（差点写成结论的那个坑）**：本轮 `SWEET AUDPROBE` 只有 7 行、
+   `IOAudio2DeviceUserClient` **0 行**，而第 82 行自己写着 **`gate flag=0 exp=0`**。
+   0244 的注释写明 `gate flag=0` = `sweetaudioprobe=1` 没进 kernel（本轮 cmdline 里确实没有它）。
+   ⇒ **不许**把"这轮没有音频 open 行"读成"mediaserverd 这轮没 open 我们的设备"。
+
+### ep6 前置（文档里欠的那次源码阅读）——离线做完，没开机
+`docs/audio-hal-bridge.md:549` 要求先读 `IONVRAM.cpp` 再决定怎么发 NVRAM。读的结果：
+- `IODTNVRAM::start`（`iokit/Kernel/IONVRAM.cpp:1224`）里 `_controllerLock` 在 `init()`
+  （`:1207 IOLockAlloc`）就会拿到 ⇒ 走完整路径：diags → notifier → `initImageFormat()`。
+- `initImageFormat()`（`:1341`）从 `/chosen` 取 `nvram-bank-size` / `nvram-proxy-data`，
+  两个键我们都没有 ⇒ `image=nullptr, size=0` 直接落到 `skip:`，
+  然后仍然构造 handler；**两个 handler 里谁返回 null 就 `panic("…creation failed")`**。
+  ⇒ **发一条 stock `IODTNVRAM` 的根 personality 有开机即 panic 的风险**，ep6 不能这么干。
+- 好消息：`IOProviderClass` 的比较走 `matchInternal`(`iokit/Kernel/IOService.cpp:7517`) 里的
+  **`metaCast(str)`**，也就是**沿类链**判断 ⇒ **我们自己子类化 `IODTNVRAM`、只重写 `start()`
+  跳过 `initImageFormat()`** 就能满足 mediaserverd 的 `IOProviderClass=IODTNVRAM` 查询，
+  不碰真实后备存储、也不动 XNU 原文件。
+
+### 下一枪（K 轮，仍旧零补丁）
+把音频探针和追踪对齐：`SWEETIOLOG=mediaserverd,backboardd sweetaudioprobe=1`（439 字节 < 590）。
+判据是**同一时间里两路交叉**：`IOK mediaserverd` 的查询序列 vs `IOAudio2DeviceUserClient`
+的 `open/map/uid=`，看它到底停在哪一步——这是 J 轮第 3 条那个坑的唯一修法。
