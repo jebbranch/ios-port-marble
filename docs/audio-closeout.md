@@ -2726,3 +2726,57 @@ T0 全绿（`printf` 单写 ⇒ 行数=次数）：
 "iOS 不向我们的壳提交第二个 selector"，那是 0244 壳（IOAudio2/Actuator）那条匹配问题，
 不再碰 HAP520 输出侧。H1/H2 若都不可解读 ⇒ 记 1 次开机但**写明非证据**，
 B4 的仪器线冻结，回到 ②（内核侧与 iOS 侧都常驻、出声仍未证）。
+
+
+## H 判决（`logs/ring-h-hapid.txt`，2026-11-04）
+
+| 判据 | 读数 | 结论 |
+|---|---|---|
+| **H0** | 4 个 marker 同时出现在下载的 kernel **和**打包镜像里（`SWEET HAPID: bhap start self=` / `uc=` / `fault after clear=`，`bhap open self=` 也在） | 0249 真进了镜像 |
+| **H1** | 8 行 = 4 事件，`self=` 是 **4 个不同指针**（`…593600 / …591800 / …590720 / …592e80`），`provider=` **4 次全等于同一个** `0xfffffe29a05913a0`（`pname=IOResources`） | **确实是 4 个对象**，都由同一个 IOResources 节点放出。`provider` 不等于任何一个 `self` ⇒ **不是"实例自己匹配自己"**，而是**同一个 provider 被同一条 personality 匹配了 4 次** |
+| **H2** | `uc=0xfffffe2007580020 prov=0xfffffe29a0592e80` | **命中** H1 的第 4 个 `self` ⇒ backboardd(pid 57) attach 的是**最后注册的那个**，前 3 个是孤儿 |
+| **H3** | `SWEET HAPID: bhap open self=` **0 行**（预先声明为非判据） | UC 连接**不走** driver 侧 `open()`；这条只用来把"以后别把它当门"写死 |
+| **H4** | `fault after clear=` 44 行 == `play 0xf04c<-` 44 行（仪器自证成立）；44 次**全是 0**，而 `fault during play=` 44 次**全是 `0x2`** | `0xf066<-0x07` **清得掉**，`0x2` 是**本次脉冲自己产生的**（不是历史闩锁）。用户 44 次按都有震感、震感一致 ⇒ `0x2` 与"没动"无关。**位的语义仍未查**，不许写成"过流" |
+| **H5** | `registered` 仍 23 行、`sel=1` 仍 1 事件、`auto_res` 仍 `0x26/0x57` | 0249 零行为改动成立 |
+
+### 新确立的事实
+1. 4 个同名实例是**我们自己放出来的**（同一 provider 被重复匹配），不是设备树有 4 个节点。
+   机制候选是 `SweetHaptics.cpp:593` 把实例的 `IOMatchCategory` 改写成
+   `IODefaultMatchCategory`——XNU 靠这个属性做"同一 category 已有 client 就不再匹配"
+   的保护（`IOService.cpp:3887` `copyClientWithCategory` + `:4033` 赋值）。
+   **但这条还没证**：`AppleHapticsSupportCallan`（`:805`）做了同样的改写却只放出 1 个实例。
+   所以只写成候选，不当结论。
+2. iOS 侧一切照旧：`open(pid 57) → map → sel=1`，`asset count 18`（**非零**，
+   所以"返回 0 会让 ButtonResolver 关掉服务"这条不适用于本次），**没有第二个 selector**
+   （全库至今仍是 0 次）。
+3. `bhap open` 0 行 ⇒ 想按"谁 attach 了哪个实例"提问，只能像 0249 一样挂在 selector 路径上，
+   别再造 `open()` 仪器。
+
+### 下一枪（I 轮，不开新补丁）
+去重（0250 的一行）先排队，但**先跑不花 CI 的那一枪**：直接用
+`SWEETIOLOG=backboardd` 重新打包（0049 的匹配追踪已经编进每个 kernel，历史 176+ ring
+里**从来没有一行 `IOK `**，因为 base cmdline 一直是 `sweetiolog=-`）。
+它回答的是"backboardd 除了我们的壳还查过什么"——这才是"没有第二个 selector"的上游。
+
+
+## I 判据（`SWEETIOLOG=backboardd,launchd`，无新补丁，开机前写死）
+
+这一枪**不碰代码**：0049 的匹配追踪已经编进每个 kernel，base cmdline 一直写 `sweetiolog=-`
+（关闭），所以历史 176+ ring 里一行 `IOK ` 都没有。打包后 cmdline 415 字节（预算 590）。
+追的是**两个**名字，因为必须让仪器能自证：
+`launchd` 是**阳性对照**（它一定做过 IOKit 匹配），`backboardd` 是问题对象。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| **I0** | 打包镜像里能 grep 到 `sweetiolog=backboardd,launchd`，且 grep 不到 `sweetiolog=-` | 成立 | 参数真的进了产物（`mkimage.sh` 是**替换**不是追加，第一处匹配生效） |
+| **I1** | ring 里 `IOK launchd:` 行数 | > 0 | 仪器活着，且 `IOLog` 在这个阶段还能进 ring |
+| | | **= 0** | 仪器坏（console 静默或名字不匹配）⇒ 本次**记 1 次开机但写明非证据**，不据此说"launchd 没查过" |
+| **I2** | 在 I1 活的前提下看 `IOK backboardd:` | 有指向我们壳的行，且**没有**查不到东西的查询 | backboardd 对已发布的服务集**是满意的**，"没有第二个 selector" 断在它自己的状态机里，不在服务集上 |
+| | | 有 `-> 0 found` / `none` 且文本里有 haptics/audio 类名或属性名 | 这就是上游缺口：**具名的、我们没发布的那个东西**；下一枪按名字发布 |
+| | | 完全没有 `IOK backboardd:` 行 | 它在 console 静默前就查完了 / 或它用的入口不在这三个 hook 里 ⇒ 记为未答，不许写成"没查" |
+| **I3** | 行数换算：追踪走 `IOLog` ⇒ **单写**（行数=次数）；`SWEET_HAP*` 里 `SWEET_HAPTICS:` 是双写 | — | 400 行/boot 是**全局上限**，两个名字共享；若尾部被截断，按 `IOK <name>` 分开数，不许混数 |
+| **I4** | 回归：`play 0xf04c<-` == `fault after clear=` == `fault during play=` 三数相等；`registered` 仍 23 行；`sel=1` 仍 1 事件 | 成立 | 没代码改动，震动线与 H 轮同形（不等 ⇒ 参数本身动了行为，先查参数） |
+
+**这次不许得到的结论**（预先划界）：`IOK` 只记录"匹配/通知/registry 路径/open"三类调用，
+它**不能**告诉我们 backboardd 拿到服务之后为什么不再发 selector；I2 只能把"缺服务"
+和"不缺服务"分开。开机次数：20 里已用 8，本次第 9。
