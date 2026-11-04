@@ -2887,3 +2887,25 @@ mediaserverd 拿到服务之后为什么不发流，它答不了——J2 只能�
 把音频探针和追踪对齐：`SWEETIOLOG=mediaserverd,backboardd sweetaudioprobe=1`（439 字节 < 590）。
 判据是**同一时间里两路交叉**：`IOK mediaserverd` 的查询序列 vs `IOAudio2DeviceUserClient`
 的 `open/map/uid=`，看它到底停在哪一步——这是 J 轮第 3 条那个坑的唯一修法。
+
+
+## K 判据（`sweetaudioprobe=1` + 同一份追踪，零补丁，开机前写死）
+
+J 第 3 条那个坑只能这样修：**让音频探针和 IOKit 追踪在同一次开机里同时可见**。
+cmdline 438 字节（预算 590）。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| **K0** | 产物里同时有 `sweetiolog=mediaserverd,backboardd` 与 `sweetaudioprobe=1`；ring 里 `gate flag=1` | 成立 | 探针开关**这次真的进了 kernel**（0244 注释：`gate flag=0` = 参数没到） |
+| **K1** | `IOK mediaserverd:` > 0（对照同 J） | | 追踪活着 |
+| | `IOAudio2DeviceUserClient` 行数 | ≥1 | 探针活着，K2 才有意义 |
+| | =0（而 `gate flag=1`） | **mediaserverd 这次确实没 open 我们的音频设备** | 与 b1/b2 不同形 ⇒ 本身就是一个新读数，但必须先排除"进程没起来"（看 `SWEET AUDPROBE: ... start uid=` 是否照常 5 行） |
+| **K2** | 时间线交叉：第一条 `open … uid=` 的 ring 行号，和 `path IODeviceTree:/product` 的**首/末**行号比较；数它在此之前多少次、之后多少次 | 之后仍在涨 | `/product` 反复查是**正常轮询**，不是停在"读 /product"上 |
+| | | 全部集中在 open 之前、之后归零 | `/product` 查询是**初始化的一部分**，mediaserverd 走过去了 ⇒ 断点在更后面（对齐 b1/b2 的 `sel=` 形状再定） |
+| | | 一直涨且始终没有 open | mediaserverd **停在 open 之前**；下一枪问"它从 `/product` 里到底想要哪个键"（DT 侧，不是服务名侧） |
+| **K3** | 数法同 J：按 `IOK <name>` / 按 `uid=` 分开；`=end NNN -> 结果` 残段单独报数 | — | 不许把两个进程或五个 uid 混成一个数 |
+| **K4** | 回归：`registered` 8 行；`play` == `after clear` == `during play`；`sel=1` + `asset count 18` 各 1 事件 | 成立 | 只换参数没动行为 |
+
+开机次数：20 里已用 10，本次第 11。
+**这轮不许得到的结论**：追踪只覆盖匹配/通知/路径/open 四类入口；
+`/product` 轮询**为什么**存在，它答不了——K2 只分"停不停在 open 之前"。
