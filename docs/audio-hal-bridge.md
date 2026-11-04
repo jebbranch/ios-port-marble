@@ -695,3 +695,55 @@ B1 就是拿同一版内核、同一份镜像，只把"人故意连按音量键 
    `AppleHapticsSupportUserClient` 0 次 open/`newUserClient`；全库无 `StartHardware`、无会话中 close。
    ⇒ 与音频侧同形：**iOS 会开我们的壳、会配置，但一次都不提交**。
    SoundWire 马达后端单列，不进以上任何判据。
+
+
+## B4 只读盘点（两名专家 + 我复核）：**震动线大概率撞的是同一堵墙，而且比"iOS 不提交"更早**
+
+### 一、先记两次对我自己的纠正
+1. **"每 boot 2 次"是双写行数**，不是两次事件（0209 的 `SWEET_HAP_LOG = IOLog + sweet_hap_ring_log`，
+   `xnu/patches/0209-sweet-haptics-ringlog.patch:38-42`）。真实值：**open/map/`sel=1` 各 1 次/boot**（71/176 ring）。
+2. ep8 的"`uid=Actuator` 重复 map 4 次"与本表"震动壳 `map type=0`"**是两类不同对象**：
+   前者 `IOAudio2DeviceUserClient`（`SweetAudioProbe.cpp:244`，0244，**单写**），
+   后者 `AppleAOPButtonHapticsServiceUserClient`（0209，**双写**）。
+   且 ep6/ep7 同样有那 4 次，只是旧 printf 不打 `uid=` ⇒ **格式差异不是行为差异**。
+
+### 二、用户态止点（176 ring 一致，实测）
+`AppleAOPButtonHapticsServiceUserClient`：open → map → `buffer watch on` → `sel=1`（内含 asset count 18、
+64 字节头 dump **全零**）→ **再无第二个 selector**；`AppleSPUHapticsAudioUC`：open → `setProperties
+{GlobalConfig,GlobalForceFeel=1}` → 0 selector；`AppleHapticsSupportUserClient`：0 open；
+`IOAudio2DeviceUserClient`：0 selector。全库无 `StartHardware`、无会话中 close。
+⇒ 与音频侧**完全同形**：开壳、配置，**一次都不提交**。
+
+### 三、更前面的那一堵墙：**我们的直驱从来没让马达动过**（实测数字，全库）
+| 读数 | 出现次数 |
+|---|---|
+| `SWEET HAP: ... auto_res=0x26` | **391 次，且恒为 0x26 = 38** |
+| `fault during play=0x2` | **372**（另有 `0x10`×3、`0x1`×1） |
+| `final en=0` | 391 |
+
+设备树对这颗 LRA 的标定是 `qcom,lra-f0-min=0xa0(160) / max=0xb4(180) / default=0xaa(170)`
+（`logs/fdt/marble-live.dts:8724-8726`），而 `vmax-mv=0x5aa(1450)`、`lra-period-us=0x16fa(5882)`
+与我们写的 `vmax=29`、`tlra=0x498` **完全吻合**。
+⇒ 我们把 DT 给的参数都写对了、SPMI 写全部 `rc=0`、`rev2=0x2`(HAP520) 也在，
+**但每一次 play 都读到 38（标定范围 160–180 之外）并立刻 fault 0x2**。
+
+### 四、结构解释（**假设，未证**，但给出可判的下一步）
+DT 里这颗 haptics **同时**挂着两条访问路径：
+```
+qcom,hv-haptics@f000 (SPMI 寄存器面, status="ok")
+   └─ qcom,hap-swr-slave-reg  (phandle 0x631)         ← 供电/使能
+rx_swr_master (qcom,swr-mstr, master_id=2, swr-num-dev=2)   marble-live.dts:21376+
+   └─ swr_haptics@f0170220  compatible="qcom,pm8350b-swr-haptics", status="ok",
+                            swr-slave-supply=<0x631>
+```
+⇒ **同一个 HAP 块有两个主人**：AP 侧走 SPMI（我们的路），LPASS/ADSP 侧走 SoundWire（厂商的路，
+`swr_haptics` 是 LPASS RX SoundWire 总线上的从设备）。我们的写全部 `rc=0` 却恒定读到越界阻抗 + fault，
+与"马达实际由 ADSP 经 SWR 驱动、SPMI 这面只是影子/被切换了输入"**相容**。
+**没证的部分**：到底是所有权被切走、还是 `auto_res` 不是我想的阻抗值（单位/含义都没读准），
+也**没有**任何证据说"换成 SWR 访问就能响"。
+
+### 五、为什么这与 ② 是同一堵墙
+若马达要由 ADSP 经 LPASS/SoundWire 驱动，那"让手机震一下"需要的就是
+**让 ADSP 把它自己的 haptics 图开起来**——而让 ADSP 开图正卡在 ②（那条我们拿不到的 18504
+校准/配置对象与 `status=0x2`）。所以 B4 **不比扬声器容易**：它挂在同一条 LPASS 基础设施上。
+⇒ 机时不该从这里"再试一次"，而该由 #10 的能力决定点决定。
