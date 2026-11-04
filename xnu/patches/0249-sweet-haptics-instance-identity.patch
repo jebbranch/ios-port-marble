@@ -1,0 +1,87 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index e030e79..4fa4d89 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -1318,6 +1318,18 @@ g_haptics_try(void)
+ 	/* The vendor's enable path clears the latched SC / auto-res / hBoost
+ 	 * ready faults before every play; without it PLAY can be ignored. */
+ 	g_hap_wr(0xf066, 0x07, "fault clear");
++	{
++		/* Read the fault register immediately after the clear, before
++		 * enable and play: a non-zero here is a fault that the clear did
++		 * not remove (still latched / owned elsewhere), while a zero that
++		 * later turns non-zero is a fault raised by this very pulse.
++		 * Read-only, so the drive sequence is unchanged. */
++		uint8_t f0 = 0;
++
++		if (sweet_spmi_read(3, 0xf00c, &f0) == 0) {
++			printf("SWEET HAP: fault after clear=%#x\n", f0);
++		}
++	}
+ 	g_hap_wr(0xf046, 0x80, "enable");
+ 	delay(2000);
+ 	g_hap_wr(0xf04c, 0x81, "play");
+diff --git a/iokit/Kernel/arm/hid/SweetHaptics.cpp b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+index 26d619f..b5f230f 100644
+--- a/iokit/Kernel/arm/hid/SweetHaptics.cpp
++++ b/iokit/Kernel/arm/hid/SweetHaptics.cpp
+@@ -177,6 +177,17 @@ SweetHapticsUCBase::externalMethod(uint32_t selector,
+ 	    (unsigned)arguments->structureInputSize,
+ 	    (unsigned)arguments->structureOutputSize,
+ 	    arguments->structureInputDescriptor ? " desc_in" : "");
++	{
++		/* Which service instance this client is attached to.  The
++		 * selector path is taken because it demonstrably runs for this
++		 * class, while the driver-side open() may never be called. */
++		IOService *prov = getProvider();
++
++		SWEET_HAP_LOG("SWEET HAPID: uc=%#llx prov=%#llx pname=%s\n",
++		    (unsigned long long)(uintptr_t)this,
++		    (unsigned long long)(uintptr_t)prov,
++		    prov != NULL ? prov->getName() : "(null)");
++	}
+ 
+ 	for (uint32_t i = 0; i < arguments->scalarInputCount && i < 8; i++) {
+ 		SWEET_HAP_LOG("SWEET HAPTICS:   in[%u]=%#llx\n", i,
+@@ -563,6 +574,8 @@ class AppleAOPAudioButtonHapticDevice : public IOService {
+ 	OSDeclareDefaultStructors(AppleAOPAudioButtonHapticDevice);
+ public:
+ 	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++	virtual bool open(IOService *forClient, IOOptionBits options,
++	    void *arg) APPLE_KEXT_OVERRIDE;
+ };
+ OSDefineMetaClassAndStructors(AppleAOPAudioButtonHapticDevice, IOService);
+ 
+@@ -602,9 +615,32 @@ AppleAOPAudioButtonHapticDevice::start(IOService *provider)
+ 	}
+ 	registerService();
+ 	SWEET_HAP_LOG("SWEET HAPTICS: AppleAOPAudioButtonHapticDevice registered\n");
++	SWEET_HAP_LOG("SWEET HAPID: bhap start self=%#llx provider=%#llx pname=%s\n",
++	    (unsigned long long)(uintptr_t)this,
++	    (unsigned long long)(uintptr_t)provider,
++	    provider != NULL ? provider->getName() : "(null)");
+ 	return true;
+ }
+ 
++/*
++ * Which of the published bhap instances the client attached to.  There are
++ * more "registered" events than opens, so instance identity - not the
++ * registration count - is what has to be read before the duplicates can be
++ * attributed to a cause.
++ */
++bool
++AppleAOPAudioButtonHapticDevice::open(IOService *forClient,
++    IOOptionBits options, void *arg)
++{
++	bool ok = IOService::open(forClient, options, arg);
++
++	SWEET_HAP_LOG("SWEET HAPID: bhap open self=%#llx client=%#llx opts=%#x ok=%d\n",
++	    (unsigned long long)(uintptr_t)this,
++	    (unsigned long long)(uintptr_t)forClient,
++	    (unsigned)options, ok ? 1 : 0);
++	return ok;
++}
++
+ /*
+  * AppleHapticsSupport / AppleHapticsSupportCallan /
+  * AppleHapticsSupportUserClient.

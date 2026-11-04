@@ -2690,3 +2690,39 @@ T0 全绿（`printf` 单写 ⇒ 行数=次数）：
 把"4 个实例"修成 1 个（行为变量），同时给 `registered`/`open` 行加 `this` 指针（仪器），
 判据先写死、数字先从 ring 真实形态抄（`registered` 双写 ⇒ 8 行=4 事件 ⇒ 修好后应 **2 行=1 事件**）。
 阳性读数是：去重之后 iOS 是否出现 **第二个 selector**（全库至今 0 次）。
+
+
+## H 判据（0249，开机前写死，事后不许改）
+
+0249 相对上一条计划**改了做法**：只做仪器、零行为改动。理由是"4 个实例"目前是
+一个**未经身份确认的计数**——如果 4 次 `registered` 其实是同一个对象被 start 了 4 次，
+那"去重"这个行为变量根本不存在。先读身份，再决定动不动它。
+补丁只有 4 个 hunk、48 行纯新增、0 行删除（`git diff --stat` 已核）。
+
+行数换算（从 `logs/ring-t-hap.txt` 实测抄，不是推的）：`printf` 在 bsd 侧**单写**
+⇒ 行数=次数（`fault during play=` 29 行 / 29 次）；`SWEET_HAP_LOG` **双写**
+（IOLog + `sweet_log_append`）⇒ 行数=2×次数（`registered` 8 行 / 4 事件，
+`sel=` 2 行 / 1 事件，`open by pid 57` 4 行 / 2 事件）。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| **H0** | 四个 marker 都在下载下来的 kernel 里：`SWEET HAPID: bhap start self=` / `SWEET HAPID: bhap open self=` / `SWEET HAPID: uc=` / `SWEET HAP: fault after clear=` | 全中 | 补丁真进了镜像（缺任何一个 ⇒ 不要开机，直接按"被跳过"处理） |
+| **H1** | `SWEET HAPID: bhap start self=` 里 **distinct `self=` 的个数**（行数本身不是判据） | 4 个不同 | 确实存在 4 个对象 ⇒ 我们的匹配放出了重复实例，"去重"是一个真实可动的行为变量 |
+| | | 1 个不同（重复 4 次） | **同一个对象被 start 4 次** ⇒ "实例数"是假象，去重方向作废 |
+| 旁读 | `provider=` 是否同一指针、`pname=` 是什么 | — | 父节点是谁；若 `provider` 等于前面某个 `self` ⇒ 是自己匹配自己 |
+| **H2** | `SWEET HAPID: uc=` 的 `prov=` 是否命中 H1 的某个 `self=` | 命中 | 第一次知道 backboardd attach 的到底是哪一个实例，其余的是孤儿 |
+| | | 不命中 | 该 UC 的 provider 不是 bhap 设备 ⇒ 这次跑**不算证据**（仪器答不了它要答的问题），只算开机次数 |
+| **H3** | `SWEET HAPID: bhap open self=` 行数 | **预先声明为非判据** | UC 连接可能根本不走 driver 侧 `open()`；0 行是合法结果，它只在真的出现时用来配对 UC 指针 |
+| **H4** | `SWEET HAP: fault after clear=` 行数 **==** `SWEET HAP: play 0xf04c<-` 行数 | 相等 | 仪器自证；不等 ⇒ 仪器坏，本次不算证据 |
+| | 第 1 次脉冲的 `after clear` 值 | `0x0` 且播放中非 0 | 故障由**本次脉冲**产生（用户"过流"假设的方向成立） |
+| | | 非 `0x0` | `0xf066<-0x07` 没清掉（仍闩锁/被别人持有）⇒ 历史 372 次 `fault during play` 对这些脉冲**无信息** |
+| | | 两处都 `0x0` | 那 0x2 与脉冲无关，来源在别处 |
+| **H5** | 回归控制：`cfg=` / `play 0xf04c<-` / `fault during play=` / `fault after clear=` 四个计数相等；`registered` 仍 8 行 | 成立 | 0249 没改行为（若 `registered` 少于 8 行 ⇒ 要么补丁没生效要么我动错了地方） |
+
+开机配置沿用 T 那次已知-good：`KEEPALIVE=1 sweethap=1`（cmdline 含 `sweethap=1`、
+**不含** `sweetreboot=1`），跑完由人重启到 TWRP 拉 ring。开机次数：20 里已用 7，本次第 8。
+
+**止损**：H1 若落在"同一个对象 start 4 次"，去重这一枪作废，B4 剩下的唯一断点就是
+"iOS 不向我们的壳提交第二个 selector"，那是 0244 壳（IOAudio2/Actuator）那条匹配问题，
+不再碰 HAP520 输出侧。H1/H2 若都不可解读 ⇒ 记 1 次开机但**写明非证据**，
+B4 的仪器线冻结，回到 ②（内核侧与 iOS 侧都常驻、出声仍未证）。
