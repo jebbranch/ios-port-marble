@@ -3427,3 +3427,46 @@ C 轮 panic 后没写 ring，`pull_logs.sh` 返回的是**上一轮 M 的 ring**
 `sweettime` 与本轮 build log 里的 cmdline**，不一致就当"本轮无数据"处理。
 这条已经进 AGENTS.md 的判据习惯。开机记账：120 里已用 15（第 15 次 = 0251 的
 第二次 panic，非证据）。
+
+
+## C 判决（`logs/ring-c2-ccbatch.txt`，2026-11-04，第 16 次开机；身份已对：`sweettime=1793803435` 两侧一致）
+
+| 判据 | 读数 | 结论 |
+|---|---|---|
+| **C0** | kernel 与产物里 `SWEET MARK: cccfg v1 ` 命中 4 次、`dtprop` **0 次**（证明 0251 真被摘掉）；cmdline 582/590，14 条 flag 完整 | ✔ |
+| **C1** | `cccfg v1 dst=1 inband recs=2 len=80` + 两条 `rec N iid=… param=… size=…`，与**开机前在宿主机用真实函数体算出的值逐字相同** | 容器自证成立，不需要换算 |
+| **C2** | `cc_batch rsp op=0x1001006 status=0`（`hop=0x2001005 len=32`） | **APM 接受我们自组的多记录打包 SET_CFG**（发给 dst=1、in-band、120 字节包 = 24+16+80） |
+| **C3** | `GLINK: vp/` 9 行（与 L/M 同）、`graph_start … status=0`、`done status=0`、`IOAudio2DeviceUserClient open by pid 28` 4 行、`gate flag=1` | 回归通过 ⇒ C2 的"接受"不是被别的改动换来的 |
+| **C4** | 对照 = L 轮（同配置、无 0252、`cc_batch` 0 行） | 单变量成立 |
+
+**这条为什么值钱**：我们此前所有 SET_CFG 都是"一条记录、发给模块端口"。现在证实
+"多条记录、发给 APM、由 APM 分发"这个容器在本机 ADSP 上**可用**。而按官方定义，OOB 模式的
+每条记录头里那个 `error_code` 字段是**由被托管的模块回填**的 ⇒ 一次 OOB 批量包就能把
+"这批 MIID 里哪些在我这张图里存在、各自被接受还是拒绝"**一次性问出来**。
+
+### 已记账
+- 第 15 次开机 = 0251 第二次 panic（`getProperty` 里持锁打印），**非证据**；0251 已从序列删除。
+- 那次拉回的 ring 是 M 轮的（`sweettime` 不一致）⇒ 已在 AGENTS.md 加"拉完先对 sweettime"的硬规矩。
+- 一次仓库卫生事故：`git add -A` 把 212 个未跟踪日志提交进去，随后用 `git rm --cached`
+  撤出索引（`bc16832`），磁盘文件未动。以后一律按文件名 add。
+
+## D 判据（0253：一次 **OOB 批量 SET_CFG**，读回每条记录的 error_code；开机前写死）
+
+做法：正文 >256 字节（用 padding 记录把它推过阈值）⇒ 走 `SHM_MAP(pool 3,
+property_flag=4, 区大小 = align4K(正文))` + `SET_CFG{偏移,handle,size}` + 收响应 +
+**把缓冲里每条记录的 `error_code` 读回来打印** + `SHM_UNMAP`。
+记录对象 = 我们实测厂商配置过的 MIID 全集，其中一部分**不在**我们打开的图里
+（`0x40bf/0x40c0/0x4165/0x4308/0x40c8` 在我们图里 0 命中，`0x40bd/0x428f/0x42d3` 命中）。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| **D0** | 产物/kernel 含 `SWEET MARK: oobcfg v1 `；cmdline 含 `sweetoobcfg=1`；`sweetcccfg` 本轮**不带**（一次只测一个容器） | 成立 | 变量唯一 |
+| **D1** | ring 里 `oobcfg v1 map size=%u off=%u recs=%u` 且 `size == align4K(payload)` | 成立 | 我们自己按官方对齐规则算的映射尺寸被照用；不对就说明算错 |
+| **D2** | `SET_CFG` 响应 `status=` 与**每条记录回读的 `error_code`** 表 | 每条都打出来 | 预期：图内 MIID 为 0、图外为非 0 ⇒ 这是第一次拿到**逐模块的接受/拒绝位图** |
+| **D2b** | 全部 `error_code` 都是 0 | 记录为**仪器不敏感**（回填可能发生在响应之后，或该字段只由模块自己写）⇒ 不许当成"全都接受" |
+| **D3** | `SHM_UNMAP` 之后图仍能 `START`、`data_buffer … done status=0` 仍绿 | 成立 | 我们没把这张图弄坏（否则 D2 的读数会混杂状态污染） |
+| **D4** | 回归：`GLINK: vp/` 仍 9 行、`IOAudio2DeviceUserClient open by pid 28` 4 行、`gate flag=1` | 成立 | 与 C 同形 |
+
+开机次数：120 里已用 16，本次第 17。
+**这轮不许得到的结论**：`error_code` 的**具体错误码语义**仍不命名（`0x2` 的教训）；
+D2 只回答"0 还是非 0"，也就是"存在与否/接受与否"。
