@@ -2909,3 +2909,49 @@ cmdline 438 字节（预算 590）。
 开机次数：20 里已用 10，本次第 11。
 **这轮不许得到的结论**：追踪只覆盖匹配/通知/路径/open 四类入口；
 `/product` 轮询**为什么**存在，它答不了——K2 只分"停不停在 open 之前"。
+
+
+## K 判决（`logs/ring-k-probe.txt`，2026-11-04，第 11 次开机，零补丁）
+
+| 判据 | 读数 | 结论 |
+|---|---|---|
+| **K0** | ring 第 82 行 `SWEET AUDPROBE: gate flag=1`（J 轮是 `flag=0`） | 探针开关这次真进了 kernel ✔ |
+| **K1** | `IOK mediaserverd:` 328 行、`IOK backboardd:` 175 行；`IOAudio2DeviceUserClient` **25 行** | 两路同时可见 ✔ |
+| **K2** | `path IODeviceTree:/product` 全 ring 289 行（mediaserverd 288 / backboardd 1）；第一条音频 open 在第 **1096** 行 ⇒ **之前 2 次、之后 287 次**，最后一次第 1395 行 | 落在 K2 第一格：**`/product` 反复查发生在成功 open 我们的设备之后**，所以它不是"停在读 /product"。但也不能说它是"正常轮询"——它在 1395 行**停了**，不是无限 |
+| **K4** | `play` = `after clear` = `during play` = **9**；`registered` 8 行；`sel=1` + `asset count 18` 各 1 事件 | 只换参数没动行为 ✔ |
+
+ mediaserverd 本次的完整形状：`open by pid 28`×4 → `map requested`（Actuator/Speaker/Codec/Hawking）
+→ `map type=0 handed 0x10000 zeros`×7 → `notify port`×7 → **没有任何 `IOAudio2DeviceUserClient sel=`**，
+只有 `AppleAOPAudioUserClient sel=0`×1。**它没崩**（本 ring 无 `crashed: mediaserverd`）。
+
+### 我自己埋的对照错位（必须写在结论前面）
+K 的 cmdline 只有 `sweetaudioprobe=1`，**没有** B1 那批音频 flag；而 b1/b2/ep6–ep9 的 cmdline 是
+`sweetampfirst=1 sweetbufs=30 sweets1ap=3 sweetshmhi=1`。所以 **K 上"没有 sel=4"不能读成
+"iOS 侧行为变了"**——它和 B1 不同配置。
+
+### 用 181 个 ring 做的离线对账（零开机）
+按（音频flag? / 有 sel=4? / 有音频 UC open?）分格：
+
+| 音频 flag | sel=4 | 音频 UC open | ring 数 | 例子 |
+|---|---|---|---|---|
+| 无 | 无 | 无 | 145 | `ring-0199.txt` |
+| 无 | 无 | **有** | **1** | `ring-k-probe.txt` ← 本轮，样本只有 1 |
+| 有 | 无 | 无 | 24 | `ring-ab.txt`（= mediaserverd 崩溃风暴那批） |
+| 有 | 无 | 有 | 5 | `ring-ep/ep2/ep3/ep4…`（早期只有 1 次 open） |
+| 有 | **有** | 有 | 6 | `ring-b1/b2/ep6/ep7a/ep7b/ep8/ep9` |
+
+⇒ "4 次 open + 有音频 flag"的 6 个 ring **全都有 sel=4**；"4 次 open + 无 flag"目前只有 K 一个样本。
+要么 flag 与 sel=4 有关，要么只是补丁版本漂移——**n=1 分不清**，所以补一枪（L）。
+
+### 顺带量到的两件别线的事（不在本轮判据里，只登记）
+1. **`crashed: mediaserverd` 只在 24/181 个 ring 出现**，而且**与"音频 UC open"完全不重叠**
+   （open+crash = **0** 个 ring）。⇒ "mediaserverd 崩环"**不是**"开了壳不出流"的解释，
+   两批 boot 是两个总体。这条差点被我当成音频线的真凶。
+2. 那 24 个 ring 里 mediaserverd 是**同一条指令每次都崩**：`sig 11 / pc 0x0 / far 0x0`
+   （跳到空函数指针），bt 相对偏移跨 boot 恒定（如 `lr-slide` 相同的三帧），且崩前一行总是
+   我们自己的 `SWEET SURF: mediaserverd create id N 1024x768 … -> 0x0`。
+   累计 1100 次。这是"GUI 起不来"那批 boot 的独立问题，属 Surface/SweetSurface 线。
+
+### 下一枪（L 轮，仍旧零补丁）
+把 K 与 B1 对齐：`sweetampfirst=1 sweetbufs=30 sweets1ap=3 sweetshmhi=1 sweetaudioprobe=1`
++ 同一份 `SWEETIOLOG=mediaserverd,backboardd`。判据：sel=4 是否回来。
