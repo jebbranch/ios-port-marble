@@ -2817,3 +2817,27 @@ B4 的仪器线冻结，回到 ②（内核侧与 iOS 侧都常驻、出声仍�
   而且 open 成功、sel=1 有答；去重降为**卫生问题**，不再是 B4 的候选病因。
 - 仪器坏不掉这一点已被 785 行自证：以后要问"某进程查了什么"，
   `SWEETIOLOG=<name>` 是**零补丁**手段（415 字节，预算 590）。
+
+
+## J 判据（`SWEETIOLOG=mediaserverd,backboardd`，零补丁，开机前写死）
+
+同一个仪器、换对象：问"该提交流程的进程到底查过什么"。
+**这次把对照做对了**——上一轮我拿 launchd 当阳性对照，它 0 行而 backboardd 785 行，
+说明选错了对照；本轮的对照就是**已经证明会出行的 backboardd 本身**，
+`mediaserverd` 零行时才可以说"它没调用这三个 hook"。
+cmdline 420 字节（预算 590）。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| **J0** | 产物里命中 `sweetiolog=mediaserverd,backboardd`、且 `sweetiolog=-` 不命中 | 成立 | 参数进了产物（开机前就能验） |
+| **J1a** | `IOK backboardd:` 行数（对照） | > 0 | 仪器活着。若这里就 =0 ⇒ 整轮非证据，不解释 mediaserverd |
+| **J1b** | `IOK mediaserverd:` 行数 | > 0 | 可以回答 J2 |
+| | | = 0（且 J1a>0） | **mediaserverd 在开机窗口内没调用被 hook 的匹配/通知/路径入口**——这是"它在别的环节停住"的证据，不是"仪器坏" |
+| **J2** | 按名字分开数 `IOProviderClass` → 结果，专找**音频类**（`IOAudio*`、`AppleEmbeddedAudioDevice`、`AppleARMIIS/DMMAudioDevice`、`AGM`、`audio` 路径） | 有 `0 found`/`none` 且具名 | 上游缺口 = 那个具名服务；下一枪按名字发布或读它为什么匹配不上 |
+| | | 音频类全部命中、只有非音频类落空 | "不出流"停在 mediaserverd 自己（与 backboardd 的 I2 同形），服务集不是病因 |
+| **J3** | 计数法：只数**头部可见**的类名；`=end NNN -> 结果` 这类残段单独计数并报出未归属行数；绝不把两个名字混成一个数 | — | ring 的 ~240 字节切段上一轮实测存在，不处理就会把 330 行记成别名的数 |
+| **J4** | 回归：`registered` 仍 8 行；`play 0xf04c<-` == `fault after clear=` == `fault during play=` | 成立 | 没动代码 ⇒ 震动线形状不变 |
+
+开机次数：20 里已用 9，本次第 10。
+**这轮不许得到的结论**：`IOK` 只看匹配/通知/registry 路径/open 四类入口；
+mediaserverd 拿到服务之后为什么不发流，它答不了——J2 只能分"缺不缺具名服务"。
