@@ -1,5 +1,5 @@
 diff --git a/iokit/Kernel/IORegistryEntry.cpp b/iokit/Kernel/IORegistryEntry.cpp
-index 7f4626f..558d21a 100644
+index 7f4626f..b018a1d 100644
 --- a/iokit/Kernel/IORegistryEntry.cpp
 +++ b/iokit/Kernel/IORegistryEntry.cpp
 @@ -40,6 +40,8 @@
@@ -11,7 +11,7 @@ index 7f4626f..558d21a 100644
  
  /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
  
-@@ -728,6 +730,107 @@ IORegistryEntry::propertyHasValue(const char * aKey,
+@@ -728,6 +730,108 @@ IORegistryEntry::propertyHasValue(const char * aKey,
  }
  
  
@@ -53,6 +53,7 @@ index 7f4626f..558d21a 100644
 +	const char *nm;
 +	char comm[32];
 +	size_t n;
++	uint32_t i;
 +	static int inside;
 +
 +	/* This path is reachable from IOLog itself, so a print here must not be able
@@ -119,7 +120,7 @@ index 7f4626f..558d21a 100644
  OSObject *
  IORegistryEntry::getProperty( const OSSymbol * aKey) const
  {
-@@ -737,6 +840,8 @@ IORegistryEntry::getProperty( const OSSymbol * aKey) const
+@@ -737,6 +841,8 @@ IORegistryEntry::getProperty( const OSSymbol * aKey) const
  	obj = getPropertyTable()->getObject( aKey );
  	PUNLOCK;
  
