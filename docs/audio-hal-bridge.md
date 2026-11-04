@@ -668,16 +668,30 @@ B1 就是拿同一版内核、同一份镜像，只把"人故意连按音量键 
 ### 二、促动器 / 震动同场记录（B4）
 同一版内核、同一次开机里，震动类是**另一条独立形状**：
 
-| 观测 | 每 boot 计数 | 覆盖 |
-|---|---|---|
-| `AppleAOPButtonHapticsServiceUserClient open by pid 57` | **2** | 11/11 |
-| `AppleAOPButtonHapticsServiceUserClient map type=0 options=0` | **2** | 11/11 |
-| `AppleAOPButtonHapticsServiceUserClient sel=1 sin=0 sout=1 struct_in=0 struct_out=0` | **2** | 11/11 |
-| `AppleSPUHapticsAudioUC open by pid 57` | 见 0244 前的 boot | 123 次 / 70+ ring |
+> **2026-11-03 深夜更正（我自己把行数当次数了）**：0209 起震动侧日志宏是
+> `SWEET_HAP_LOG = IOLog(...) + sweet_hap_ring_log(...)`（`xnu/patches/0209-sweet-haptics-ringlog.patch:38-42`），
+> **每条事件在 ring 里必然 2 行**。下表"每 boot 计数"一列原来填的是**行数**，真实**事件数是 1**。
+> 判据口径：数行数之前必须先问这条日志是单写还是双写（单写时代见 `ring-aop-haptic-bridge.txt`，各 1 行）。
 
-要点两条，别混：
-1. 震动类 `sel=1` 是**基线**（116 次里每 boot 恒 2），b1/b2 没有新增；我上一轮差点把它当
-   "新 selector"，按类拆开才看清。
-2. ep8 那句"Actuator 对同一区域重复索要 4 次"是**按 uid=Actuator 的区域请求**数的，
-   和本表 `map type=0` 的 2 次/boot **不是同一个计数口径**，引用时必须分开写。
-   SoundWire 马达后端单列，不进这两条判据。
+| 观测 | ring 行数 | **真实事件/boot** | 覆盖 |
+|---|---|---|---|
+| `AppleAOPButtonHapticsServiceUserClient open by pid 57` | 2 | **1** | 71/176 ring |
+| `AppleAOPButtonHapticsServiceUserClient map type=0 options=0` | 2 | **1** | 71/176 |
+| `AppleAOPButtonHapticsServiceUserClient sel=1 sin=0 sout=1 struct_in=0 struct_out=0` | 2 | **1** | 71/176 |
+| `AppleSPUHapticsAudioUC open by pid 57` | 2 | **1** | 78 |
+| `AppleSPUHapticsAudioDriver setProperties count=1 {GlobalConfig=dict(1), GlobalForceFeel=1}` | 2 | **1** | 71 |
+| `AppleAOPAudioButtonHapticDevice registered` | 4（单写时代也是 4） | **4** | 71+ ⇒ **异常，来源未定位** |
+| `IOAudio2DeviceUserClient map … uid=Actuator`（**单写**） | 4 | **4** | 仅 ep8/ep9/b1/b2 有 `uid=` 字段；ep6/ep7 同样发生但旧 printf 不打 uid ⇒ **格式差异，不是行为差异** |
+
+要点三条（第 1、2 条已按上面的更正重写）：
+1. 震动类 `sel=1` 是**基线**（每 boot 1 个事件 = 2 行），b1/b2 没有新增；我一度把它的**行数**
+   当新增，按类拆开才看清。
+2. ep8 的"Actuator 重复索要 map 4 次"与本表 `map type=0` 的 1 次/boot 是**不同类、不同缓冲、
+   不同写入口径**：前者是 `IOAudio2DeviceUserClient`（`SweetAudioProbe.cpp:244`，0244 引入，**单写**），
+   后者是 `AppleAOPButtonHapticsServiceUserClient`（`SweetHaptics.cpp` 的 `clientMemoryForType`，0209，**双写**）。
+   引用时永远分开写。
+3. **B4 的止点（176 个 ring 全一致）**：AOP 侧到 `sel=1`（含 asset count 18 与 64 B 头全零 dump）就停；
+   SPU 侧到 `setProperties{GlobalForceFeel=1}` 就停；`IOAudio2DeviceUserClient` 0 个 selector；
+   `AppleHapticsSupportUserClient` 0 次 open/`newUserClient`；全库无 `StartHardware`、无会话中 close。
+   ⇒ 与音频侧同形：**iOS 会开我们的壳、会配置，但一次都不提交**。
+   SoundWire 马达后端单列，不进以上任何判据。
