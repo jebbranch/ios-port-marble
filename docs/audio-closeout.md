@@ -3255,3 +3255,51 @@ libgsl 反汇编（子智能体，逐条回源核过）给出三条我必须先�
 gdc/gkv/ckv/audio` 0 命中；阳性对照 `pm4` 170、`kgsl` 126）。⇒ 以后要反汇编"厂商怎么组
 SET_CFG"，**必须先用内容筛出真正的音频 GSL/AGM/PAL**（找带 `APM_CMD` / `SHM_MAP` /
 `gsl_graph` / `ACDB` 字符串的 .so），而不是按文件名猜。
+
+
+## ② 攻坚（续 5）：**SET_CFG 的组包格式由厂商代码确认**（libar-gsl.so，四条声明我逐条反汇编复验）
+
+目标二进制是 `/vendor/lib64/libar-gsl.so`（AudioReach GSL，224,440 B；本地副本
+`work/phone-libs/libar-gsl.so`）。函数表在 `.gnu_debugdata` 的 mini-ELF 里（`.dynsym` 只有导出桩）。
+关键函数：`gsl_apm_config_oob @0x18648`、`gsl_apm_config_inband @0x18278`、
+`gsl_graph_set_custom_config @0x180a4`（**唯一**用 cmd `0x01001006` 走 OOB 的调用者）、
+`gsl_graph_set_sg_cal @0x1af10`、`gsl_shmem_alloc_ext @0x24bb8`。
+
+### 已验证的线上格式（图形级 custom-config，dst=1，就是我们那 18,504）
+```
+包体 = 40 B gsl/gpr 头 + 16 B 描述符
+       描述符 = {addr_lsw, addr_msw, mem_map_handle, size}     (0x187f4/0x18800/0x187e8/0x187fc)
+共享内存正文 = 调用者缓冲**逐字拷贝**（0x18804 ldr x0,[x27,#0x30] → ar_mem_cpy；GSL 不加头）
+正文头 16 B   = { u32 id_flag, u32 rsvd, u32 data_len, u32 rsvd }   ← 记录从 +0x10 开始
+                我们观测到的"正文首字为 0" = id_flag=0（图形级；发给单模块时它放模块 iid）
+长度关系      = 总长 = align8(data_len) + 16
+映射区大小    = align4K(总长)      ⇒ 18504→20480，18128→20480  ⇒ "随开机变"不改变映射
+路由阈值      = 总长 > 256 才走 OOB，否则 inband             (0x18188 cmp w21,#0x100 / b.hi)
+opcode        = 0x01001006                                  (0x18174 mov w3,#0x1006 + movk)
+property_flag = 1 << (mem_pool_id - 1)                      (0x186fc→0x18710)  ⇒ pool 3 ⇒ 4
+```
+
+### 因此要更正我自己的两条记录
+1. **`sweetshmflag=4` 不是"offset 模式"**。4 只是 `pool=3` 推导出的位（`1<<(3-1)`）。
+   `docs/START-HERE.md` 和若干 commit 里"厂商的 offset 模式，只有在 `sweets1ap=3` 下才会被
+   DSP 真正读通"这句话，**前半是错的**（后半那次实测现象保留，但它和 flag 的语义无关）。
+2. `docs/vendor-gpr-packets.md` §"内联正文的定长规律"里 `w10 = 目标 iid、w11 = param_id、
+   w12 = data_len、w13 = flags` —— 按厂商代码，这四个字其实是 custom-config 的
+   **头** `{id_flag, rsvd, data_len, rsvd}`；发给单模块时 `id_flag` 恰好是模块 iid，
+   所以我当年把它读成"记录的第一个字段"。**结果形状可用，字段名是错的**；
+   `w13` 恒为 0 正是那个 `rsvd`。
+
+### 由此可写的一个真实验（0252，不再是猜尺寸）
+用已确认的容器发一份**图形级 custom-config**：正文 `{0, 0, data_len, 0}` + 从 `+0x10` 起的
+TLV 记录 `{iid, param_id, size} + align8(size)`，记录内容取我们已经**实测成功**的那几条
+（`0x40bd/0x0800100C/30B`、`0x428f/0x08001017 + 0x0800101B`、`0x42d3/0x10013D2A`）。
+总长 ≤256 ⇒ 按阈值应走 **inband**；这正好一次测两件事：
+(a) APM 接不接受我们组的这个容器；(b) `>256 才 OOB` 这条阈值在我们的 ADSP 上是否真是路由依据。
+开关：`sweetcccfg=1`（默认关，行为零变化），marker 带版本字面量 `SWEET MARK: cccfg v1`
+（补上 0251 v2/v3 无法用 marker 区分的教训）。
+
+### 仍未证（不要当已知）
+- `id_flag` 的语义（只知道它被转发给 `__gpr_cmd_alloc_ext` 的 info+0xc，尺寸不匹配时回退 1）。
+- 我们那 18,504 究竟是 custom-config 路径还是 ACDB 直传路径（`1b0dc/1a8e8` 那两条把 SHM 指针直接交给
+  `acdb_ioctl`、**没有** 16 字节头）。推断依据是 dst=1 + opcode + 16 对齐 + 首字 0，**不是证明**。
+- 记录内部（`{iid,param_id,size}`）在 custom-config 里到底是 12 B 头还是 16 B 头。

@@ -162,8 +162,9 @@ val=0x2032`——AP 第一次真读到 AW882xx。下一步是 0241 `sweetnobb=1`
 判据表在 `docs/audio-closeout.md` 最后两节。
 
 三个开关的来历（不要凭印象改）：`sweetshmhi=1` 把 SHM_MAP 地址高字当 **stream index**
-发（不是地址位）；`sweetshmflag=4` 是厂商的 offset 模式，**只有在 `sweets1ap=3` 下才会被
-DSP 真正读通**；`sweetampfirst=1` 把 PA 的配置挪到开图之前——历史上顺序是反的，
+发（不是地址位）；`sweetshmflag=4` **不是** offset 模式：厂商代码里 `property_flag = 1 << (mem_pool_id-1)`，
+pool=3 必然得 4（2026-11-04 由 `libar-gsl.so:0x186fc→0x18710` 反汇编确认）。当年"只有在
+`sweets1ap=3` 下才会被 DSP 真正读通"是实测现象，保留，但与 flag 语义无关；`sweetampfirst=1` 把 PA 的配置挪到开图之前——历史上顺序是反的，
 所以任何"没出声"的观测在 0233 之前都不成立。
 
 **B1 判决（2026-11-03，b1+b2 两次开机）——iOS 会话常驻但不出流。**
