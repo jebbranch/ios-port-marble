@@ -1,1 +1,0 @@
-cat: /trace: No such file or directory

@@ -1,9 +1,0 @@
-gpu sweep: /Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/logs/gpu-sweep-20261027-154137.log
-kernel: SWEET AUDIO: build v84 (sweetshmhi: vendor's MAP high word / stream index)
-=== m3-cbar0r  [CBAR(0) read]  (GPU_PROBE_LEVEL=1 GP_CBAR_BANK=0)
-RESULT m3-cbar0r BUILT
-=== m5-cbar0w0  [CBAR(0)=0]  (GPU_PROBE_LEVEL=1 GP_CBAR_BANK=0 GP_CBAR_WRITE=1)
-RESULT m5-cbar0w0 BUILT
-=== summary ===
-RESULT m3-cbar0r BUILT
-RESULT m5-cbar0w0 BUILT

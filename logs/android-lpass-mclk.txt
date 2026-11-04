@@ -1,8 +1,0 @@
-== /sys/kernel/debug/clk/audio_lpass_mclk
-cat: /sys/kernel/debug/clk/audio_lpass_mclk: Is a directory
-== /sys/kernel/debug/clk/audio_lpass_mclk10
-cat: /sys/kernel/debug/clk/audio_lpass_mclk10: Is a directory
-== /sys/kernel/debug/clk/audio_lpass_mclk11
-cat: /sys/kernel/debug/clk/audio_lpass_mclk11: Is a directory
-== /sys/kernel/debug/clk/audio_lpass_mclk12
-cat: /sys/kernel/debug/clk/audio_lpass_mclk12: Is a directory

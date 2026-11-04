@@ -1,7 +1,0 @@
-gpu sweep: /Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/logs/gpu-sweep-20261027-155221.log
-kernel: SWEET AUDIO: build v85 (GPU probe matrix: CBAR/SCTLR/CB/KGSL/KGSL scan)
-=== m0-base  [SMMU ID/SMR/S2CR baseline]  (GPU_PROBE_LEVEL=1)
-BOOT m0-base (sweettime=1793087541)
-Sending 'boot.img' (49800 KB)                      OKAY [  1.174s]
-Booting                                            OKAY [  0.107s]
-Finished. Total time: 1.306s
