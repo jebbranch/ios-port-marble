@@ -1,0 +1,82 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 4fa4d89..4af5492 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5448,6 +5448,31 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+ 	return g_apm_cmd(src_port, mod_iid, pl, plen, APM_CMD_SET_CFG, what);
+ }
+ 
++/*
++ * A SET_CFG carrying more than one parameter record.
++ *
++ * This is the container we have never used: every SET_CFG sent so far is a
++ * single record aimed at that module's own port.  GSL's rule (verified in
++ * libar-gsl.so against gsl_graph_set_custom_config) is that a multi-record
++ * list goes to dst=1, the APM, which then fans it out, and that the list stays
++ * in-band while it is at most 256 bytes - only longer lists get SHM_MAP'd.
++ */
++#define SWEET_CC_MAX 256
++
++static int
++g_apm_set_cfg_batch(uint32_t src_port, uint8_t *body, uint32_t blen,
++    uint32_t nrec, const char *what)
++{
++	if (blen == 0 || blen > SWEET_CC_MAX) {
++		printf("SWEET MARK: cccfg v1 reject recs=%u len=%u\n",
++		    nrec, blen);
++		return (-1);
++	}
++	printf("SWEET MARK: cccfg v1 dst=1 inband recs=%u len=%u\n",
++	    nrec, blen);
++	return (g_apm_cmd(src_port, 1, body, blen, APM_CMD_SET_CFG, what));
++}
++
+ /* ---- PCM feed: 1 kHz stereo tone ---------------------------------------
+  * The vendor HAL puts PCM in the same mapped region and sends DATA_BUFFER_V2
+  * (0x0400100A, no APM header, 44-byte payload) to the input module; buf_addr
+@@ -6529,6 +6554,45 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 		    tdm_cfg, 28, "vp/tdm_cfg");
+ 	}
+ 
++	/*
++	 * sweetcccfg=1 only.  Same two parameters, same bytes, as ONE two-record
++	 * list to the APM: (16 + align8(12)) + (16 + align8(28)) = 80 bytes, so it
++	 * must go in-band by the threshold above.  Nothing else in this round
++	 * changes; without the flag the block below does not run at all.
++	 */
++	{
++		int on = 0;
++
++		(void)PE_parse_boot_argn("sweetcccfg", &on, sizeof(on));
++		if (on != 0) {
++			static const uint32_t cc_rate[3] = { 96000, 0x30020, 1 };
++			static const uint32_t cc_cfg[7] = {
++				0, 2, 0x10001, 7, 0x200004, 0, 1
++			};
++			uint8_t body[SWEET_CC_MAX];
++			uint32_t off = 0;
++			uint32_t i;
++
++			memset(body, 0, sizeof(body));
++			g_put32(body + off + 0, G_VP_TDM_IID);
++			g_put32(body + off + 4, 0x08001017);
++			g_put32(body + off + 8, sizeof(cc_rate));
++			for (i = 0; i < 3; i++) {
++				g_put32(body + off + 16 + i * 4, cc_rate[i]);
++			}
++			off += 16 + ((sizeof(cc_rate) + 7u) & ~7u);
++			g_put32(body + off + 0, G_VP_TDM_IID);
++			g_put32(body + off + 4, 0x0800101b);
++			g_put32(body + off + 8, sizeof(cc_cfg));
++			for (i = 0; i < 7; i++) {
++				g_put32(body + off + 16 + i * 4, cc_cfg[i]);
++			}
++			off += 16 + ((sizeof(cc_cfg) + 7u) & ~7u);
++			(void)g_apm_set_cfg_batch(src_port, body, off, 2,
++			    "cc_batch");
++		}
++	}
++
+ 	g_put32(mf + 0, 96000);
+ 	g_put32(mf + 4, 32u | (3u << 16));
+ 	g_put32(mf + 8, 1);
