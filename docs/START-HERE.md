@@ -62,6 +62,32 @@ RTC；要真正持久化 RTC 需走 ADSP/PMIC 固件的服务，不建议抢 API
 但返回的 24 字节看起来是请求回显/ack，不是属性值（所有请求都解析成 1）。
 需要对厂商的 pmic_glink 收发做一次抓包（和当年抓 GPR 一样的方法）。
 
+
+### 2026-11-04 新增/更正的结论（细节在 `docs/audio-closeout.md` 的 H/I/J/K/L/M/N 七节）
+
+- **震动输出侧已解决**：AP 侧 SPMI 直驱真的能震（用户 44/44 有震感、震感与设置一致）。
+  `0x2` 那个位**每次脉冲后都出现、清除后为 0** ⇒ 是本次脉冲产生的，且**与"没动"无关**；
+  `auto_res` 与 DT `lra-f0-*` 的比较是拿错字段，**永久停用**。
+- **4 个同名 bhap 实例是我们造出来的**：4 个不同 `self`、`provider` 全是同一个
+  `IOResources` 节点 ⇒ 同一个 provider 被同一条 personality 匹配了 4 次，
+  **不是**实例互相匹配。iOS（pid 57）attach 的是**最后注册的那个**（`prov` 命中第 4 个 `self`）。
+- **UC 连接不调用 driver 侧 `open()`**（`bhap open` 0 行，预先声明为非判据）⇒ 以后要问
+  "谁 attach 了哪个实例"，只能挂在**已证明会执行的 selector 路径**上。
+- **`sel=4` 是音频 flag 驱动的**（L 轮），且 `GetControlValue`（就是 sel=4）的回答从 0 改成 1
+  **不改变任何东西**（M 轮，调用形状逐项与 L 相同）。
+- **mediaserverd 的现状**：open 4 台设备、map、notify 之后**一个 IOAudio2 方法都不调**；
+  它落空的查询只有 `AppleEFINVRAM`/`IODTNVRAM`/`bluetooth`，且**在这之后还继续跑了 180+ 行**
+  ⇒ "缺 NVRAM 所以停住"没有证据。`/product` 的 287 次路径查询发生在**成功 open 之后**。
+- `crashed: mediaserverd` 只在 **24/181** 个 ring 出现，与"能 open 音频设备"的 **12** 个 ring
+  **完全不重叠** ⇒ 崩溃风暴是另一批 boot，**不能**拿来解释"开壳不出流"。
+- **两条我自己写错的笔记已更正**：`0x08001176` **不是**我们自创（MTP ACDB 里 16 次）；
+  `p6=0x10003` 是 `{mem_pool_id=3, num_regions=1}` 被我读成一个字（我们发送端一直用 pool=3）。
+  `0xb0000081` 属于我们 10 月的老容器，不在厂商现役子图里。
+- **②的尺寸事实**：机内 6 份 ACDB **没有任何 blob 落在 18,000–19,000**；每份只有**一条**超限
+  blob（17,452 或 17,620，校准记录 16,405/16,570），两者都对齐到厂商映射用的 **20,480**；
+  QRD_ukee 是 35,244→36,864，**不匹配** ⇒ 厂商当时加载的不是这一族。
+  而"每子图按 key 各取一份 808+756+256+944 + 前导/头 = 2,960"**反向证明了我们容器的构造方法是对的**。
+
 ## 三、构建与启动
 
 ```bash
@@ -196,6 +222,42 @@ run115 挂死形态，不是被拒。`images/e1-vgraph2724.img` 留着但**不�
 **注意**：`sweetsmp=1` 是测试开关，采样 20 秒后主动复位；**默认 cmdline
 里没有它**，正常启动不会自己重启。
 
+
+### 3.9 2026-11-04 追加：今天验证过的可复现命令
+
+三条轮子，都是 `fastboot boot`（纯 RAM，不写任何分区）。共同前提：
+
+```bash
+export D22AP_ADT=$HOME/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt
+export ADSP_FW_DIR=$HOME/Desktop/marble-ios/work/adsp-fw
+cd $HOME/Desktop/marble-ios/work/xnu-gh
+```
+
+| 用途 | 构建 | 启动 | 取日志 |
+|---|---|---|---|
+| **震动/交互轮**（停在 iOS 让人按电源键） | `KEEPALIVE=1 bash scripts/mkimage.sh sweethap=1` | `SERIAL=2aa26095 bash scripts/boot_interactive.sh images/shim-iosroot-adsp.img` | 人重启到 TWRP 后 `SERIAL=2aa26095 ./scripts/pull_logs.sh <label>` |
+| **音频已知-good 配置**（b1/L/M 同一条，569 字节） | `bash scripts/mkimage.sh sweetexp=15 sweetbufs=30 sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 sweets1ap=3 sweetampfirst=1 sweetaudioprobe=1` | `SERIAL=2aa26095 bash scripts/boot_one.sh images/<img> <label>`（自动复位+自动拉 ring） | 同左（boot_one 内置） |
+| **零补丁仪器轮**（用户态 IOKit 查询追踪） | 上面任一 + 环境变量 `SWEETIOLOG=mediaserverd,backboardd`（**替换** base 里的 `sweetiolog=-`，不是追加；boot-args 预算 590） | 同上 | 同上 |
+
+**boot-args 必须逐条在打包产物里核对**（不是只核 cmdline 打印）：
+
+```bash
+LC_ALL=C grep -ac "sweetbufs=30" images/<img>          # 必须为 1，且值没被 607 字节字段切半
+LC_ALL=C grep -ac "SWEET MARK: dtprop " images/<img>   # 补丁是否真进了产物
+```
+
+注意两类假信号：对镜像做**裸字符串 grep 证明不了启动参数**（例如 `sweetaopval` 命中 1 次，
+其实是 kernel 里 `PE_parse_boot_argn("sweetaopval")` 的常量串）；`%#x` 打印 0 时输出 `0` 而不是
+`0x0`，数故障值要用 `=[0-9a-fx]*` 而不是 `0x[0-9a-f]*`。
+
+本地分析产物（都不需要开机，已从 /tmp 挪出来防清理）：
+
+```
+work/phone-acdb/*.acdb        6 份本机 ACDB（MTP/CDP/QRD_ukee、IDP_UPD、QRD_diwali×2）
+work/phone-libs/libgsl.so     /vendor/lib64/libgsl.so，用来反汇编 GDC/SET_CFG 组包
+work/xnu-gh/tools/acdb_graph_rebuild.py / acdb_size_scan.py    ACDB 走链工具
+```
+
 ## 四、文档索引
 
 | 文件 | 内容 |
@@ -217,4 +279,7 @@ run115 挂死形态，不是被拒。`images/e1-vgraph2724.img` 留着但**不�
    侧设置时间；AP 直接写 SPMI 已被证明不通。
 3. **启动时间**：kernel 到 launchd 约 39 秒（4 核/8 核一样），需要打点找
    最大的一段；E/P 调度以后再说（需要 AMP/CLPC）。
-4. **音频（可选）**：抓那 18 KB APM 配置，再回到 `sweetshmhi=1` 的路线。
+4. **音频（主线）**：那 18 KB **不在机内 ACDB 里**（已量完），所以现在做两件不花开机的事：
+   (a) 反汇编 `work/phone-libs/libgsl.so` 求 GDC/自定义配置的记录头与 SET_CFG 组包规则；
+   (b) 重跑 N 轮（0251 v3 已修好我那个导致 panic 的重入守卫）量 mediaserverd 在
+   `IODeviceTree:/product` 上到底读哪些属性。
