@@ -3082,3 +3082,26 @@ K 轮实测：mediaserverd 在成功 open 四台设备之后，做了 **287 次*
 | **N4** | 回归：`gate flag=1`、`open by pid 28`=4、`AppleAOPAudioUserClient sel=4`=5、`crashed: mediaserverd`=0、`graph_start rsp … status=0` | 成立 | 与 L/M 同形，本轮唯一变化就是多了打印 |
 
 开机次数：预算已提到 120（2026-11-04 你给的），这是第 14 次。
+
+
+## N 判决（`logs/ring-n-dtprop.txt` 为空/无 dtprop 行）：**仪器自身缺陷导致 panic，本轮非证据**
+
+现象：开机 panic，`pc 0xfffffe7f7750f930 / lr 0xfffffe00079dc5c0`，手机已回 TWRP。
+
+原因**不需要设备上数据就能确定**，因为它是纯代码性质：0251 第一版把重入守卫放在
+`entry->getName()` **之后**，而 `getName()` 自己就读 `name` 属性 ⇒
+`getProperty("name")` 再次进入同一个 witness ⇒ 无限递归 ⇒ 栈溢出。
+（`inside` 在递归时还是 0，所以什么都没拦住。）
+
+修法与验证（都是本地的，没开机）：
+1. 守卫移到函数最前面，`inside = 1` 之后**任何**返回路径都清零（审计：守卫之后 4 个
+   `return;` 对 5 个 `inside = 0;`，多出的那个是函数末尾的正常出口）。
+2. 加总量上限 `SWEET_DTPROP_TOTAL 500`（原来只有每调用者 60 / 8 个调用者）。
+3. **对当前文件**跑 stub 语法检查（`clang++ -Wall -Wextra -Wformat=2 -Werror -fsyntax-only`）
+   ⇒ STUB-COMPILE-CLEAN。这一步之前是漏的：第一次只 stub 了 glink 的 hunk，
+   而 0251 的 C++ 函数从没被单独编译过——所以先吃到一个 CI 红（丢 `uint32_t i;`），
+   再吃到一个 panic（守卫顺序）。**两次都是我"没跑过的检查当成跑过"**。
+
+开机记账：第 14 次开机 = **非证据**，仪器坏掉的那一格（N1 的"0 行"分支），
+按规矩计入次数但不产生任何关于 mediaserverd 的结论。
+下一条：网络恢复后把修好的 0251 推上去（现在 main 上那版**会 panic，不要再打镜像开机**）。
