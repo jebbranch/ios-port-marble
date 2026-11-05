@@ -1,0 +1,93 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 60a4fd7..e277ae5 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5464,18 +5464,24 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+  * instances this graph definitely contains and act as the positive control.
+  */
+ /*
+- * F round: exactly one probe, and its advertised payload address is deliberately
+- * outside the region we declared in SHM_MAP (0x5000).  E closed the offset value
+- * and the addressing form (four sends, all status 0x1, hop 0x2001005, i.e. APM
+- * itself answered), and the fault registers turned out to be unreadable, so the
+- * open question is whether APM range-checks the address before it reads the
+- * body.  One refusal per boot: E showed four of them cost us the data plane.
++ * G round: exactly one probe, and its advertised payload address is deliberately
++ * INSIDE the region we declared (0x5000) - the one thing F could not control for.
++ * F's single out-of-range send came back status 0x1 exactly like the five
++ * in-range sends before it, so the address axis is closed and APM does not appear
++ * to range-check.  What F also showed is that the refusal *count* was never why
++ * the data plane died: E's dose reading is refuted.  What tracks instead is
++ * whether the advertised address is serviceable - D sent one in-range probe and
++ * the plane ran 31 buffers with four done replies, while E (two probes at
++ * base+off, addresses the DSP cannot service) and F (one probe past the region)
++ * both died at the first buffer.  This boot repeats F with a serviceable address
++ * on the same code lineage: plane alive => the wedge is the bogus address, and
++ * the dereference story gains its second leg; plane still dead => 0254/0255
++ * themselves wedge it, and that inference is void.
+  *
+- * In-use layout, for the record: PCM at 0x0 and 0x800 (1152 B each, used to
+- * 0xc80), graph payload at 0x2000 (used to 0x2b90), region size 0x5000.  0x6000
+- * is past the end, so the body is never written and never read back here.
++ * In-use layout: PCM at 0x0 and 0x800 (1152 B each, used to 0xc80), graph
++ * payload at 0x2000 (used to 0x2b90), region size 0x5000.  0x1000 is free.
+  */
+-static const uint32_t g_oob_offs[] = { 0x6000u };
++static const uint32_t g_oob_offs[] = { 0x1000u };
+ #define SWEET_OOB_FORMS 1		/* 0 = bare offset, 1 = base + offset */
+ #define SWEET_OOB_RECS  9
+ 
+@@ -5495,7 +5501,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 	uint32_t t;
+ 
+ 	if (!g_shm_mapped || !g_shm_va) {
+-		printf("SWEET MARK: oobcfg v3 no mapping\n");
++		printf("SWEET MARK: oobcfg v4 no mapping\n");
+ 		return (-1);
+ 	}
+ 	memset(body, 0, sizeof(body));
+@@ -5517,7 +5523,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 		uint32_t f;
+ 
+ 		if (!in_bounds) {
+-			printf("SWEET MARK: oobcfg v3 off=%#x is past the declared region %#x, body not written\n",
++			printf("SWEET MARK: oobcfg v4 off=%#x is past the declared region %#x, body not written\n",
+ 			    oob_off, g_shm_region_size());
+ 		} else {
+ 			memcpy((void *)(g_shm_va + oob_off), body, off);
+@@ -5529,7 +5535,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 			    g_map_pa + (uint64_t)oob_off;
+ 
+ 			if (f == 1 && g_map_pa == 0) {
+-				printf("SWEET MARK: oobcfg v3 try %u no region base, abs form skipped\n",
++				printf("SWEET MARK: oobcfg v4 try %u no region base, abs form skipped\n",
+ 				    t * SWEET_OOB_FORMS + f);
+ 				continue;
+ 			}
+@@ -5543,7 +5549,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 			g_put32(pkt + 24 + 4, (uint32_t)(addr >> 32));
+ 			g_put32(pkt + 24 + 8, g_shm_handle);
+ 			g_put32(pkt + 24 + 12, off);
+-			printf("SWEET MARK: oobcfg v3 try %u form=%s off=%#x addr=%#llx len=%u recs=%u handle=%#x\n",
++			printf("SWEET MARK: oobcfg v4 try %u form=%s off=%#x addr=%#llx len=%u recs=%u handle=%#x\n",
+ 			    t * SWEET_OOB_FORMS + f, f == 0 ? "bare" : "abs",
+ 			    oob_off, addr, off, SWEET_OOB_RECS, g_shm_handle);
+ 			sweet_log_sync();
+@@ -5573,7 +5579,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 			g_smmu_faults("oobcfg-post");
+ 			__asm__ volatile("dsb sy" ::: "memory");
+ 			if (!in_bounds) {
+-				printf("SWEET MARK: oobcfg v3 recs not read back (past the mapping)\n");
++				printf("SWEET MARK: oobcfg v4 recs not read back (past the mapping)\n");
+ 				sweet_log_sync();
+ 				continue;
+ 			}
+@@ -5581,7 +5587,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 				const uint8_t *rec = (const uint8_t *)g_shm_va +
+ 				    oob_off + i * 32;
+ 
+-				printf("SWEET MARK: oobcfg v3 rec %u iid=%#x param=%#x size=%u err=%#x\n",
++				printf("SWEET MARK: oobcfg v4 rec %u iid=%#x param=%#x size=%u err=%#x\n",
+ 				    i, g_le32(rec + 0), g_le32(rec + 4),
+ 				    g_le32(rec + 8), g_le32(rec + 12));
+ 			}
