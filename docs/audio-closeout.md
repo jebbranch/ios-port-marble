@@ -4869,3 +4869,14 @@ cmdline = 音频已知-good 那条 + `sweettdmpwr=2`；**不带** `sweetcccfg`�
 （走现成 `SWEETFW1` blob 读取器，一次编译），用它分辨糊/咔哒/变调；② 与 M 系列降级为次要。
 **若 T1 三种读数都不利**：下一枪回到 0265 里已编好的 `sweetcccfg=2/3/4`（带内 iid=1+图级参数 / 配对矩阵），
 它们**不需要再编译**，只换 boot args 本地重打包。
+
+### T1 打包时的两次拦截（都记下来，它们各救了一次开机）
+1. **590 守卫**：T0b 那条 581 B 再加 ` sweettdmclk=1` = **596 > 590**，`mkimage.sh` 直接失败退出。
+   因为它是**在写镜像之前**失败，随后的 `cp` 把**上一轮 T0b 的镜像**复制成了 `images/t1-tdmclk.img`
+   —— 差点开出一枪"参数里没有 `sweettdmclk` 的 T1"。**开机前逐条核产物这一步抓到了它**
+   （`sweettime` 是上一轮的值、cmdline 里没有 `sweettdmclk`）。⇒ 已删掉那份错镜像；今后 `mkimage` 之后
+   **必须先核产物再 `cp`/再开机**，不许连着写。
+2. **"删一个值为 `-` 的参数"是反的**：`xnu/patches/0054-sweet-process-sampler.patch:198-202`
+   —— `sweetsample` **不存在时默认 `"SpringBoard,backboardd"` 并真的起采样线程**，`=-` 才是关。
+   ⇒ 腾字节改用删 `-noprogress`（只影响开机进度显示，不启动任何线程），并在此写明这是本轮与 T0b 之间
+   **除被试变量外的第二个差异**（它不产生任何 GPR/音频行为）。
