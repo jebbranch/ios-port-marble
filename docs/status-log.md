@@ -2430,3 +2430,18 @@ PSCI SYSTEM_RESET（已验证可用）。
   + `tools/ci_joblog.py`）、`fetch_kernel.sh` 摘要不一致不再放行（`EXPECT_MARKER` 才是新鲜度证明）、
   `tools/stub_oobcfg.py` 三种 DSP 模式跑过并暴露 `touched` 的不可分辨支。
 - 开机记账：**25/120**。
+
+## 2026-11-05 L2 准备完成 + 第 26 枪未遂（零开机消耗，仍是 25/120）
+
+- run **#389 success**（`058ab28`）⇒ 0262 真进产物：kernel `e5fdcb8b…` 里 `oobcfg v10 try`=1、
+  `body touched=`=1、`form=inband`=1、`v9`=0、`v8`=0（这是 run 387 那条规则改掉之后第一次一把过）。
+- 镜像 `images/l2-inband-3recs.img` 身份核过：cmdline **583 B**（与 G–K1/L1 逐字同，只换代码）、
+  `sweetoobcfg=1` 与 `sweettime=1793877856` 都在打包产物里、`oobcfg v9/v8` 归零。
+- **未遂**：`boot_one.sh` 等不到 fastboot 节点后自行退出（`!! not in fastboot`），随后设备从 adb、
+  fastboot、USB 系统日志三方同时消失 ⇒ 与本轮早些时候的网络中断应是同一事件（线/口/供电）。
+  `fastboot boot` 从未执行 ⇒ **不记为已开机**，不产生 ring，镜像可原样重开。
+- 离线另买到的两条（都在 closeout）：① 厂商 672 B OOB 正文**不等于**任何一张逐模块表的记录长度之和
+  （最近 480）⇒ "OORB 正文=整张表"这条推测未成立，不用它解释任何码；
+  ② M1 的常量已算好（`{0x40bd…0x40c0, param 0x08001015, size 8}`，步距 24、4 条 96 B），
+  但它相对 L2 同时动四格 ⇒ 只能与 L2 并排读。
+- 判据 L2-0…L2-5 与判决表仍是 `058ab28` 那份，**开机前已 commit，未动**。
