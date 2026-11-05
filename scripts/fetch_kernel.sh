@@ -24,9 +24,15 @@ curlx() { if [ -n "$PROXY" ]; then curl -x "$PROXY" "$@"; else curl "$@"; fi; }
 
 echo "release page: $PAGE"
 INFO=$(curlx -s --max-time 60 "$PAGE?x=$(date +%s%N)")
-DIGEST=$(printf '%s' "$INFO" | grep -o "sha256:[0-9a-f]\{64\}" | head -1 | cut -d: -f2)
+# The release carries a stale build-error.txt next to the kernel, and that asset is
+# listed first, so "the first sha256 on the page" is the wrong kernel's digest.  Take
+# the digest from the element whose clipboard label names the asset we want.
+DIGEST=$(printf '%s' "$INFO" | tr '>' '\n' \
+    | grep -F "aria-label=\"Copy to clipboard digest for $NAME\"" \
+    | grep -o 'value="sha256:[0-9a-f]\{64\}"' | head -1 \
+    | sed 's/.*sha256://; s/"//')
 if [ -z "${DIGEST:-}" ]; then
-  echo "error: could not read the release digest (rate limited? use MARBLE_PROXY=...)" >&2
+  echo "error: no digest listed for $NAME (rate limited? use MARBLE_PROXY=...)" >&2
   exit 1
 fi
 echo "want sha256: $DIGEST"
