@@ -1,0 +1,30 @@
+M2 candidate: subgraph 0xb0000023's per-module cal table, verbatim from the ACDB that is
+live on marble (work/phone-acdb/MTP_ukee_acdb_cal.acdb, 1,465,878 B; a byte-identical copy
+is in work/sweet-audio/vendor-ukee/).  Reproduce with:
+  python3 tools/acdb_param_census.py --file MTP_ukee --iid 0x40bd,0x40be,0x40bf,0x40c0
+
+Record chain offset in file: 0x54e2a.  10 records, every one param 0x08001015 size 8, so the
+wire stride is 16 + align8(8) = 24 B and the whole payload is 240 B => ONE in-band SET_CFG
+carries the entire table: no out-of-band, no chunking, and none of the 18 KB object.
+Multi-record => dst = APM = 1, same handle as the L rounds.
+
+Honest limit: this changes length AND param AND per-record size AND the iids at once, so M2
+is only readable next to M1 (C's container with only the param swapped).  It is not a
+single-variable shot and must not be scored as one.
+
+/* M2: subgraph 0xb0000023 - iid / param 0x08001015 / size 8, bytes verbatim from the ACDB */
+static const uint32_t g_m2_iids[10] = {
+	0x40bdu, 0x40beu, 0x40bfu, 0x40c0u, 0x40c1u, 0x40c2u, 0x40c3u, 0x40c4u, 0x40c6u, 0x4165u
+};
+static const uint32_t g_m2_payload[10][2] = {
+	{ 0x00000000u, 0x00000001u },	/* iid 0x40bd */
+	{ 0x00000001u, 0x00000001u },	/* iid 0x40be */
+	{ 0x00000001u, 0x00000001u },	/* iid 0x40bf */
+	{ 0x00000001u, 0x00000001u },	/* iid 0x40c0 */
+	{ 0x00000001u, 0x00000001u },	/* iid 0x40c1 */
+	{ 0x00000001u, 0x00000001u },	/* iid 0x40c2 */
+	{ 0x00000001u, 0x00000001u },	/* iid 0x40c3 */
+	{ 0x00000001u, 0x00000001u },	/* iid 0x40c4 */
+	{ 0x00000001u, 0x00000001u },	/* iid 0x40c6 */
+	{ 0x00000001u, 0x00000008u },	/* iid 0x4165 */
+};
