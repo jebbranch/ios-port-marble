@@ -4847,3 +4847,25 @@ cmdline = 音频已知-good 那条 + `sweettdmpwr=2`；**不带** `sweetcccfg`�
 播放侧 TDM 位时钟 `0x204 @ 12.288 MHz / attr 4 / root 0`（`PRM_REQUEST_HW_RSC`，Android 侧 `status=0`）。
 仪器档位改为**可听优先**：`sweetvol=31`（峰 31744 ≈ −0.3 dBFS）+ `sweetbufs=200`（≈1.2 s）——
 振幅是测量条件、不是被试变量，故与"配不配时钟"这一格不冲突；开这一枪前须用户确认可以响。
+
+## T1 判据（第 33 枪，**0265 内核 + `sweettdmclk=1`**；开机前写死）
+
+**被试变量只有一个**：补上厂商投、我们从没投过的**播放侧 TDM 位时钟**
+`PRM_REQUEST_HW_RSC(0x0100100f) → dst=2`，正文 36 B `{2, 0x0800102C, 20, 0, 1, 0x204, 12288000, 4, 0}`
+（Android 侧 `status=0`，见 `docs/data/vendor-accepted-setcfg-2026-11-05.md`）。
+其余全部与 T0b 相同（出厂图 `vp-wr`、`sweetampfirst=1`、`sweetbufs`、无 cccfg/oobcfg 探针）。
+**仪器档位（测量条件，不是变量）**：`sweetvol=16` ⇒ 峰 16384 ≈ **−6.0 dBFS**，`sweetbufs=200` ⇒ ≈**1.2 s**；
+理由：T0b 已在 −12 dBFS/720 ms 下证明"可听档没听到"，再抬 6 dB 且拉长到 1.2 s，排除"仍然太轻"这一条。
+**开这一枪前需用户确认可以出声**（用户已问过"是不是太小声"，视为愿意听；响度上限仍留给 `31`）。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| T1-0 身份 | 镜像内 `tdmclk v1 `×1、`cccfg v3 `×6、`cccfg v2 `×0、`oobcfg v11 try `×1；ring `sweettime=<本轮>` 命中；cmdline 实测长度且尾部 `sweettdmclk=1 sweettime=…` 连续、无 `sweetcccfg`/`sweetoobcfg` | 成立 | 打的是 0265 的这一枪 |
+| **T1-1 开关门** | `SWEET MARK: tdmclk v1 id=0x204 freq=12288000 attr=4 root=0 rc=?` **恰 1 行** | 出现 | 那一票真发了；`rc` 是要读的第一个数 |
+| **T1-2 主判据（两读）** | ① `rc=0` 且用户**听到** ≈1.2 s 单音 ⇒ 时钟票是元凶；② `rc=0` 但仍无声 ⇒ 该格关掉；③ **`rc!=0`** ⇒ PRM 拒绝这一票（属性/root/该 clk_id 不适用于本图），也是一条实质读数 | 见左 | 三种都有信息，不依赖"必须成功" |
+| T1-3 回归 | `tone gain g=16`、`pcm tone done (200 buffers)`、`data_buffer send` ≈201、`done status=0` ≥4、`no rsp` 0、`gate flag` 1、panic 0、收尾在窗口内 | 等值 | 不成立 ⇒ 不判、停手交回 |
+
+**若 T1 听到**：立刻把方向从"哪封配置被拒"改成"音质与连续性"，并按你的问题做**内嵌 1.5 s 可辨识音频**
+（走现成 `SWEETFW1` blob 读取器，一次编译），用它分辨糊/咔哒/变调；② 与 M 系列降级为次要。
+**若 T1 三种读数都不利**：下一枪回到 0265 里已编好的 `sweetcccfg=2/3/4`（带内 iid=1+图级参数 / 配对矩阵），
+它们**不需要再编译**，只换 boot args 本地重打包。
