@@ -4880,3 +4880,12 @@ cmdline = 音频已知-good 那条 + `sweettdmpwr=2`；**不带** `sweetcccfg`�
    —— `sweetsample` **不存在时默认 `"SpringBoard,backboardd"` 并真的起采样线程**，`=-` 才是关。
    ⇒ 腾字节改用删 `-noprogress`（只影响开机进度显示，不启动任何线程），并在此写明这是本轮与 T0b 之间
    **除被试变量外的第二个差异**（它不产生任何 GPR/音频行为）。
+
+### T1 实际打的 cmdline（与 T0b 的差异全部列出）
+`-noprogress` 在 `mkimage.sh` 的**基础串**里，不传不掉 ⇒ 字节从附加参数里腾：
+**去掉 `sweetexp=15`**（12 字节）。它的缺席方向已核：`:7953/:7988` 都是 `int exp2 = 0;` 再 parse，
+注释也写明这些位只是"加见证不花字节" ⇒ 少掉的只是 IBAT 电流见证、IOKit 音频探测见证、
+以及经 `exp&4` 打开的 `ampread`（本就有 `sweetampfirst` 独立控制），**不新增也不移除任何 GPR 包**。
+`sweetsample=-` **保留**（删它会打开采样线程，见上一节）。
+最终 cmdline **566 B**、`sweettime=1793892602`、`sweettdmclk=1 sweetvol=16 sweetbufs=200` 全在，
+镜像内 `tdmclk v1 `×1、`cccfg v3 `×6、`cccfg v2 `×0。
