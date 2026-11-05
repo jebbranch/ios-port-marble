@@ -1,0 +1,104 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 0994bfc..4718138 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5483,21 +5483,19 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+  */
+ static const uint32_t g_oob_offs[] = { 0x1000u };
+ #define SWEET_OOB_FORMS 1		/* 0 = bare offset, 1 = base + offset */
+-#define SWEET_OOB_RECS  9
+-#define SWEET_OOB_STRIDE 32		/* 16-byte wire header + align8(12) */
++#define SWEET_OOB_RECS  4
++#define SWEET_OOB_STRIDE 72		/* 16-byte wire header + align8(52) */
+ 
+ /*
+- * I round: H moved three sub-variables at once (param id, per-record size with its
+- * stride and count, and the payload bytes) and status answered 0x3 instead of 0x1.
+- * I changes only the param id - same nine records, same size 12, same 32-byte
+- * stride, same payload words, same address 0x1000, same dst and handle as G - so
+- * the answer says whether the 0x1/0x3 boundary is the id or the size/payload.
++ * J round: I answered 0x1, so the param id alone is not what moved H from 0x1 to
++ * 0x3 - what is left is the per-record size (with its stride and record count) and
++ * the payload bytes.  J holds H exactly - iid=1, param 0x08001004, size 52, four
++ * records, stride 72, total 288, address 0x1000, dst=1, same handle - and zeroes
++ * only the payload bytes.  0x3 would mean the body content is irrelevant and the
++ * size/stride is the boundary; 0x1 would mean APM or the module inspects the bytes
++ * themselves, which makes payload content a climbable axis.
+  */
+-static const uint32_t g_oob_miids[SWEET_OOB_RECS] = {
+-	0x428fu, 0x40bdu, 0x42d3u,		/* present in our graph: control */
+-	0x40bfu, 0x40c0u, 0x40c8u, 0x4165u, 0x4308u,	/* never seen in our container */
+-	0x428fu		/* repeated control: 9 records x 32 = 288 > the 256 in-band cap */
+-};
++static const uint32_t g_oob_miids[SWEET_OOB_RECS] = { 1u, 1u, 1u, 1u };
+ 
+ static int
+ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+@@ -5509,7 +5507,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 	uint32_t t;
+ 
+ 	if (!g_shm_mapped || !g_shm_va) {
+-		printf("SWEET MARK: oobcfg v6 no mapping\n");
++		printf("SWEET MARK: oobcfg v7 no mapping\n");
+ 		return (-1);
+ 	}
+ 	memset(body, 0, sizeof(body));
+@@ -5518,11 +5516,9 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 	for (i = 0; i < SWEET_OOB_RECS; i++) {
+ 		g_put32(body + off + 0, g_oob_miids[i]);
+ 		g_put32(body + off + 4, 0x08001004u);
+-		g_put32(body + off + 8, 12);
++		g_put32(body + off + 8, 52);
+ 		g_put32(body + off + 12, 0);	/* error_code, written by the DSP */
+-		g_put32(body + off + 16, 96000);
+-		g_put32(body + off + 20, 0x30020);
+-		g_put32(body + off + 24, 1);
++		/* payload bytes left zeroed on purpose: the only thing J changes vs H */
+ 		off += SWEET_OOB_STRIDE;
+ 	}
+ 	for (t = 0; t < sizeof(g_oob_offs) / sizeof(g_oob_offs[0]); t++) {
+@@ -5531,7 +5527,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 		uint32_t f;
+ 
+ 		if (!in_bounds) {
+-			printf("SWEET MARK: oobcfg v6 off=%#x is past the declared region %#x, body not written\n",
++			printf("SWEET MARK: oobcfg v7 off=%#x is past the declared region %#x, body not written\n",
+ 			    oob_off, g_shm_region_size());
+ 		} else {
+ 			memcpy((void *)(g_shm_va + oob_off), body, off);
+@@ -5543,7 +5539,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 			    g_map_pa + (uint64_t)oob_off;
+ 
+ 			if (f == 1 && g_map_pa == 0) {
+-				printf("SWEET MARK: oobcfg v6 try %u no region base, abs form skipped\n",
++				printf("SWEET MARK: oobcfg v7 try %u no region base, abs form skipped\n",
+ 				    t * SWEET_OOB_FORMS + f);
+ 				continue;
+ 			}
+@@ -5557,7 +5553,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 			g_put32(pkt + 24 + 4, (uint32_t)(addr >> 32));
+ 			g_put32(pkt + 24 + 8, g_shm_handle);
+ 			g_put32(pkt + 24 + 12, off);
+-			printf("SWEET MARK: oobcfg v6 try %u form=%s off=%#x addr=%#llx len=%u recs=%u handle=%#x\n",
++			printf("SWEET MARK: oobcfg v7 try %u form=%s off=%#x addr=%#llx len=%u recs=%u handle=%#x\n",
+ 			    t * SWEET_OOB_FORMS + f, f == 0 ? "bare" : "abs",
+ 			    oob_off, addr, off, SWEET_OOB_RECS, g_shm_handle);
+ 			sweet_log_sync();
+@@ -5587,7 +5583,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 			g_smmu_faults("oobcfg-post");
+ 			__asm__ volatile("dsb sy" ::: "memory");
+ 			if (!in_bounds) {
+-				printf("SWEET MARK: oobcfg v6 recs not read back (past the mapping)\n");
++				printf("SWEET MARK: oobcfg v7 recs not read back (past the mapping)\n");
+ 				sweet_log_sync();
+ 				continue;
+ 			}
+@@ -5595,7 +5591,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 				const uint8_t *rec = (const uint8_t *)g_shm_va +
+ 				    oob_off + i * SWEET_OOB_STRIDE;
+ 
+-				printf("SWEET MARK: oobcfg v6 rec %u iid=%#x param=%#x size=%u err=%#x\n",
++				printf("SWEET MARK: oobcfg v7 rec %u iid=%#x param=%#x size=%u err=%#x\n",
+ 				    i, g_le32(rec + 0), g_le32(rec + 4),
+ 				    g_le32(rec + 8), g_le32(rec + 12));
+ 			}
