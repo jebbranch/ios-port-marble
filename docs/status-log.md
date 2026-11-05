@@ -2486,3 +2486,39 @@ PSCI SYSTEM_RESET（已验证可用）。
 4. 下一步离线可做、且可能比 M1 更值：把 `GRAPH_OPEN` 正文**改成直接从 ACDB 的链逐字节构造**
    （多子图、57 条连线、带 10 条 cal 表），构造器已有（`tools/acdb_graph_rebuild.py`），
    这样"我们开的那张图"不再是手写的 5 条记录 —— 这一枪不改 SET_CFG 语义，属于另一条轴。
+
+## 2026-11-05 离线更正二（设备仍被拔，未开机；26/120 不变）
+
+**撤回**上一节 `docs/status-log.md:2466-2470` 的两处读法（那一节已 commit，按规矩只追加、不改正文）。
+本轮把数组逐字节解出（`python3` 从链树 `bsd/dev/sweet_glink.c:1851` 抽出 344 B 直接走记录链）：
+
+1. **不是** ACDB 链式 8 字节头。`g_graph_open_payload[344]` 是**标准 16 字节
+   `apm_module_param_data_t {iid, param_id, param_size, error_code}` 多记录容器**，段间 **align8**。
+   五个头在 `0x000 / 0x040 / 0x0b8 / 0x0e8 / 0x130`（上一条写的 `@0x4 / @0x44 / @0xbc / @0xec / @0x134` **全部偏了**）；
+   size = `48 / 100 / 32 / 52 / 20` ⇒ 补到 `48 / 104 / 32 / 56 / 24` ⇒ `5×16 + 264 = 344` **逐字节闭合**。
+   `iid` 五条全为 `0x1`（`APM_MODULE_INSTANCE_ID`），`error_code` 字段**存在且为 0**。
+   ⇒ 我们这份**拿到 `status=0`** 的正文，和 H/J/K1/L1/L2 那几份被拒的 `SET_CFG` 容器
+   **用的是同一个记录编码**；编码不是两者的差别。（AGM 堆里那份才是 12 字节紧凑头，见 `docs/vendor-graph.md:13`。）
+2. `0x3c`、`0xa4` 的 `0xffffffff` **不是记录间分隔符**，是各自元组里 param 的**值**：
+   - `0x08001001 SUB_GRAPH_CONFIG`（48）= `num_sg=1, sg=0xb000013d, 3 条 {param,size,value}`
+     = `0x0800100e/4/1`、`0x0800100f/4/2`、`0x08001010 SCENARIO_ID/4/0xffffffff` ⇒ `12+36=48` ✓
+   - `0x08001000 CONTAINER_CONFIG`（100）= `1, container=0xe00001b8, 7 条`
+     = `0x08001011/8/{1,0x0b001001}`、`0x08001012/4/4`、`0x08001013/4/0x1000`、`0x08001014/4/2`、
+       `0x08001174/4/2`、`0x080010cb/4/0xffffffff`、`0x0800124d/4/2` ⇒ `12+16+72=100` ✓
+   - `0x08001002 MODULES_LIST`（32）= `1, 0xb000013d, 0xe00001b8, num=2` +
+     `{0x07001010,0x483f}`、`{0x07001023,0x4840}` ✓
+   - `0x08001003 MODULE_PROP`（52）= `num_module_prop_cfg=2` + 两个 `apm_module_prop_cfg_t`：
+     `iid 0x483f`（`num_props=1`，`0x08001015 PORT_INFO` size 8 = `max_ip=1,max_op=1`）、
+     `iid 0x4840`（`num_props=1`，同 key size 8 = `max_ip=1,max_op=0`）⇒ `4+24+24=52` ✓
+   - `0x08001004 MODULE_CONN`（20）= `num_connections=1` + `{src iid 0x483f port 1 → dst iid 0x4840 port 2}` ✓
+
+**由此多一条可核对的事实（不命名机制）**：`iid=0x1 + param=0x08001004` **在 `GRAPH_OPEN` 下一直拿 `status=0`**，
+而同一对 iid/param 放进带外 `SET_CFG`（H/J）拿 `0x3`。⇒ "iid=1 不被接受"**不是通用规则，是命令内的观察**；
+K1 的"真实模块 iid ⇒ 换码"同理。上一条据此写的"用错的命令重复交付同一个 key"仍然成立，
+但**不能用它解释 `0x3`/`0x1`**。
+M1 用 `iid=0x428f`（真实模块）+ `param=0x08001004` 走带内 `SET_CFG`，与 GRAPH_OPEN（命令不同）
+和 H/J（iid 不同）都不同 ⇒ **开机前判据一字不改**：`0` = 命令级接受；`0x1`/`0x3` = 仍是拒绝，不命名机制。
+
+**标签更正**：容器里的 heap 属性是**真实** `0x08001174 = APM_CONTAINER_PROP_ID_HEAP_ID`
+（`apm_container_api.h:204`）；我们**自创**的是 `0x08001176`（`sweet_glink.c:6563/6624/6826`，0248 已注明厂商从不发）。
+两者差 2，之前口语里混用过。
