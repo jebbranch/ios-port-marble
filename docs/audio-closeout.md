@@ -4327,3 +4327,19 @@ marker 升到 `cccfg v2`（`v1` 归零），`error_code` 槽位仍只靠 `memset
 记录级仍盲（`error_code` 八轮 0，且带内正文在 ADSP 侧的包里，DSP 无法写回我们的 `body`
 ⇒ `touched` 这类读数只在带外那一侧才可能变非 0，N1 就是为此而设）。
 M1 是第 **27** 枪；N1 是第 **28** 枪（本目标上限）。
+
+### M1 开机前的标签更正（子智能体提出、我逐条在头文件里复核）
+
+| 常量 | 我自己核到的出处 | 更正 |
+|---|---|---|
+| `0x08001017` | `work/sweet-audio/refs/.../modules/hw_intf_cmn_api.h:156` = `PARAM_ID_HW_EP_MF_CFG` | **C 的第一个 param 是真·模块参数**，不是我们编的 |
+| `0x0800101b` | `.../modules/pcm_tdm_api.h:362` = `PARAM_ID_TDM_INTF_CFG` | **C 的第二个 param 也是真·模块参数** |
+| `0x08001004` | `.../apm/apm_module_api.h:150` = `APM_PARAM_ID_MODULE_CONN`（`ko-…audioreach.h:161` 同名） | 它是 **APM 图级参数**；H/J/K1/L1/L2 一直把它放进"模块记录"的命名空间 |
+| `iid=1` | `.../apm/apm_api.h:261` = `APM_MODULE_INSTANCE_ID` | `iid=1` 就是"发给 APM 本身"，所以 `0x3` 与 `0x1` 的差别是**记录归属**，与"模块真假"无关 |
+| `0x08001015` | `.../apm/apm_module_api.h:127` = `APM_MODULE_PROP_ID_PORT_INFO` | 它是 `MODULE_PROP` 下的**属性 id**，不是 SET_CFG 的 cal key ⇒ **原计划的 M2（发 `0x08001015`/size 8）前提不成立，撤回** |
+
+**改写的读法（不含机制命名）**：`ACDB 里查不到` **不等于** `不是真参数`——厂商运行时按 backend_conf 生成 `MF_CFG/INTF_CFG` 这类 cal，本来不落 ACDB。
+⇒ 之前"ACDB 普查证明 C 是自创的"这句话**作废**；普查证明的只是"ACDB 里没有"。
+⇒ M1 的实际问题也从"param 真假"改述为**命名空间**：**图级参数 `MODULE_CONN` 放进模块记录里，会不会让一份本来被接受的容器变成被拒**。
+预测（写下来当可判读，不当前提）：头文件读法 ⇒ `0x1`；"param 不参与"读法 ⇒ `0`。
+下一枪仍排 **N1（带外哨兵）**：带内正文在 ADSP 侧的包里、DSP 写不回我们的 `body`，所以记录级只有带外侧能拿到非 0 读数——这一条不因上面的更正而变。

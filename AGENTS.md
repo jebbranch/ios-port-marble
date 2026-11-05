@@ -186,7 +186,15 @@ bash scripts/mkimage.sh sweethap=1 ...           # 位置参数会被追加到 c
   **长度不是分界**（降到 216 B ≤256 带内仍 `0x1`，0262/第 26 枪）；
   已排除还包括 **地址 / 地址形式 / param id 单独 / 正文字节**（F/E/I/J）。
   ⇒ 与唯一拿到 `0` 的 C 之间只剩 **param id 与每条 size** 两格，且对 C 是一起动
-  （C = `iid=0x428f` + `param=0x08001017`(12)/`0x0800101b`(28)、2 条、带内 80 B）。
+  （C = `iid=0x428f` + `param=0x08001017`(12)/`0x0800101b`(28)、2 条、带内 80 B。
+  **更正（2026-11-05，我自己在头文件里复核）**：这两个 param 是**真模块参数**
+  （`PARAM_ID_HW_EP_MF_CFG` @ `hw_intf_cmn_api.h:156`、`PARAM_ID_TDM_INTF_CFG` @ `pcm_tdm_api.h:362`），
+  **不是自创**；`0x08001004` 才是 **APM 图级参数** `APM_PARAM_ID_MODULE_CONN`（`apm_module_api.h:150`）；
+  `iid=1` = `APM_MODULE_INSTANCE_ID`（`apm_api.h:261`）⇒ 之前那句"ACDB 里没有 ⇒ 自创"**作废**，
+  普查只证明"ACDB 里没有"（厂商运行时生成的 cal 本来不落 ACDB）。
+  另：`0x08001015` 是 `MODULE_PROP` 下的 PORT_INFO **属性 id**（`apm_module_api.h:127`），
+  不是 SET_CFG 的 cal key ⇒ 曾排队的 **M2（发 `0x08001015`/size 8）撤回**。
+  ⇒ M1 的问题改述为**命名空间测试**：把图级 `MODULE_CONN` 塞进模块记录，会不会把已被接受的容器变成被拒。
   下一枪 **M1** = C 的形状**只**把 param 换成 `0x08001004`；再下一枪 **N1** 把 `error_code` 预置成
   非 0 哨兵（`0xa5a5a5a5`），让 `body touched!=0` 成为正证据。
   三个码**除 `0` 外都是拒绝**、语义不命名；逐记录 `error_code` 已**八轮**全 0 ⇒ 记录级仍盲；
