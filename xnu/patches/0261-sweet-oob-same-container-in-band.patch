@@ -1,0 +1,181 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 8db361a..0100a12 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5517,18 +5517,16 @@ static int
+ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ {
+ 	uint8_t body[SWEET_OOB_RECS * SWEET_OOB_STRIDE];
+-	uint8_t pkt[24 + 16];
+ 	uint32_t off = 0;
+ 	uint32_t i;
+ 	uint32_t j;
+ 	uint32_t t;
+ 
+ 	if (!g_shm_mapped || !g_shm_va) {
+-		printf("SWEET MARK: oobcfg v8 no mapping\n");
++		printf("SWEET MARK: oobcfg v9 no mapping\n");
+ 		return (-1);
+ 	}
+ 	memset(body, 0, sizeof(body));
+-	memset(pkt, 0, sizeof(pkt));
+ 	g_smmu_faults("oobcfg-pre");
+ 	for (i = 0; i < SWEET_OOB_RECS; i++) {
+ 		g_put32(body + off + 0, g_oob_miids[i]);
+@@ -5540,106 +5538,72 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 		}
+ 		off += SWEET_OOB_STRIDE;
+ 	}
++	/*
++	 * L1 round: one field from K1 - the transport.  C sent a multi-record
++	 * container with real module iids in-band and got status 0; K1 sent the same
++	 * kind of container out-of-band and got 0x1; K1 also showed that with real
++	 * iids the size and the record count do not change the answer, so those two
++	 * axes were retired unspent.  The container here is K1's byte for byte, and it
++	 * is still written to the mapped region so the read back and the touched check
++	 * mean what they meant on K1 - only the packet changes, going through the same
++	 * helper C used.
++	 */
+ 	for (t = 0; t < sizeof(g_oob_offs) / sizeof(g_oob_offs[0]); t++) {
+ 		const uint32_t oob_off = g_oob_offs[t];
+ 		const int in_bounds = (oob_off + off <= g_shm_region_size());
+-		uint32_t f;
+ 
+ 		if (!in_bounds) {
+-			printf("SWEET MARK: oobcfg v8 off=%#x is past the declared region %#x, body not written\n",
++			printf("SWEET MARK: oobcfg v9 off=%#x is past the declared region %#x, body not written\n",
+ 			    oob_off, g_shm_region_size());
+ 		} else {
+ 			memcpy((void *)(g_shm_va + oob_off), body, off);
+ 		}
+ 		__asm__ volatile("dsb sy" ::: "memory");
+ 
+-		for (f = 0; f < SWEET_OOB_FORMS; f++) {
+-			uint64_t addr = (f == 0) ? (uint64_t)oob_off :
+-			    g_map_pa + (uint64_t)oob_off;
+-
+-			if (f == 1 && g_map_pa == 0) {
+-				printf("SWEET MARK: oobcfg v8 try %u no region base, abs form skipped\n",
+-				    t * SWEET_OOB_FORMS + f);
+-				continue;
+-			}
+-			g_put32(pkt + 0, (6u << 4) | (sizeof(pkt) << 8));
+-			g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
+-			g_put32(pkt + 8, src_port);
+-			g_put32(pkt + 12, 1);
+-			g_put32(pkt + 16, 0x400u);
+-			g_put32(pkt + 20, APM_CMD_SET_CFG);
+-			g_put32(pkt + 24 + 0, (uint32_t)addr);
+-			g_put32(pkt + 24 + 4, (uint32_t)(addr >> 32));
+-			g_put32(pkt + 24 + 8, g_shm_handle);
+-			g_put32(pkt + 24 + 12, off);
+-			printf("SWEET MARK: oobcfg v8 try %u form=%s off=%#x addr=%#llx len=%u recs=%u handle=%#x\n",
+-			    t * SWEET_OOB_FORMS + f, f == 0 ? "bare" : "abs",
+-			    oob_off, addr, off, SWEET_OOB_RECS, g_shm_handle);
++		printf("SWEET MARK: oobcfg v9 try %u form=inband off=%#x len=%u recs=%u handle=%#x\n",
++		    t, oob_off, off, SWEET_OOB_RECS, g_shm_handle);
++		sweet_log_sync();
++		(void)g_apm_cmd(src_port, 1, body, off, APM_CMD_SET_CFG, what);
++		__asm__ volatile("dsb sy" ::: "memory");
++		g_smmu_faults("oobcfg-post");
++		if (!in_bounds) {
++			printf("SWEET MARK: oobcfg v9 recs not read back (past the mapping)\n");
+ 			sweet_log_sync();
+-			g_rsp_ready = 0;
+-			g_rsp_len = 0;
+-			g_send_gpr(pkt, sizeof(pkt));
+-			for (unsigned n = 0; n < 5000; n += 5) {
+-				g_drain(0);
+-				if (g_rsp_ready) {
+-					break;
+-				}
+-				g_wait(5);
+-			}
+-			if (!g_rsp_ready) {
+-				printf("SWEET GLINK: %s addr=%#llx: no response\n",
+-				    what, addr);
+-				g_smmu_faults("oobcfg-norsp");
+-				continue;
+-			}
+-			printf("SWEET GLINK: %s addr=%#llx rsp op=%#x status=%#x hop=%#x len=%u\n",
+-			    what, addr, g_le32(g_rsp + 24), g_le32(g_rsp + 28),
+-			    g_le32(g_rsp + 20), g_rsp_len);
+-			/* Kept because it is one MMIO read pass, but E measured that this
+-			 * witness cannot currently speak: all six banks hold FSR=0x400 that
+-			 * survives our W1C attempt and the post snapshots were byte-identical
+-			 * to pre.  So "no new fault bits" is not evidence of no fault. */
+-			g_smmu_faults("oobcfg-post");
+-			__asm__ volatile("dsb sy" ::: "memory");
+-			if (!in_bounds) {
+-				printf("SWEET MARK: oobcfg v8 recs not read back (past the mapping)\n");
+-				sweet_log_sync();
+-				continue;
+-			}
+-			for (i = 0; i < SWEET_OOB_RECS; i++) {
+-				const uint8_t *rec = (const uint8_t *)g_shm_va +
+-				    oob_off + i * SWEET_OOB_STRIDE;
++			continue;
++		}
++		for (i = 0; i < SWEET_OOB_RECS; i++) {
++			const uint8_t *rec = (const uint8_t *)g_shm_va +
++			    oob_off + i * SWEET_OOB_STRIDE;
+ 
+-				printf("SWEET MARK: oobcfg v8 rec %u iid=%#x param=%#x size=%u err=%#x\n",
+-				    i, g_le32(rec + 0), g_le32(rec + 4),
+-				    g_le32(rec + 8), g_le32(rec + 12));
+-			}
+-			/* error_code has read back zero for five boots, which is only
+-			 * meaningful if the DSP writes the body at all.  Compare every byte
+-			 * we wrote against what is there now: touched=0 is positive
+-			 * evidence that nothing was written back, and a non-zero count says
+-			 * where the first changed byte is, which is a second look at the
+-			 * same question without sending anything different. */
+-			{
+-				const uint8_t *region = (const uint8_t *)g_shm_va + oob_off;
+-				uint32_t k;
+-				uint32_t touched = 0;
+-				uint32_t first = 0;
+-
+-				for (k = 0; k < off; k++) {
+-					if (body[k] == region[k]) {
+-						continue;
+-					}
+-					if (touched == 0) {
+-						first = k;
+-					}
+-					touched++;
++			printf("SWEET MARK: oobcfg v9 rec %u iid=%#x param=%#x size=%u err=%#x\n",
++			    i, g_le32(rec + 0), g_le32(rec + 4),
++			    g_le32(rec + 8), g_le32(rec + 12));
++		}
++		/*
++		 * error_code has read back zero for five boots, which only means
++		 * something if we also know whether the DSP wrote the body at all:
++		 * touched=0 is positive evidence that it never did, and a non-zero count
++		 * says where the first changed byte is.  Reads nothing extra.
++		 */
++		{
++			const uint8_t *region = (const uint8_t *)g_shm_va + oob_off;
++			uint32_t k;
++			uint32_t touched = 0;
++			uint32_t first = 0;
++
++			for (k = 0; k < off; k++) {
++				if (body[k] == region[k]) {
++					continue;
++				}
++				if (touched == 0) {
++					first = k;
+ 				}
+-				printf("SWEET MARK: oobcfg v8 body touched=%u first=%u of %u\n",
+-				    touched, first, off);
++				touched++;
+ 			}
+-			sweet_log_sync();
++			printf("SWEET MARK: oobcfg v9 body touched=%u first=%u of %u\n",
++			    touched, first, off);
+ 		}
++		sweet_log_sync();
+ 	}
+ 	return (0);
+ }
