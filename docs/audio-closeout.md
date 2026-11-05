@@ -4435,3 +4435,19 @@ M1 是第 **27** 枪；N1 是第 **28** 枪（本目标上限）。
 
 **开机顺序不变**：M1（第 27）先开，N1（第 28）后开。两轮的镜像不同源文件，
 M1 只动 `sweetcccfg` 块、N1 只动 `sweetoobcfg` 块 ⇒ 各自 cmdline 只有一个开关。
+
+### M1 开机前补记（`fastboot boot` 已执行，**ring 一行都还没读**；只改一个预测字节数，不碰任何判决分支）
+
+- M1-0 写的 cmdline **583 B** 是我沿用 G–L2 的数字。`sweetoobcfg=1`（13 字符）比 `sweetcccfg=1`（11 字符）长 2，
+  所以本轮产物**开机前实测就是 582 B**（这个数在 push 前的产物核对里已经量到，也写进了 `docs/status-log.md`
+  那句"582 B cmdline"）；判据表里的 583 是笔误。
+- 只更正这一个预测长度。身份主判据（`cccfg v2 ` 在 kernel 与镜像各命中、`cccfg v1 `=0、
+  尾部 `sweetcccfg=1 sweettime=1793880108` **连续**、**不含** `sweetoobcfg`）与 M1-1…M1-5、
+  以及 M1-2 的四支判决表**一字未动**。
+- 产物核对（开机前，`images/m1-cccfg-header-param.img`，51,269,632 B）：
+  `cccfg v2 `×4 / `cccfg v1 `×0 / `oobcfg v11 try `×0 / `oobcfg v10 try `×1（=0262 的正文仍在链里，正常）/
+  cmdline 582 B 完整可打印、`sweetbufs=30` 在位、`sweets1ap=3`、尾 38 字符连续。
+- 打分器 `tools/score_probe.py` 扩到 `m1`/`n1`（每轮自带 printf 前缀与 GPR tag），开机前先跑两支自证：
+  `l2` 对它自己的 ring 复现"branch 2 ⇒ 长度不在分界"；`m1` 误跑 C 的 ring 时正确报
+  `cccfg v2` 四行 **MISS**、`cc_batch rsp op=0x1001006 status=0`（=C 基线本体），
+  ⇒ 改动没把已有轮子的打分路径弄坏，也不会把"别的 ring"当成满分。

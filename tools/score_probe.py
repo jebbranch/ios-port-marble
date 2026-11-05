@@ -15,8 +15,10 @@ import sys
 
 ROUNDS = {
     "l1": {
-        "ver": "v9", "base": "logs/ring-k1-iidonly.txt",
+        "ver": "v9", "prefix": "oobcfg v9", "tag": "oob_batch", "old": ["v8"],
+        "base": "logs/ring-k1-iidonly.txt",
         "expect": ["oobcfg v9 try 0 form=inband off=0x1000 len=288 recs=4"],
+        "absent": [],
         "verdict": {
             "0": "branch 1: in-band accepted => the wall is the out-of-band path",
             "0x1": "branch 2: in-band refused too => length is not proven to be the rule "
@@ -24,15 +26,46 @@ ROUNDS = {
         },
     },
     "l2": {
-        "ver": "v10", "base": "logs/ring-l1-inband.txt",
+        "ver": "v10", "prefix": "oobcfg v10", "tag": "oob_batch", "old": ["v9", "v8"],
+        "base": "logs/ring-l1-inband.txt",
         "expect": ["oobcfg v10 try 0 form=inband off=0x1000 len=216 recs=3",
                    "APM oob_batch src=0x2010 dst=0x1 (256 bytes)"],
+        "absent": [],
         "verdict": {
             "0": "branch 1: 216 B in-band is command-level accepted => the length that "
                  "crosses 256 is in the boundary, and <=256 in-band + real iid + real param "
                  "+ size 52 is a usable combination",
             "0x1": "branch 2: same code as L1 at 288 B => length is NOT in the boundary; "
                    "against C only the param id and the per-record size are left",
+        },
+    },
+    # M1 = C's accepted container (0263) with only the two param ids moved to 0x08001004.
+    "m1": {
+        "ver": "v2", "prefix": "cccfg v2", "tag": "cc_batch", "old": ["v1"],
+        "base": "logs/ring-c2-ccbatch.txt",
+        "expect": ["cccfg v2 dst=1 inband recs=2 len=80",
+                   "cccfg v2 rec 0 iid=0x428f param=0x8001004 size=12",
+                   "cccfg v2 rec 1 iid=0x428f param=0x8001004 size=28",
+                   "APM cc_batch src=0x2010 dst=0x1 (120 bytes)"],
+        # M1-5: any of these means the container never went out => not a param reading
+        "absent": ["cccfg v2 reject", "cccfg v2 bad size", "cccfg v2 walk"],
+        "verdict": {
+            "0": "branch 1: param does not participate even on the accepted baseline => what is "
+                 "left against C is the per-record size (next shot M2s: sizes 12/28 -> 52/52)",
+            "0x1": "branch 2: param=0x08001004 alone turns an accepted container into a refused "
+                   "one => APM gates on param, and this key is the chain-level one in ACDB "
+                   "(next shot M2r moves param+size, corroborating only, not single-variable)",
+        },
+    },
+    # N1 = K1's out-of-band send (0264) with error_code pre-set to 0xa5a5a5a5.
+    "n1": {
+        "ver": "v11", "prefix": "oobcfg v11", "tag": "oob_batch", "old": ["v10", "v9", "v8"],
+        "base": "logs/ring-k1-iidonly.txt",
+        "expect": ["oobcfg v11 try 0 form=bare off=0x1000 addr=0x1000 len=288 recs=4"],
+        "absent": [],
+        "verdict": {
+            "0x1": "expected (== K1): the pre-set field did not move the code, so the record-level "
+                   "reading is now the only new thing this round buys - read touched= and err=",
         },
     },
 }
@@ -52,10 +85,10 @@ def lines(path, pat):
 
 def main():
     if len(sys.argv) < 4:
-        sys.exit("usage: score_probe.py <l1|l2> <ring> <sweettime>")
+        sys.exit("usage: score_probe.py <l1|l2|m1|n1> <ring> <sweettime>")
     round_id, ring, want_time = sys.argv[1], sys.argv[2], sys.argv[3]
     cfg = ROUNDS[round_id]
-    ver, base = cfg["ver"], cfg["base"]
+    pre, tag, base = cfg["prefix"], cfg["tag"], cfg["base"]
 
     if count(ring, f"sweettime={want_time}") == 0:
         sys.exit(f"identity: no sweettime={want_time} in {ring} - wrong ring, nothing scored")
@@ -64,20 +97,25 @@ def main():
     for want in cfg["expect"]:
         hit = count(ring, want)
         print(f"  {'OK ' if hit == 1 else 'MISS'} ({hit}) {want}")
-    for l in lines(ring, f"oobcfg {ver} try") + lines(ring, "APM oob_batch"):
+    for l in lines(ring, pre) + lines(ring, f"APM {tag}"):
         print("  " + l[:170])
 
+    print(f"=== {round_id.upper()}-5 the container must not have been refused locally ===")
+    for want in cfg["absent"] or [f"{pre} no mapping"]:
+        hit = count(ring, want)
+        print(f"  {'OK ' if hit == 0 else 'HIT '} ({hit}) {want}")
+
     print(f"=== {round_id.upper()}-2 main gate: the response ===")
-    rsp = lines(ring, "oob_batch.*rsp op=0x1001006")
+    rsp = lines(ring, f"{tag}.*rsp op=0x1001006")
     for l in rsp:
         print("  " + l[:170])
     codes = [m.group(1) for l in rsp for m in [re.search(r"status=(0x[0-9a-f]+|\d+)", l)] if m]
     print(f"  status read: {codes}")
 
     print("=== probe self-evidence (one send only) ===")
-    for pat in (f"oobcfg {ver} rec ", f"oobcfg {ver} body touched=",
-                "is past the declared region", "recs not read back", f"oobcfg {ver} no mapping"):
-        print(f"  {pat:38} {count(ring, pat)}")
+    for pat in (f"{pre} rec ", f"{pre} body touched=",
+                "is past the declared region", "recs not read back", f"{pre} no mapping"):
+        print(f"  {pat:40} {count(ring, pat)}")
 
     print(f"=== {round_id.upper()}-3/-4 counters, this ring vs {base} ===")
     for name, pat in (("data_buffer send", "data_buffer send"),
@@ -86,14 +124,21 @@ def main():
                       ("vp/ all", "vp/"),
                       ("vp/ rsp", "vp/.*rsp"),
                       ("gate flag", "gate flag"),
-                      ("panic", "panic"),
-                      (f"older markers (want 0)", f"oobcfg {'v9' if ver == 'v10' else 'v8'} ")):
+                      ("panic", "panic")):
         print(f"  {name:26} round={count(ring, pat):4}   base={count(base, pat):4}")
+    for old in cfg["old"]:
+        pat = f"oobcfg {old} " if round_id.startswith("n") or round_id.startswith("l") else f"cccfg {old} "
+        print(f"  older marker {pat!r:22} round={count(ring, pat):4} (want 0)")
 
-    print(f"=== {round_id.upper()}-5 instrument (recorded, not evidence) ===")
-    for l in lines(ring, f"oobcfg {ver} body touched="):
+    print(f"=== {round_id.upper()}-instrument (recorded, not evidence unless N1) ===")
+    for l in lines(ring, f"{pre} body touched="):
         print("  " + l[:170])
-    print("  touched=0 cannot separate 'never wrote' from 'wrote zero' (field pre-zeroed)")
+    for l in lines(ring, f"{pre} rec "):
+        print("  " + l[:170])
+    if round_id != "n1":
+        print("  touched=0 cannot separate 'never wrote' from 'wrote zero' (field pre-zeroed)")
+    else:
+        print("  sentinel 0xa5a5a5a5: touched=0 => never written; err=0xa5a5a5a5 on all four is the pre-set surviving")
 
     print("=== verdict, per the pre-boot table ===")
     if not codes:
