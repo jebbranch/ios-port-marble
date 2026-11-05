@@ -4963,3 +4963,89 @@ cmdline = **T1 逐字去掉 ` sweettdmclk=1`**，实测 **552 B**（= 566−14�
 | C1-2 回归 | `pcm tone done (200 buffers)`、`data_buffer send`≈201、`no rsp` 0、panic 0、收尾在窗口内、控制面 4 行绿（`graph_open status=0`、`cb5 cba2r=0x1`、`ats1pr … par=0 OK`、`sctlr=0xc00027`） | 等值 | 不成立 ⇒ 不判 |
 | C1-3 听感（仅当 C1-1=0 且 C1-2 齐） | 手机回到 adb 前最后 ≈1.2 s 有没有"哔——" | 听到 | "无声"前提**塌掉**：DAC/功放链路本来就能响，我们只是太轻；方向立刻改为响度与连续性 |
 | | | 没听到 | −6 dBFS 下无声是**确证**（不是听阈问题）⇒ 回到功放/供电那一侧（`aw_cfg`、`tdm_power`、SPMI 轨），②/cccfd 系列降为次要 |
+
+---
+
+## 第 34 枪 C1 判决（`logs/ring-c1-no-vote.txt`，开机后当场打）
+
+**C1-0 身份：成立。** `sweettime=1793893320` ×2；`ring_window` 报 `total=0x166fb == decoded 0x166fb`（窗口吻合=True）；
+`tdmclk v1 ` 运行期 **0 行**（⇒ 早票真的没发）；`tone gain g=16 peak=16384`（`:1636`）✓。
+
+**C1-1 主判据：`graph_start status=0` ⇒ 按预登记表落"票相关"这一格。**
+
+```
+:1667 graph_prepare rsp op=0x1001001 status=0  hop=0x2001005 len=32
+:1670 graph_start   rsp op=0x1001002 status=0  hop=0x2001005 len=32
+:1671 vendor graph + WR input started
+```
+
+同一个 0265 内核、同一份 cmdline（只差 ` sweettdmclk=1` 这 14 字节）、同一个 `out/kernel.adsp`
+（sha `52ebd21c0b463b60…`）：**票一去掉，`graph_start` 就回到 0，并且真的开始流水**。
+⇒ "在 `graph_open` 之前把 TDM 位时钟claim下来"这件事本身关掉了图。
+按规矩这只写**相关**（1/1 对照 + 158 样本绿色基线），不命名机制；32 B 响应里没有逐记录字段可挖。
+
+**C1-2 回归：不齐 —— 但不是被测变量坏的，是我的仪器坏在时间预算上。**
+
+| 判据 | 期望 | 实测 |
+|---|---|---|
+| `data_buffer send` | ≈201 | **135** |
+| `pcm tone done (200 buffers)` | 1 | **0**（只命中窗口外 `0x184a5`，上一轮字节） |
+| `no rsp` / panic | 0 / 0 | 0 / 0 ✓ |
+| `===== done =====` / `PSCI SYSTEM_RESET` | 各 1（在窗口内） | **各 0，且窗口内都没有** ✗ |
+| 控制面四绿行 | 全绿 | 全绿：`graph_open/vp-wr status=0`（`:1615`）、`cb5 cba2r=0x1`（`:1627`）、`ats1pr … par=0 OK`（`:1628`）、`sctlr=0xc00027 … leaf=0x7c1`（`:1629`）；`geni amp 0x34/0x35 r=0 id=0x2032 profile 44/44`（`:1557-1560`）**早于** `pcm tone start`（`:1722`）✓ |
+
+ring 最后一行是 `exec privacyaccountingd`，**停在流中间**。这不是"我们的收尾没跑"，而是**整个会话被看门狗咬掉**：
+GPU 线早就见过同一签名并写在源码注释里（`sweet_glink.c:4059` "no PSCI SYSTEM_RESET, watchdog picked it up"）。
+
+**离线核出来的开机窗口事实（今后每一枪都要按它规划）**：
+`logs/ring-*.txt` 里 `data_buffer send` > 60 的轮次分两类——
+
+| 轮 | sends | `pcm tone done` | 收尾 |
+|---|---|---|---|
+| ring-ab | 1032 | 0 | **无**（当年记录就是"cmdline 被截、1200 buf 跑过头"） |
+| ring-j1-pcm / j3 / l2-gap8 / l3-gap20 / **c1-no-vote** | 127 / 106 / 121 / 104 / **135** | 0 | **无** |
+| ring-t0b-audible | 121 | 1 | 有 |
+| ring-u/v/w/z、s1ap3 | 501 / 1201 | 1 | 有 |
+
+⇒ **等待应答那条路（`sweetnowait` 不开）每帧都要等 DATA_BUFFER 回包**，`sweetbufs` 是从"帧数"换算成"秒"的东西：
+**120 帧能在看门狗之前跑完并留下整条 ring；200 帧不行（135 帧处被咬）。**
+被咬的代价不只是尾巴：**`post` 时钟见证、音后 PA 读回、`===== done =====` 全丢**。
+⇒ 规则：**在等待路径上 `sweetbufs` 上限取 120**；要加长必须先减掉别的会话工作，不能白拿。
+
+**C1-3 听感：按预登记表作废**（表写的是"仅当 C1-1=0 **且 C1-2 齐**"）。
+但这一枪**确实已经放出去 ≥0.8 s 的 −6 dBFS 单音**（135 帧 × 6 ms，被看门狗截断），
+所以我把它当**辅助读数**单独问用户一次；听到就是新事实（说明 DAC/功放能出声），
+没听到则与 T0b 的 −12 dBFS/720 ms 一起构成"无声是真的"，**不拿它定任何一格的罪**。
+
+## 已经落库的下一枪准备（0266，`sweettdmclk=2`：图起来之后再投这一票）
+
+内核侧改动已推（commit `0c4de79`，链树 `54ecf73`，补丁 `xnu/patches/0266-sweet-tdmclk-late-vote.patch`）：
+早票的门从 `tdmclk != 0` 改成 `tdmclk == 1`，并把**同一个包**（`g_prm_vote_clock_ex(0x204,12288000,4,0)`，76 B，与厂商逐字段一致）
+在 `g_apm_graph_bringup()` 里、`graph_start` 已答 0 之后、第一帧 `DATA_BUFFER` 之前重发一次，标记 `tdmclk v2 late`。
+这样 `=1` 仍是 T1 那一枪的逐字复现，`=2` 是"绿起步 + 位时钟在流开始前起来"，**一次编译两种枪位**。
+
+宿主机证据（`tools/stub_tdmclk.py`，真编译真跑，打印它读的哪个文件）：
+
+```
+compile clean: -std=gnu11 -Wall -Wextra -Wformat=2 -Werror
+  sel  early_vote  late_vote  tone_runs        expect 0->0/0  1->1/0  2->0/1  3->0/0
+    0          0          0          1
+    1          1          0          1
+    2          0          1          1
+    3          0          0          1
+```
+⇒ 0265 那个"`=2` 会连早票一起打出去"的双变量坑被杀掉了；`=3` 是静默的（越界值不投任何票，别拿它当"关"）。
+`tools/ci_replay.sh`：`applied=207 / skipped=49`，`OK: CI post-image == chain-tree HEAD`。
+
+## 下一枪：F1（第 35 枪）= 0266 + `sweettdmclk=2 sweetvol=16 sweetbufs=120`
+
+开机前判决表（事后只许追加）：
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| F1-0 身份 | 镜像内 `tdmclk v2 late `×1、`tdmclk v1 `×1、`cccfg v3 `×6；ring `sweettime=<本轮>` 命中且 `ring_window` 窗口吻合；运行期 `tdmclk v1 ` **0 行**、`tdmclk v2 late ` **1 行** | 全成立 | 打的是 0266 的"晚票"这一枪；晚票行必须**排在 `vendor graph + WR input started` 之后**（位置也是读数的一部分） |
+| **F1-1 主判据（两读）** | ① `graph_start … status=0` **且** `tdmclk v2 late … rc=0` **且**用户听到 ⇒ 位时钟必须在流开始前起来，早票只是起得太早；② `status=0 rc=0` 但仍无声 ⇒ **时钟这条线整格关掉**（早/晚两种位置都试过且命令级都被接受），回到功放/供电与 `aw_cfg` 那一侧；③ `rc!=0` ⇒ PRM 在图已起来时拒这一票，也是实质读数 | 见左 | 三种读数都有信息 |
+| F1-2 回归 | `graph_start status=0`、`tone gain g=16`、`pcm tone done (120 buffers)`、`data_buffer send`≈121、`no rsp` 0、panic 0、**`===== done =====` 与 `PSCI SYSTEM_RESET` 都在窗口内**（这条是看门狗事实的直接后果）、控制面四绿行 | 等值 | 不齐 ⇒ 不判、停手交回 |
+| F1-3 若 `status=0x1` 再次出现（第三次异常） | 与 C1 只差"晚票 + 120 buf" | — | 先按"0266 引入的新异常"处理，重放 C1 同参（`=2` 换成空）一次再说 |
+
+打包预算（本轮重测，不继承）：C1 实测 552 B + ` sweettdmclk=2` 14 B = **566 B**（`sweetbufs=120` 与 `=200` 等长）。
