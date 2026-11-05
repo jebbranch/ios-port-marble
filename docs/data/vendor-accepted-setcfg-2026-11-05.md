@@ -116,3 +116,50 @@
 4. 厂商还发而我们从不发的另两项：`0x0100100e REGISTER_MODULE_EVENTS`、
    以及 **第二/第三张图跑在 `0x2011/0x2012` 端口上**（我们只开 `0x2010`）。
    另外厂商会 `STOP/CLOSE` 做收尾（我们从不发）。
+
+## T1 之后回捞：把 22:32 那一窗按时间轴解出来（零开机，`logs/gpr-both-20261105-223253.txt`）
+
+解码脚本是一次性的（`t9=payload_size`，正文从 `t10` 起；GPR 头 6 个字 = ver|len / domains / src / dst / token / opcode）。
+厂商一次播放建立的**完整 TX 次序**（前 25 个不同事件，时间 4706.735→4706.832 s，全程 **<100 ms**）：
+
+```
+4706.735  PRM_REQ_HW_RSC  src=0x7  dst=0x2  plen=36  ctl=2 pid=0x0800102c sz=20 clk=0x204 rate=12288000 c=4 root=0
+4706.736  GRAPH_OPEN      src=0x2010 dst=0x1  plen=496      <== 图 A（小）
+4706.737  SET_CFG         src=0x2010 dst=0x1  plen=264      (带内, APM 自己)
+4706.739  SET_CFG         src=0x2010 dst=0x4308 plen=32
+4706.739  SET_CFG         src=0x2010 dst=0x4308 plen=48
+4706.739  GRAPH_PREPARE   src=0x2010 dst=0x1  plen=24
+4706.740  GRAPH_START     src=0x2010 dst=0x1  plen=24
+4706.746  GRAPH_OPEN      src=0x2011 dst=0x1  plen=2872     <== 图 B（大）
+4706.750  SHM_MAP         src=0x2002 dst=0x1  plen=1
+4706.750  SET_CFG         src=0x2011 dst=0x1  plen=18504    (带内, 就是那份 18504 自定义配置)
+4706.752  SHM_UNMAP       src=0x2002 dst=0x1  plen=0
+4706.753  SET_CFG         src=0x2011 dst=0x1  plen=112
+4706.755  SET_CFG         src=0x2011 dst=0x1  plen=64
+4706.755  SET_CFG         src=0x2011 dst=0x42d3 iid=0x10013d1b     <== AW882xx
+4706.756  SET_CFG         src=0x2011 dst=0x42d3 iid=0x10013d1c
+4706.757  SET_CFG         src=0x2011 dst=0x40bd iid=0x9001000 param=0x12 sz=48000
+4706.757  SET_CFG         src=0x2011 dst=0x428f iid=0x30020 / iid=0x2 param=0x10001 sz=7   <== TDM
+4706.758  SET_CFG         src=0x2011 dst=0x40bf / 0x40c0 iid=0x9001000 param=0x12 sz=65560
+4706.759  SET_CFG         src=0x2011 dst=0x4165 plen=24
+4706.759  GRAPH_PREPARE   src=0x2011 dst=0x1  plen=40
+4706.765  GRAPH_START     src=0x2011 dst=0x1  plen=40
+4706.831  REG_MOD_EVENTS  src=0x2011 dst=0x40c4 plen=24
+```
+
+三条对我们直接相关的读数：
+
+1. **`0x204` 那一票的次序与包型，厂商就是"先投时钟、再开图"**，且比我们的 `0265` 插入点同在前侧。
+   逐字段核：`g_prm_vote_clock_ex`（`sweet_glink.c:981`）写出的 76 B 包与厂商这一包**字段一一对应**
+   （`src=7/GPR_PRM_SERVICE`, `dst=2/GPR_PRM_MODULE`, desc `{0,0,0,36}`,
+   正文 `{2, 0x0800102C, 20, 0, 1, clk, rate, attr, root}`）。⇒ T1 的 `graph_start` 被拒**不能**用
+   "包型/位置抄错了"来解释；能解释它的只有"这一票和我们那张图的现有状态相互作用"或"偶然"。
+2. **厂商是两张图**：`0x2010` 上开的是 **496 B** 的小图，`0x2011` 上开的才是 **2872 B** 的大图；
+   `0x428f`(TDM)/`0x42d3`(AW) 这些模块的配置全部走 **`0x2011`**。
+   我们只开 `0x2010`，却在 `0x2010` 上发一份 2960 B 的容器、并把 `vp/tdm_*`→`0x428f`、
+   `vp/aw_cfg*`→`0x42d3` 都从 `0x2010` 发出（`logs/ring-t1-tdmclk.txt` 收尾段）。
+   ⇒ 这是一条**结构性差异**，且它同时是"②"里那些 SET_CFG 被拒和这次 `graph_start` 被拒的共同候选。
+   但注意：**同一条 `0x2010` 路径在 158 次开机里 `graph_start` 都是 `status=0`**，
+   所以它至多是"与 0x204 票相互作用"的那一半，不是已证的独立原因。
+3. 厂商 `GRAPH_PREPARE/START` 的 `plen`：图 A **24**、图 B **40**（我们发的是 24，与图 A 一致）。
+   `SHM_MAP` 由**另一个端口 `0x2002`** 发出（不是客户端口），映射完立刻 `SHM_UNMAP`。
