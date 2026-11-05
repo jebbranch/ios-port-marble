@@ -1,0 +1,125 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index e277ae5..5a0d2dc 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5483,25 +5483,47 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+  */
+ static const uint32_t g_oob_offs[] = { 0x1000u };
+ #define SWEET_OOB_FORMS 1		/* 0 = bare offset, 1 = base + offset */
+-#define SWEET_OOB_RECS  9
++#define SWEET_OOB_RECS  4
++#define SWEET_OOB_STRIDE 72		/* 16-byte wire header + align8(52) */
+ 
+-static const uint32_t g_oob_miids[SWEET_OOB_RECS] = {
+-	0x428fu, 0x40bdu, 0x42d3u,		/* present in our graph: control */
+-	0x40bfu, 0x40c0u, 0x40c8u, 0x4165u, 0x4308u,	/* never seen in our container */
+-	0x428fu		/* repeated control: 9 records x 32 = 288 > the 256 in-band cap */
++/*
++ * H round: the content bundle is the variable, so the records are the most common
++ * (iid, param_id, param_size) triple that the vendor's own ACDB actually carries -
++ * measured by walking the props TLV chains of all six on-device files: iid=1
++ * (= APM itself, which is also where a multi-record list is routed),
++ * param 0x08001004, size 52, 1,099 occurrences - and the 52-byte payloads below are
++ * four distinct ones copied verbatim out of CDP_ukee_acdb_cal.acdb.
++ * Four records x 72 = 288 keeps the total payload length, the in-band decision
++ * (>256), the address, the form, the destination and the handle exactly as G
++ * measured them, so a change of answer points at the content and nothing else.
++ * What G sent instead (param 0x08001017, size 12, nine records) appears in zero
++ * ACDB records, which is the suspicion this round tests.
++ */
++static const uint32_t g_oob_miids[SWEET_OOB_RECS] = { 1u, 1u, 1u, 1u };
++
++static const uint32_t g_h_payload[SWEET_OOB_RECS][13] = {
++	/* CDP_ukee_acdb_cal.acdb @0x239e6 */
++	{0x00000003u, 0x00004147u, 0x00000001u, 0x00004167u, 0x00000002u, 0x000043afu, 0x00000001u, 0x00004147u, 0x00000002u, 0x00004167u, 0x0000000bu, 0x00004021u, 0x00000002u},
++	/* CDP_ukee_acdb_cal.acdb @0x23bde */
++	{0x00000003u, 0x00004589u, 0x00000001u, 0x00004587u, 0x00000002u, 0x00004587u, 0x00000001u, 0x00004763u, 0x00000002u, 0x00004763u, 0x00000001u, 0x0000458au, 0x00000002u},
++	/* CDP_ukee_acdb_cal.acdb @0x311ae */
++	{0x00000003u, 0x0000434au, 0x00000001u, 0x0000434cu, 0x00000002u, 0x0000434cu, 0x00000001u, 0x0000434bu, 0x00000002u, 0x0000434bu, 0x00000001u, 0x0000434du, 0x00000002u},
++	/* CDP_ukee_acdb_cal.acdb @0x31c7e */
++	{0x00000003u, 0x000045adu, 0x00000001u, 0x000045afu, 0x00000002u, 0x000045afu, 0x00000001u, 0x000045aeu, 0x00000002u, 0x000045aeu, 0x00000001u, 0x0000459cu, 0x00000002u},
+ };
+ 
+ static int
+ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ {
+-	uint8_t body[SWEET_OOB_RECS * 32];
++	uint8_t body[SWEET_OOB_RECS * SWEET_OOB_STRIDE];
+ 	uint8_t pkt[24 + 16];
+ 	uint32_t off = 0;
+ 	uint32_t i;
++	uint32_t j;
+ 	uint32_t t;
+ 
+ 	if (!g_shm_mapped || !g_shm_va) {
+-		printf("SWEET MARK: oobcfg v4 no mapping\n");
++		printf("SWEET MARK: oobcfg v5 no mapping\n");
+ 		return (-1);
+ 	}
+ 	memset(body, 0, sizeof(body));
+@@ -5509,13 +5531,13 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 	g_smmu_faults("oobcfg-pre");
+ 	for (i = 0; i < SWEET_OOB_RECS; i++) {
+ 		g_put32(body + off + 0, g_oob_miids[i]);
+-		g_put32(body + off + 4, 0x08001017u);
+-		g_put32(body + off + 8, 12);
++		g_put32(body + off + 4, 0x08001004u);
++		g_put32(body + off + 8, 52);
+ 		g_put32(body + off + 12, 0);	/* error_code, written by the DSP */
+-		g_put32(body + off + 16, 96000);
+-		g_put32(body + off + 20, 0x30020);
+-		g_put32(body + off + 24, 1);
+-		off += 32;
++		for (j = 0; j < 13; j++) {
++			g_put32(body + off + 16 + j * 4, g_h_payload[i][j]);
++		}
++		off += SWEET_OOB_STRIDE;
+ 	}
+ 	for (t = 0; t < sizeof(g_oob_offs) / sizeof(g_oob_offs[0]); t++) {
+ 		const uint32_t oob_off = g_oob_offs[t];
+@@ -5523,7 +5545,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 		uint32_t f;
+ 
+ 		if (!in_bounds) {
+-			printf("SWEET MARK: oobcfg v4 off=%#x is past the declared region %#x, body not written\n",
++			printf("SWEET MARK: oobcfg v5 off=%#x is past the declared region %#x, body not written\n",
+ 			    oob_off, g_shm_region_size());
+ 		} else {
+ 			memcpy((void *)(g_shm_va + oob_off), body, off);
+@@ -5535,7 +5557,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 			    g_map_pa + (uint64_t)oob_off;
+ 
+ 			if (f == 1 && g_map_pa == 0) {
+-				printf("SWEET MARK: oobcfg v4 try %u no region base, abs form skipped\n",
++				printf("SWEET MARK: oobcfg v5 try %u no region base, abs form skipped\n",
+ 				    t * SWEET_OOB_FORMS + f);
+ 				continue;
+ 			}
+@@ -5549,7 +5571,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 			g_put32(pkt + 24 + 4, (uint32_t)(addr >> 32));
+ 			g_put32(pkt + 24 + 8, g_shm_handle);
+ 			g_put32(pkt + 24 + 12, off);
+-			printf("SWEET MARK: oobcfg v4 try %u form=%s off=%#x addr=%#llx len=%u recs=%u handle=%#x\n",
++			printf("SWEET MARK: oobcfg v5 try %u form=%s off=%#x addr=%#llx len=%u recs=%u handle=%#x\n",
+ 			    t * SWEET_OOB_FORMS + f, f == 0 ? "bare" : "abs",
+ 			    oob_off, addr, off, SWEET_OOB_RECS, g_shm_handle);
+ 			sweet_log_sync();
+@@ -5579,15 +5601,15 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 			g_smmu_faults("oobcfg-post");
+ 			__asm__ volatile("dsb sy" ::: "memory");
+ 			if (!in_bounds) {
+-				printf("SWEET MARK: oobcfg v4 recs not read back (past the mapping)\n");
++				printf("SWEET MARK: oobcfg v5 recs not read back (past the mapping)\n");
+ 				sweet_log_sync();
+ 				continue;
+ 			}
+ 			for (i = 0; i < SWEET_OOB_RECS; i++) {
+ 				const uint8_t *rec = (const uint8_t *)g_shm_va +
+-				    oob_off + i * 32;
++				    oob_off + i * SWEET_OOB_STRIDE;
+ 
+-				printf("SWEET MARK: oobcfg v4 rec %u iid=%#x param=%#x size=%u err=%#x\n",
++				printf("SWEET MARK: oobcfg v5 rec %u iid=%#x param=%#x size=%u err=%#x\n",
+ 				    i, g_le32(rec + 0), g_le32(rec + 4),
+ 				    g_le32(rec + 8), g_le32(rec + 12));
+ 			}
