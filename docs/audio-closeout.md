@@ -4413,3 +4413,25 @@ M1 是第 **27** 枪；N1 是第 **28** 枪（本目标上限）。
    但它仍**不命名机制**，也仍**不解释** K1 的"真实 iid ⇒ `0x1`"。
 3. 附带把 `0x08001174`（真 `APM_CONTAINER_PROP_ID_HEAP_ID`）与 `0x08001176`（我们自创）分开标；
    旧笔记里两者混用过。
+
+## N1 开机前修订（0264 已落库，写于开机之前）
+
+**唯一改字面量的一处**：N1-1 里我预注册的是 `form=oob`，那是我当时随手写的简称。
+实际 printf 是 021bb1e 原文，`SWEET_OOB_FORMS=1` ⇒ 只跑 `f=0`，字面量是
+**`oobcfg v11 try 0 form=bare off=0x1000 addr=0x1000 len=288 recs=4 handle=0x…`**。
+按"代码原文优先"改判据，不改代码。其余 N1-0/N1-2/N1-3/N1-4 一字未动。
+
+0264 的落地核对（零开机）：
+- `git diff ff2a016 3f215ad` ⇒ 2 hunk、212 行；纯净基线（`git archive ff2a016`）上
+  `git apply --check -p1` 通过，apply 后 `diff -q` 与链树 HEAD 相同。
+- 恢复的那段是**逐字比对**过的：描述符 11 行、发送+等答+应答打印三段与 `021bb1e` **字符串全等**
+  （`python3` 切片比较，只有 marker 版本与 `recs=` 取自 `SWEET_OOB_SEND` 两处不同）。
+- 宿主机 stub（`tools/stub_oobcfg.py` 已扩到两种发送形态）跑 `0264` 产物树：
+  `len=288 recs=4`、包 `len=40 w0=0x2860 w1=0x302 op=0x1001006 addr=0x1000 handle=0xb0e145f8 size=288`；
+  **两支都可读**：DSP 不写 ⇒ `err=0xa5a5a5a5 ×4`、`touched=0`；DSP 写 0 ⇒ `err=0 ×4`、
+  `touched=16 first=12`；无应答支打印 `no response`（仪器能自证失败）。
+- 同一工具回跑 L2 的树仍是 `oobcfg v10 form=inband len=216 recs=3` ⇒ 工具没丢掉上一轮。
+- workflow marker 列表：`oobcfg v10 try `/`v10 body touched…` ⇒ **`v11`** 两条；`cccfg v2` 不动。
+
+**开机顺序不变**：M1（第 27）先开，N1（第 28）后开。两轮的镜像不同源文件，
+M1 只动 `sweetcccfg` 块、N1 只动 `sweetoobcfg` 块 ⇒ 各自 cmdline 只有一个开关。
