@@ -1,0 +1,229 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 9b49ac1..2af4f3c 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5675,11 +5675,11 @@ g_apm_set_cfg_batch(uint32_t src_port, uint8_t *body, uint32_t blen,
+     uint32_t nrec, const char *what)
+ {
+ 	if (blen == 0 || blen > SWEET_CC_MAX) {
+-		printf("SWEET MARK: cccfg v2 reject recs=%u len=%u\n",
++		printf("SWEET MARK: cccfg v3 reject recs=%u len=%u\n",
+ 		    nrec, blen);
+ 		return (-1);
+ 	}
+-	printf("SWEET MARK: cccfg v2 dst=1 inband recs=%u len=%u\n",
++	printf("SWEET MARK: cccfg v3 dst=1 inband recs=%u len=%u\n",
+ 	    nrec, blen);
+ 	{
+ 		/* Walk the list the way the APM does, so the ring itself carries
+@@ -5692,17 +5692,17 @@ g_apm_set_cfg_batch(uint32_t src_port, uint8_t *body, uint32_t blen,
+ 			uint32_t step = 16 + ((psz + 7u) & ~7u);
+ 
+ 			if (step <= 16) {
+-				printf("SWEET MARK: cccfg v2 bad size at %u\n",
++				printf("SWEET MARK: cccfg v3 bad size at %u\n",
+ 				    off);
+ 				return (-1);
+ 			}
+-			printf("SWEET MARK: cccfg v2 rec %u iid=%#x param=%#x size=%u\n",
++			printf("SWEET MARK: cccfg v3 rec %u iid=%#x param=%#x size=%u\n",
+ 			    i, g_le32(body + off), g_le32(body + off + 4), psz);
+ 			off += step;
+ 			i++;
+ 		}
+ 		if (off != blen || i != nrec) {
+-			printf("SWEET MARK: cccfg v2 walk %u != len %u (recs %u/%u)\n",
++			printf("SWEET MARK: cccfg v3 walk %u != len %u (recs %u/%u)\n",
+ 			    off, blen, i, nrec);
+ 			return (-1);
+ 		}
+@@ -6792,41 +6792,105 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 	}
+ 
+ 	/*
+-	 * sweetcccfg=1 only.  M1 round: C's container with ONE field moved - the two
+-	 * param ids become 0x08001004, the one the ACDB carries for a props chain
+-	 * header.  Same iid (G_VP_TDM_IID), same sizes (12 and 28), same bytes, same
+-	 * two-record list to dst=1, same in-band 80-byte send, same helper.  C
+-	 * answered 0 with the previous pair, so this asks whether the param id alone
+-	 * is enough to lose that acceptance.  Without the flag nothing runs.
++	 * sweetcccfg=<n> only.  The flag is now a selector so that a follow-up
++	 * round is a local repack (boot args only) instead of a CI build: one
++	 * kernel, four containers, still exactly one send per boot through
++	 * g_apm_set_cfg_batch with dst=1 in-band and the same handle.
++	 *
++	 * The bodies are not invented - they are byte-exact from the vendor
++	 * capture whose accepted responses are tabulated in
++	 * docs/data/vendor-accepted-setcfg-2026-11-05.md (every SET_CFG there was
++	 * answered status=0, and every accepted record names a parameter that
++	 * belongs to the module its iid names).
++	 *
++	 * 1  C verbatim (0252): iid 0x428f with 0x08001017 size 12 and
++	 *    0x0800101b size 28.  The control for this build; it answered 0 and
++	 *    its 80-byte body is the vendor's own two records for this module.
++	 * 2  The (2) case: iid = 1 (APM itself) with both params = 0x08001004,
++	 *    same sizes and data as C.  H and J sent that pair **out** of band and
++	 *    got 0x3; in-band it has never been sent, so this isolates the one
++	 *    axis N1 closed off (an OOB body is never written back, so the out-of-
++	 *    band readings and an in-band one were never compared for this pair).
++	 * 3  Right module, wrong family: iid 0x428f carrying the vendor's *MFC*
++	 *    records - param 0x08001024 size 12 twice, data {0xbb80,0x20020,
++	 *    0x20001} and {0x17700,0x20020,0x20001}.  Body 64 B, packet 104 B -
++	 *    the vendor's own multi-record geometry, replayed with our TDM iid.
++	 * 4  Right family, wrong module: the AW module 0x42d3 (present in this
++	 *    graph, and it answers vp/aw_cfg with 0) carrying C's two TDM records
++	 *    unchanged.
++	 *
++	 * 1/3/4 are the pairing matrix (right-right, right-module-wrong-param,
++	 * wrong-module-right-param) and every iid named is instantiated in the
++	 * graph we actually open (g_graph_vp_wr: 0x4012, 0x4007, 0x418e, 0x428f,
++	 * 0x4006, 0x48ba, 0x42d3, 0x40bd) - the vendor's MFC iids 0x40ca/0x40c8
++	 * are deliberately **not** used, because a refusal there could not be told
++	 * apart from "no such module".  Two refused readings with 1 accepted
++	 * supports the pairing rule; any accepted reading kills it and leaves the
++	 * per-record size and the count.  Any other value behaves like 1.
+ 	 */
+ 	{
+-		int on = 0;
++		int sel = 0;
+ 
+-		(void)PE_parse_boot_argn("sweetcccfg", &on, sizeof(on));
+-		if (on != 0) {
++		(void)PE_parse_boot_argn("sweetcccfg", &sel, sizeof(sel));
++		if (sel != 0) {
+ 			static const uint32_t cc_rate[3] = { 96000, 0x30020, 1 };
+ 			static const uint32_t cc_cfg[7] = {
+ 				0, 2, 0x10001, 7, 0x200004, 0, 1
+ 			};
++			static const uint32_t mfc_a[3] = { 0xbb80u, 0x20020u, 0x20001u };
++			static const uint32_t mfc_b[3] = { 0x17700u, 0x20020u, 0x20001u };
++			uint32_t iid0, iid1, par0, par1, sz0, sz1;
++			const uint32_t *d0, *d1;
++			uint32_t n0, n1;
+ 			uint8_t body[SWEET_CC_MAX];
+ 			uint32_t off = 0;
+ 			uint32_t i;
+ 
++			switch (sel) {
++			case 2:	/* APM itself + the graph-level param, in band */
++				iid0 = iid1 = 1u;
++				par0 = par1 = 0x08001004u;
++				sz0 = sizeof(cc_rate); d0 = cc_rate; n0 = 3;
++				sz1 = sizeof(cc_cfg); d1 = cc_cfg; n1 = 7;
++				break;
++			case 3:	/* TDM iid carrying the vendor's MFC records */
++				iid0 = iid1 = G_VP_TDM_IID;
++				par0 = par1 = 0x08001024u;
++				sz0 = sizeof(mfc_a); d0 = mfc_a; n0 = 3;
++				sz1 = sizeof(mfc_b); d1 = mfc_b; n1 = 3;
++				break;
++			case 4:	/* AW iid carrying C's TDM records */
++				iid0 = iid1 = G_VP_AW_IID;
++				par0 = 0x08001017u; par1 = 0x0800101bu;
++				sz0 = sizeof(cc_rate); d0 = cc_rate; n0 = 3;
++				sz1 = sizeof(cc_cfg); d1 = cc_cfg; n1 = 7;
++				break;
++			default:	/* 1 and anything else: C verbatim */
++				iid0 = iid1 = G_VP_TDM_IID;
++				par0 = 0x08001017u; par1 = 0x0800101bu;
++				sz0 = sizeof(cc_rate); d0 = cc_rate; n0 = 3;
++				sz1 = sizeof(cc_cfg); d1 = cc_cfg; n1 = 7;
++				break;
++			}
++
+ 			memset(body, 0, sizeof(body));
+-			g_put32(body + off + 0, G_VP_TDM_IID);
+-			g_put32(body + off + 4, 0x08001004);
+-			g_put32(body + off + 8, sizeof(cc_rate));
+-			for (i = 0; i < 3; i++) {
+-				g_put32(body + off + 16 + i * 4, cc_rate[i]);
++			g_put32(body + off + 0, iid0);
++			g_put32(body + off + 4, par0);
++			g_put32(body + off + 8, sz0);
++			for (i = 0; i < n0; i++) {
++				g_put32(body + off + 16 + i * 4, d0[i]);
+ 			}
+-			off += 16 + ((sizeof(cc_rate) + 7u) & ~7u);
+-			g_put32(body + off + 0, G_VP_TDM_IID);
+-			g_put32(body + off + 4, 0x08001004);
+-			g_put32(body + off + 8, sizeof(cc_cfg));
+-			for (i = 0; i < 7; i++) {
+-				g_put32(body + off + 16 + i * 4, cc_cfg[i]);
++			off += 16 + ((sz0 + 7u) & ~7u);
++			g_put32(body + off + 0, iid1);
++			g_put32(body + off + 4, par1);
++			g_put32(body + off + 8, sz1);
++			for (i = 0; i < n1; i++) {
++				g_put32(body + off + 16 + i * 4, d1[i]);
+ 			}
+-			off += 16 + ((sizeof(cc_cfg) + 7u) & ~7u);
++			off += 16 + ((sz1 + 7u) & ~7u);
++			printf("SWEET MARK: cccfg v3 sel=%d iids=%#x/%#x params=%#x/%#x sizes=%u/%u\n",
++			    sel, iid0, iid1, par0, par1, sz0, sz1);
++			sweet_log_sync();
+ 			(void)g_apm_set_cfg_batch(src_port, body, off, 2,
+ 			    "cc_batch");
+ 		}
+@@ -6838,9 +6902,22 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 	 */
+ 	{
+ 		int on = 0;
++		int cc_on = 0;
+ 
+ 		(void)PE_parse_boot_argn("sweetoobcfg", &on, sizeof(on));
+-		if (on != 0) {
++		/*
++		 * One container per boot, now enforced in code rather than by the
++		 * comment: with both flags set the two probes land in the same ring
++		 * and a refusal cannot be attributed.  The in-band cc_batch has
++		 * already gone out by here, so it is the out-of-band send - the one
++		 * that has wedged the plane before - that gets dropped, and the log
++		 * says so.
++		 */
++		(void)PE_parse_boot_argn("sweetcccfg", &cc_on, sizeof(cc_on));
++		if (on != 0 && cc_on != 0) {
++			printf("SWEET MARK: cccfg v3 both flags set, oob_batch suppressed\n");
++			sweet_log_sync();
++		} else if (on != 0) {
+ 			(void)g_apm_set_cfg_oob(src_port, "oob_batch");
+ 		}
+ 	}
+@@ -7794,11 +7871,38 @@ sweet_glink_probe(void)
+ 	/* Clocks the AP needs before it may read inside those macros. */
+ 	{
+ 		int va_clk, rx_clk, ampfirst = 0;
++		int tdmclk = 0;
++
++		(void)PE_parse_boot_argn("sweettdmclk", &tdmclk, sizeof(tdmclk));
+ 
+ 		sweet_log_sync();
+ 		va_clk = g_prm_vote_clock(0x307, 19200000, 2);   /* VA_CORE_MCLK */
+ 		sweet_log_sync();
+ 		rx_clk = g_prm_vote_clock(0x30e, 22579200, 5);   /* RX_CORE_MCLK */
++		/*
++		 * sweettdmclk=1: the one hardware-clock vote the vendor makes for a
++		 * speaker graph and we have never made.  Captured on working Android
++		 * (docs/data/vendor-accepted-setcfg-2026-11-05.md section "PRM"):
++		 * PRM_REQUEST_HW_RSC (0x0100100f) to dst=2, 36-byte body
++		 * {2, PARAM_ID_RSC_AUDIO_HW_CLK, 20, 0, 1, clk_id 0x204, 12288000,
++		 * attr 4, root 0} - TDM-I2S bit clock, 12.288 MHz = 96 kHz x 128,
++		 * answered status=0 - released at teardown with
++		 * PRM_RELEASE_HW_RSC (0x01001010).
++		 *
++		 * The two votes above are VA_CORE_MCLK and RX_CORE_MCLK, i.e. the
++		 * record/receiver side; nothing in our sequence ever drives the TDM
++		 * lines the AW882xx pair hangs off.  That is the difference between
++		 * "control plane green, PCM consumed, silent" and sound, and it does
++		 * not need the refused cc_batch to be fixed first.  Default 0 keeps the
++		 * shipped behaviour byte-for-byte.
++		 */
++		if (tdmclk != 0) {
++			int tdm_rc = g_prm_vote_clock_ex(0x204u, 12288000u, 4u, 0u);
++
++			printf("SWEET MARK: tdmclk v1 id=0x204 freq=12288000 attr=4 root=0 rc=%d\n",
++			    tdm_rc);
++			sweet_log_sync();
++		}
+ 
+ 		g_drain(100);
+ 		printf("SWEET GLINK: clocks va=%d rx=%d\n", va_clk, rx_clk);
