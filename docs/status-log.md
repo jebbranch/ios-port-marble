@@ -2522,3 +2522,15 @@ M1 用 `iid=0x428f`（真实模块）+ `param=0x08001004` 走带内 `SET_CFG`，
 **标签更正**：容器里的 heap 属性是**真实** `0x08001174 = APM_CONTAINER_PROP_ID_HEAP_ID`
 （`apm_container_api.h:204`）；我们**自创**的是 `0x08001176`（`sweet_glink.c:6563/6624/6826`，0248 已注明厂商从不发）。
 两者差 2，之前口语里混用过。
+
+## 2026-11-05 0264（N1）落库（设备仍被拔，零开机；26/120 不变）
+
+- 补丁 `xnu/patches/0264-sweet-oob-error-code-sentinel.patch`（基线 `ff2a016`＝已落库的 0263）：
+  K1 的带外发送**逐字恢复**，4 条记录、288 B、`addr=0x1000 bare`、同一 handle；
+  **唯一新增**＝`error_code` 槽预置 `0xa5a5a5a5` ⇒ `touched=0` 从"没写回/写了 0"二义变成**正面证据**。
+  marker `oobcfg v10`→`v11`（7 处 printf 全改，源里 `v10/v9/v8`＝0）。
+- 验证（全部离线）：2 hunk；`git apply --check` 在 `git archive ff2a016` 的纯净树通过，
+  apply 后 `diff -q` 一致；恢复段与 `021bb1e` 字符串全等；宿主机 stub 四支都可读
+  （写 0 ⇒ `err=0`/`touched=16 first=12`；不写 ⇒ `err=0xa5a5a5a5`/`touched=0`；无应答 ⇒ `no response`）。
+  细节与 N1-1 的字面量更正（`form=bare`，不是我当时写的 `form=oob`）在 `audio-closeout.md` 末节。
+- 开机顺序不变：**M1 第 27**（镜像已就绪）→ **N1 第 28**（镜像等 CI）。设备没插回来之前**不记账、不开机**。
