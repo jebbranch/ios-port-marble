@@ -2589,3 +2589,34 @@ M1 用 `iid=0x428f`（真实模块）+ `param=0x08001004` 走带内 `SET_CFG`，
   cmdline 长度**每轮必须从该轮产物重测**，我从带外那支抄了个 583 进 M1r 的判据，开机前更正为 582。
 - 记账 **30/120**。M1/N1 这个目标交付完毕；下一枪候选写在 `audio-closeout.md` 的 N1 判决末节
   （**带内侧**拆 M1-vs-I 那四格；或按 ACDB 逐字节重建 `GRAPH_OPEN` 正文这条另一轴的路）。
+
+## 2026-11-05 深夜：外设两条线的取证入账（零开机；**30/120 不变**）
+
+用户问基带与 WiFi。**WiFi 按用户决定"先缓"**，取证照写，别丢。
+
+- **基带 = 仓库干净零起点**（Explore 普查全文见 `docs/HANDOFF-2026-11-05.md` 第九节）。
+  历史唯一 `modem` 字样是 0139 里 `g_apm_map_probe(0x8bbe0000,…,"spu_modem")` —— 拿 **ADSP 的 SMMU 探 SPU-modem 预留区**，
+  且 0136–0139 整批探的地址本来就错（真厂商 PA `0x1_1FFE8000`，msw=1）。
+  两个词义陷阱：`sweetnobb` = **no bit-bang**（0241），与基带无关；`mkadt.py:161` "no SEP, no baseband here"
+  说的是 iOS 侧无 BB 资产，**不等于** MSS 起不来。
+- **这条线的先决门是内存，不是协议，而且能零开机判死**：DT `remoteproc-mss` 的
+  `memory-region` → **`mpss_region@8bc00000`，size `0x13200000` = 306 MB**；我们 ADSP 当年用
+  `0x9fd00000 + 0x3100000`（49 MB）。⇒ 第一个问题：**我们自己的 XNU 启动时这块区还在不在、能不能持有并交给 TZ**。
+  这一问没答之前，**基带一枪都不开**。
+- 可复用件（都不必新写机制）：`sweet_adsp.c` 的 `pas_init_image/pas_mem_setup/pas_auth_and_reset`
+  （只差 PAS ID 与区域）、0109 已证明 TZ 支持 `pas_auth_and_reset`/`pas_shutdown`、
+  `sweet_glink.c` 的 GLINK-over-SMEM 客户端（DT 的 mpss 边同形，通道 `IPCRTR`，intents `0x800×5/0x2000×3/0x4400×2`）、
+  `g_apm_shm_map_*`/`g_smmu_faults`/`g_prm_vote_clock_ex`/PSCI `smc #0`。
+  **缺件**：`scripts/extract_adsp_fw.sh` 写死 `adsp2.*` 且 modem 固件在 `/vendor/firmware_mnt/image`（=`modem_a`，sde7），
+  `mkfwblob.py` 前缀参数化 ⇒ 改得起。
+- **更正我自己当晚的一条话**：`mhi_1103_*`（DIAG/IPCR/LOOPBACK）是 **WiFi/CNSS 的**，不是基带的
+  （DT `qcom,qrtr-mhi` dev-id 0x1103 ↔ `pci 0000:01:00.0 [17cb:1103]`）。⇒ 基带只有
+  MSS/PIL + GLINK/SMEM + SMP2P；dmesg 那句 `PCIe: RC0: no mhi resource found` 不要误读成基带缺资源。
+- **WiFi 实况（暂缓，但资产已清点）**：外挂 PCIe 的 **QCA6490**（`17CB:1103`，`cnss_pci`，`qcom,pcie@1c00000`，
+  phy-ver 0x63，perst TLMM 0x5e）；固件 `/vendor/firmware_mnt/image/qca6490/` **26 MB**
+  （`amss.bin`/`amss20.bin` 5.3 MB、`Data.msc`/`Data20.msc`、**板级变体** `bd_l1.elf/bd_l10.elf/bd_l10gf.elf…`
+  与 `bdwlan.e01…e06`）；另有 `wlanmdsp` ⇒ WLAN 自带一颗 DSP 要再鉴权。
+  依赖比基带多：5 条轨 + `wlan-en-gpio` 两套 pinctrl + **PDC** + `cnss_wlan_region` + `ipa_smmu_wlan`。
+  贵在哪：要新长 **PCIe RC/PHY（本项目从没做过）+ MHI 主机栈 + 整套 802.11 驱动（M3/`ath11k` 类）+ Apple WiFi HAL 表面**。
+  ⇒ 若日后重启此线，第一口是**离线确认本机用哪个 `bdwlan`/`bd_l` 变体** + 一发"只读 PCIe 配置空间与链路速率"的微探针，
+  **不写驱动**。

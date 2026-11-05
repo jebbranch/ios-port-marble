@@ -266,6 +266,16 @@ bash scripts/mkimage.sh sweethap=1 ...           # 位置参数会被追加到 c
 
 ## 7. 已关闭 / 不要重走
 
+- **WiFi（CNSS/QCA6490）：2026-11-05 用户决定"先缓"**，不是判死。取证在 `docs/HANDOFF-2026-11-05.md` 第九节
+  与 `docs/status-log.md` 当晚条目。**为什么贵**：要新长四段——PCIe RC/PHY 链路（本项目从没做过，GPU 内置不占这条）、
+  MHI 主机栈、整套 802.11 驱动（QCA6490 属 M3/`ath11k` 类，含板级 cal 与 IPA offload）、外加用户态要让
+  `wifid`/`corewifi`/SkyWalker 认一个 Apple HAL 表面（"能上网"与"设置里能用"是两个工程）。
+  **日后重启的第一口**：先离线确认本机用哪个 `bdwlan.eNN`/`bd_l*.elf` 变体（`/vendor/firmware_mnt/image/qca6490/`，26 MB），
+  最多一发只读 PCIe 配置空间/链路速率的微探针；**不要先写驱动**。
+- **基带（MSS）：一枪未开，先决门是内存**——DT `remoteproc-mss` 要 **`mpss_region@8bc00000` 306 MB**
+  （ADSP 当年只用 49 MB）。**没核清"这块区在我们 XNU 启动时能否持有"之前不许开机做基带**。
+  别把这两个词当证据：`sweetnobb` = no **bit-bang**（与基带无关）；`mkadt.py` "no baseband here" 指 iOS 侧无 BB 资产。
+
 - 追那 18 KB 的**内容**（机内 6 份 ACDB 已量完：没有任何 blob 落在 18,000–19,000；
   所谓"超限校准记录"是 1,524 条目表之后的**文件级尾块**，不是子图校准）。
 - 用"凑总长"认领 ACDB 记录组。
