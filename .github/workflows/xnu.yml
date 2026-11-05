@@ -202,7 +202,7 @@ jobs:
                    "SWEET HAPID: uc=" \
                    "SWEET HAP: fault after clear=" \
                    "SWEET MARK: aopval=" \
-                   "SWEET MARK: cccfg v1 " \
+                   "SWEET MARK: cccfg v2 " \
                    "SWEET MARK: oobcfg v10 try " \
                    "SWEET MARK: oobcfg v10 body touched=%u first=%u of " \
                    "recs not read back (past the mapping)" \

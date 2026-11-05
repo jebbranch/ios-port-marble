@@ -1,0 +1,73 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index ffb71e5..21ba9ee 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5633,11 +5633,11 @@ g_apm_set_cfg_batch(uint32_t src_port, uint8_t *body, uint32_t blen,
+     uint32_t nrec, const char *what)
+ {
+ 	if (blen == 0 || blen > SWEET_CC_MAX) {
+-		printf("SWEET MARK: cccfg v1 reject recs=%u len=%u\n",
++		printf("SWEET MARK: cccfg v2 reject recs=%u len=%u\n",
+ 		    nrec, blen);
+ 		return (-1);
+ 	}
+-	printf("SWEET MARK: cccfg v1 dst=1 inband recs=%u len=%u\n",
++	printf("SWEET MARK: cccfg v2 dst=1 inband recs=%u len=%u\n",
+ 	    nrec, blen);
+ 	{
+ 		/* Walk the list the way the APM does, so the ring itself carries
+@@ -5650,17 +5650,17 @@ g_apm_set_cfg_batch(uint32_t src_port, uint8_t *body, uint32_t blen,
+ 			uint32_t step = 16 + ((psz + 7u) & ~7u);
+ 
+ 			if (step <= 16) {
+-				printf("SWEET MARK: cccfg v1 bad size at %u\n",
++				printf("SWEET MARK: cccfg v2 bad size at %u\n",
+ 				    off);
+ 				return (-1);
+ 			}
+-			printf("SWEET MARK: cccfg v1 rec %u iid=%#x param=%#x size=%u\n",
++			printf("SWEET MARK: cccfg v2 rec %u iid=%#x param=%#x size=%u\n",
+ 			    i, g_le32(body + off), g_le32(body + off + 4), psz);
+ 			off += step;
+ 			i++;
+ 		}
+ 		if (off != blen || i != nrec) {
+-			printf("SWEET MARK: cccfg v1 walk %u != len %u (recs %u/%u)\n",
++			printf("SWEET MARK: cccfg v2 walk %u != len %u (recs %u/%u)\n",
+ 			    off, blen, i, nrec);
+ 			return (-1);
+ 		}
+@@ -6750,10 +6750,12 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 	}
+ 
+ 	/*
+-	 * sweetcccfg=1 only.  Same two parameters, same bytes, as ONE two-record
+-	 * list to the APM: (16 + align8(12)) + (16 + align8(28)) = 80 bytes, so it
+-	 * must go in-band by the threshold above.  Nothing else in this round
+-	 * changes; without the flag the block below does not run at all.
++	 * sweetcccfg=1 only.  M1 round: C's container with ONE field moved - the two
++	 * param ids become 0x08001004, the one the ACDB carries for a props chain
++	 * header.  Same iid (G_VP_TDM_IID), same sizes (12 and 28), same bytes, same
++	 * two-record list to dst=1, same in-band 80-byte send, same helper.  C
++	 * answered 0 with the previous pair, so this asks whether the param id alone
++	 * is enough to lose that acceptance.  Without the flag nothing runs.
+ 	 */
+ 	{
+ 		int on = 0;
+@@ -6770,14 +6772,14 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 
+ 			memset(body, 0, sizeof(body));
+ 			g_put32(body + off + 0, G_VP_TDM_IID);
+-			g_put32(body + off + 4, 0x08001017);
++			g_put32(body + off + 4, 0x08001004);
+ 			g_put32(body + off + 8, sizeof(cc_rate));
+ 			for (i = 0; i < 3; i++) {
+ 				g_put32(body + off + 16 + i * 4, cc_rate[i]);
+ 			}
+ 			off += 16 + ((sizeof(cc_rate) + 7u) & ~7u);
+ 			g_put32(body + off + 0, G_VP_TDM_IID);
+-			g_put32(body + off + 4, 0x0800101b);
++			g_put32(body + off + 4, 0x08001004);
+ 			g_put32(body + off + 8, sizeof(cc_cfg));
+ 			for (i = 0; i < 7; i++) {
+ 				g_put32(body + off + 16 + i * 4, cc_cfg[i]);
