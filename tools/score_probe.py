@@ -10,6 +10,7 @@ Two rules this encodes, both learned the hard way:
   tools/score_probe.py l2 logs/ring-l2-3recs.txt <sweettime>
 """
 import re
+import pathlib
 import subprocess
 import sys
 
@@ -38,6 +39,16 @@ ROUNDS = {
             "0x1": "branch 2: same code as L1 at 288 B => length is NOT in the boundary; "
                    "against C only the param id and the per-record size are left",
         },
+    },
+    # M1c = the same kernel with sweetcccfg removed, so nothing is sent at all
+    "m1c": {
+        "ver": "v2", "prefix": "cccfg v2", "tag": "cc_batch", "old": ["v1"],
+        "base": "logs/ring-m1-cccfg.txt",
+        "expect": [],
+        # the control gate: the probe must NOT be in the ring
+        "absent": ["cccfg v2 dst=1 inband", "cccfg v2 rec ", "cc_batch", "cccfg v2 reject",
+                   "cccfg v2 bad size", "cccfg v2 walk"],
+        "verdict": {},
     },
     # M1 = C's accepted container (0263) with only the two param ids moved to 0x08001004.
     "m1": {
@@ -83,9 +94,35 @@ def lines(path, pat):
     return [l.rstrip() for l in out.stdout.splitlines()]
 
 
+def window_check(ring):
+    """The decoder prints raw[4096 : 4096+total].  Anything past that byte is a PREVIOUS
+    boot's leftovers - the ring is never erased - and M1 proved those leftovers include
+    `pcm tone done` and `PSCI SYSTEM_RESET` at the exact offsets the prior round used.
+    So score the decoded window only, and say out loud when the window and the raw
+    disagree."""
+    import struct
+    raw = pathlib.Path("logs/raw") / (pathlib.Path(ring).stem + ".bin")
+    if not raw.exists():
+        print(f"  window: no raw file ({raw}) - scored bytes are unverified")
+        return None
+    d = raw.read_bytes()
+    magic = d[:8]
+    ver, size = struct.unpack_from("<II", d, 8)
+    total, seq = struct.unpack_from("<QQ", d, 16)
+    txt = pathlib.Path(ring).stat().st_size
+    print(f"  window: magic={magic.decode(errors='replace')} total={total:#x} seq={seq} "
+          f"decoded={txt:#x} match={total == txt}")
+    for name in ("pcm tone done", "===== done =====", "PSCI SYSTEM_RESET"):
+        at = d.find(name.encode(), 4096 + total)
+        if at >= 0:
+            print(f"  !! '{name}' exists in the raw at {at:#x}, past this session's window - "
+                  "stale bytes from an earlier boot, not evidence")
+    return total
+
+
 def main():
     if len(sys.argv) < 4:
-        sys.exit("usage: score_probe.py <l1|l2|m1|n1> <ring> <sweettime>")
+        sys.exit("usage: score_probe.py <l1|l2|m1|m1c|n1> <ring> <sweettime>")
     round_id, ring, want_time = sys.argv[1], sys.argv[2], sys.argv[3]
     cfg = ROUNDS[round_id]
     pre, tag, base = cfg["prefix"], cfg["tag"], cfg["base"]
@@ -118,7 +155,11 @@ def main():
         print(f"  {pat:40} {count(ring, pat)}")
 
     print(f"=== {round_id.upper()}-3/-4 counters, this ring vs {base} ===")
-    for name, pat in (("data_buffer send", "data_buffer send"),
+    window_check(ring)
+    for name, pat in (("pcm tone done", "pcm tone done"),
+                      ("===== done =====", "===== done ====="),
+                      ("PSCI SYSTEM_RESET", "PSCI SYSTEM_RESET"),
+                      ("data_buffer send", "data_buffer send"),
                       ("done status=0", "done status=0"),
                       ("no rsp", "no rsp"),
                       ("vp/ all", "vp/"),

@@ -2555,3 +2555,16 @@ M1 用 `iid=0x428f`（真实模块）+ `param=0x08001004` 走带内 `SET_CFG`，
   N1 是带外探针（E/F 那类能把数据面打死的方向），而本轮刚出现"音尾之前离开 XNU"的新形态。
   零开机的下一步：`iid×param` 组合矩阵（看 `0x3` 是否只跟 `iid∈{1,0x428f}`）、
   读 `out:` 之前所有可能阻塞的 MMIO（`g_clk_witness("post")`/`g_lpass_probe()`/`g_rx_snapshot`）。
+
+## 2026-11-05 21:02 N1 镜像就绪（本地打包，未开机）+ 打分器补上"陈旧字节"自检
+
+- 用户授权"先重新打包，然后直接继续" ⇒ N1 不再等任何 CI：`fetch_kernel.sh EXPECT_MARKER="SWEET MARK: oobcfg v11 try "`
+  取到的 `out/kernel.adsp` 里 `oobcfg v11 try `×1、`v10`/`v9`=0、`cccfg v2`×4、build v97、CNTP 已 NOP。
+  本地 `mkimage.sh` 产出 `images/n1-error-code-sentinel.img`：cmdline **583 B**（与 N1-0 预注册逐字相等）、
+  尾部 `sweetoobcfg=1 sweettime=1793883775` 连续、**不含** `sweetcccfg`、`sweetbufs=30` 在位。
+- 同一 kernel 也重打包了控制枪 `images/m1c-no-probe.img`（569 B、无 `sweetcccfg`/`sweetoobcfg`），第 28 枪。
+- **`tools/score_probe.py` 加了两条今天真救命的自检**：
+  (1) 把 `pcm tone done` / `===== done =====` / `PSCI SYSTEM_RESET` 当成常规计数器打出来（M1-4 别再靠肉眼看尾巴）；
+  (2) `window_check()`：读 raw 头部 `total`，与解码 txt 字节数**比相等**，并**明确警告**
+      "这些收尾串存在于 raw 里但在本会话窗口之后 ⇒ 是上一轮的陈旧字节，不是证据"。
+      M1 那次我差点把 L2 的陈旧收尾读成自己的收尾，靠的就是同偏移同内容这一条。
