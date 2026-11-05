@@ -4451,3 +4451,46 @@ M1 只动 `sweetcccfg` 块、N1 只动 `sweetoobcfg` 块 ⇒ 各自 cmdline 只�
   `l2` 对它自己的 ring 复现"branch 2 ⇒ 长度不在分界"；`m1` 误跑 C 的 ring 时正确报
   `cccfg v2` 四行 **MISS**、`cc_batch rsp op=0x1001006 status=0`（=C 基线本体），
   ⇒ 改动没把已有轮子的打分路径弄坏，也不会把"别的 ring"当成满分。
+
+## M1 判决（第 27 枪，boot 2026-11-05 20:44–20:47，`logs/ring-m1-cccfg.txt`）
+
+**主判据 `status = 0x3` ⇒ 开机前判决表的第 3 支：又一个可分辨读数，记入基线表，不命名机制。**
+
+| 门 | 读数 | 结论 |
+|---|---|---|
+| M1-0 身份 | ring `sweettime=1793880108`×2；产物 `cccfg v2 `×4 / `cccfg v1 `×0；cmdline **582 B**（见上节更正） | **成立** |
+| M1-1 自证 | `cccfg v2 dst=1 inband recs=2 len=80`、`rec 0 iid=0x428f param=0x8001004 size=12`、`rec 1 … size=28`、`APM cc_batch src=0x2010 dst=0x1 (120 bytes)` **各 1** | **成立**（发的就是那个容器） |
+| M1-2 主判据 | `SWEET GLINK: cc_batch rsp op=0x1001006 status=0x3 hop=0x2001005 len=32` | **`0x3`**（C 同位置 = `0`） |
+| M1-3 平面 | `data_buffer send` 31 / `done status=0` 4 / `no rsp` 0，与 C 轮逐条等值 | **成立** |
+| M1-4 设备安全 | `vp/` 18（9 发 + 9 应）、`gate flag` 1、内核 panic 0 —— **但 ring 里没有 `pcm tone done`、没有 `===== done =====`、没有 `PSCI SYSTEM_RESET`** | **不成立（新形态）** |
+| M1-5 | `reject`/`bad size`/`walk` 全 0 | **成立**（容器确实发出去了） |
+
+### M1-4 的取证（为什么不是"我的解码丢了尾巴"）
+- 解码窗口 = 头部 `total` = **86,441 B**，与 `logs/ring-m1-cccfg.txt` 字节数**逐字节相等** ⇒ 窗口没被截。
+- raw 里 0x175e2 的 `pcm tone done` 与 0x17a71 的 `PSCI SYSTEM_RESET` 与 **L2 的 raw 同偏移同内容**
+  ⇒ 那是**上一轮没被覆盖的陈旧字节**，不是本轮写的（ring 不清零）。
+- 复位代码在 `printf("…PSCI SYSTEM_RESET")` 之后**显式 `sweet_log_sync()` 才 `smc #0`**
+  （链树 `bsd/dev/sweet_glink.c:7906` 起）⇒ 真走到收尾就必然落盘，不存在"差一拍"的竞态。
+- 前 **12 轮** ring 全部以 `PSCI SYSTEM_RESET` 收尾（c2/d/e/f/g/h/i/j/k1/l1/l2），本轮是第一个不收尾的。
+- 本轮自己的最后一行是 `data_buffer send` 后跟 `CRASH NewsToday2 … extension check-in timeout`。
+- 设备侧：手机**自己**回到 Android（20:50 时 uptime 3 min），我没碰过按键。
+⇒ 读法只到"**这一发在音尾之前离开了 XNU，且没走我们的复位路径**"。**不命名机制**：
+可能是同一次拒绝引出的后果，也可能是 LPASS/时钟读、watchdog、别的——一次开机不足以归因。
+源码里早有同形态的记录（`sweet_glink.c:4059`："no PSCI SYSTEM_RESET, watchdog picked it up"）。
+
+### 0x3 与"iid 是分界"这条旧结论的冲突（必须改，不能沉默）
+旧的三码基线：**H/J**（带外、`iid=1`、`param=0x08001004`、size 52×4）⇒ `0x3`；
+**K1**（带外、真实模块 iid `0x40bd…`、同 param/size）⇒ `0x1`；据此我写下"`iid` 是 `0x1`↔`0x3` 的分界"。
+**M1 把这个概括打掉了**：`iid=0x428f`（真实模块，TDM sink）、`param=0x08001004`、size 12/28、带内 ⇒ **`0x3`**。
+⇒ 现在能说的是：拿到 `0x3` 的三支里 `iid` 分别是 `1`、`1`、`0x428f`；拿到 `0x1` 的四支 iid 是 `0x40bd…`/`0x428f+真 param`…
+**"1 vs 真实"不再是分界**；剩下的候选是"**记录点名的是哪一个 iid**"与"传输/param/size"的**组合**。
+按老规矩：**三个码都是拒绝，语义不命名**；`0` 只写"命令级接受"。
+
+### 停手（设备安全门未满足 ⇒ 第 28 枪 N1 **不开**，交回用户）
+- 未满足的是 M1-4（收尾/自复位），不是 panic、不是 `no rsp`、不是平面（31/4/0 与 C 等值）。
+  主判据在**已落盘窗口内**取到，所以 M1 的读数**成立并记账**；但"下一枪是带外探针"这件事
+  要求先把这次的早退搞清楚，或得到你的同意。
+- 可零开机做的下一步（都不烧开机次数）：把 M1 与 C/H/J/K1 的 `iid×param` 组合列成矩阵，
+  看 `0x3` 是否只跟 `iid∈{1, 0x428f}`；把 `021bb1e` 复位路径与 `out:` 之前的
+  `g_clk_witness("post")/g_lpass_probe()` 读一遍，列出音尾之前所有可能阻塞的 MMIO 读。
+- 开机记账：**27/120**（本目标上限 28，N1 未开）。
