@@ -4599,3 +4599,25 @@ M1 的早退与那一发 `status=0x3` **同现**（这是相关性，**不是机
 `oobcfg v10 try `×0、尾部 `sweetcccfg=1 sweettime=1793884011` 连续、无 `sweetoobcfg`、`sweetbufs=30` 在位。
 教训入账：**同一张判据表里"583"是我从上一支抄的**——长度属于"随开关字符数变化"的量，
 每轮都必须从**该轮产物**重测，不能继承。
+
+### 断点再收窄（零开机，源码 + 两轮 ring 对照；写于 M1r 结果之前）
+
+把"M1 死在哪"从"音尾附近"收窄到**一个具体的、几乎不含代码的间隙**：
+
+1.  tone 循环最后一轮的语句只有：`delay(gap)`（**gap=0**，cmdline 无 `sweetbufgap`，且 `gap>0` 才会打印
+    `tone pace` —— 两轮都没有这行）→ `if (nw && (n&31)==0)` 的 `tone buf` 进度行（`n=30` 不满足，
+    两轮都无此行）→ `g_apm_data_buffer(...)`（打印 `data_buffer send` 后打印 `TX_DATA`）→ 循环退出。
+2.  本轮**最后一条已落盘记录**是 `CRASH NewsToday2 reason ns 7 code 0x3`，紧挨着它之前是
+    第 31 发的 `data_buffer send` + `TX_DATA iid=112 len=68` ⇒ **发送本身已经完成**。
+3.  循环退出后的下一条语句就是 `printf("SWEET GLINK: pcm tone done (%d buffers)")`，
+    再后面才是 `g_ibat_burst("post")`、`sweet_i2c_amp_readback("post-stream")`、`g_rx_snapshot`、
+    `g_clk_witness("post")`、`g_lpass_probe` —— **全部在 `pcm tone done` 之后，因此全部排除在断点之外**。
+    （我先前把"I2C/LPASS 后置读"列为嫌疑，这一段读完就作废：它们连发生的机都没有。）
+4.  **正常收尾必然落盘**：复位路径是 `printf("===== done =====")` → `printf("PSCI SYSTEM_RESET")`
+    → **`sweet_log_sync()`** → `smc #0`。M1c 就是证据：它的窗口 `total=0x162b3` 里三行齐全。
+    ⇒ M1 缺这三行**不能**用"差一拍没刷上"解释；但**可以**用"AP 在第 31 发完成后、
+    `pcm tone done` 刷盘之前（同一个 1 s 刷新周期内）就离开了 XNU"解释。
+
+⇒ 现象的准确说法：**第 31 发完成后不到 1 s，AP 离开 XNU，且没走到我们的复位路径。**
+**仍然不命名机制**（看门狗 / ADSP 侧把 AP 拖死 / 别的一次性事件，一次相关 + 一次对照都不够分辨）。
+M1r 的重放只回答一个问题：**这个 1 s 内的早退是否与那一发 `0x3` 一起复现**。
