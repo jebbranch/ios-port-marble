@@ -4784,3 +4784,22 @@ SHM_MAP/GRAPH_OPEN/PREPARE/START、时间线）。原始证据 `logs/gpr-both-20
   照厂商的 `SHM_MAP{0x10003,4,addr,msw,size}` 形状；这是"我们只有一块区"这个差异的第一次对照。
 **优先级建议**：P1 一发就能证伪/支持"配对"规律，且**本地重打包即可**（0263 的 cccfg 块只改两个常量），
 不需要 CI；P3 要新代码 ⇒ 一次 CI。
+
+## T0 判据（第 31 枪，**零 CI：本地重打包 0264 内核**；开机前写死）
+
+**这一枪买什么**：`vp/tdm_power` 是我们自己加的 `0x08001176`（值 0），**厂商 42 包里一票都没有**（0248 时代就记下了，
+任务 #9 一直挂着没打）。会诊指出：如果这一票真的把 TDM/PA 路径按在某个非默认状态，
+它就是"控制面全绿、PCM 被消费、却没有声音"最省的候选。现成开关 `sweettdmpwr`：
+`0`=出厂（发）、`1`=发值 1、**`2`=不发**。这一枪用 `2`，**同时不开 `sweetcccfg`/`sweetoobcfg`**（一轮一个变量，也不双探针）。
+
+cmdline = 音频已知-good 那条 + `sweettdmpwr=2`；**不带** `sweetcccfg`、**不带** `sweetoobcfg`。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| **T0-0 身份** | ring `sweettime=` 与本轮镜像一致；镜像内 `oobcfg v11 try `×1、`cccfg v2 `×4（该内核的 cccfg 仍是 v2，正常）、cmdline 长度**实测**且尾部 `sweettdmpwr=2 sweettime=<本轮>` 连续、**不含** `sweetcccfg`/`sweetoobcfg`、`sweetbufs=30` 在位 | 成立 | 打的确实是这一枪 |
+| **T0-1 开关门** | `SWEET GLINK: tdm_power skipped (vendor does not send it)` **恰 1**，且 `vp/tdm_power` **0 行** | 全中 | 那一票确实没发（不是发了别的值） |
+| **T0-2 主判据** | **有没有声音**（用户耳朵 = 终端判据；`ampread post-stream` 与 `data_buffer` 计数只作旁证） | 听到 / 没听到 | 听到 ⇒ 这一票是元凶之一，后续按 `0/1/2` 复现并拆attr；没听到 ⇒ 该格关掉，转 `sweettdmclk=1`（0265 的时钟票） |
+| **T0-3 回归** | 平面 `data_buffer send` 31 / `done status=0` 4 / `no rsp` 0；`vp/` 其余各条 `status=0`；`gate flag` 1；内核 panic 0；**窗口内**收尾三行齐（`tools/ring_window.py` + `score_probe` 的 window_check） | 等值 | 不成立 ⇒ 该轮不判、停手交回 |
+
+限制照写：听到/没听到都是**一次**样本，只说明"这一票在不在场时声音的有无"，**不命名机制**；
+1/16 音幅档位不变（要更响/更长需要用户明确许可）。
