@@ -203,8 +203,9 @@ jobs:
                    "SWEET HAP: fault after clear=" \
                    "SWEET MARK: aopval=" \
                    "SWEET MARK: cccfg v1 " \
-                   "SWEET MARK: oobcfg v2 try " \
-                   "no region base, abs form skipped"; do
+                   "SWEET MARK: oobcfg v3 try " \
+                   "recs not read back (past the mapping)" \
+                   "is past the declared region" ; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
               echo "::error::missing kernel marker: $s (patch skipped?)"
               exit 1

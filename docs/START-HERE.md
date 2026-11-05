@@ -242,7 +242,8 @@ cd $HOME/Desktop/marble-ios/work/xnu-gh
 | **震动/交互轮**（停在 iOS 让人按电源键） | `KEEPALIVE=1 bash scripts/mkimage.sh sweethap=1` | `SERIAL=2aa26095 bash scripts/boot_interactive.sh images/shim-iosroot-adsp.img` | 人重启到 TWRP 后 `SERIAL=2aa26095 ./scripts/pull_logs.sh <label>` |
 | **音频已知-good 配置**（b1/L/M 同一条，569 字节） | `bash scripts/mkimage.sh sweetexp=15 sweetbufs=30 sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 sweets1ap=3 sweetampfirst=1 sweetaudioprobe=1` | `SERIAL=2aa26095 bash scripts/boot_one.sh images/<img> <label>`（自动复位+自动拉 ring） | 同左（boot_one 内置） |
 | **零补丁仪器轮**（用户态 IOKit 查询追踪） | 上面任一 + 环境变量 `SWEETIOLOG=mediaserverd,backboardd`（**替换** base 里的 `sweetiolog=-`，不是追加；boot-args 预算 590） | 同上 | 同上 |
-| **OOB 批量 SET_CFG 扫偏移**（D/E 轮，2026-11-05） | 音频已知-good 那条**原样**，末尾追加 `sweetoobcfg=1`（E 轮**不带** `sweetcccfg`，一次一个容器） | 同上 | 同上；取完日志**先核 `sweettime` 与本次镜像一致**再打分 |
+| **OOB SET_CFG 探针**（D/E/F 轮，2026-11-05，cmdline 583 B） | 音频已知-good 那条**原样**，末尾追加 `sweetoobcfg=1`（**不带** `sweetcccfg`，一次一个容器） | 同上 | 同上；取完日志**先核 `sweettime` 与本次镜像一致**再打分 |
+| **取产物** | `bash scripts/fetch_kernel.sh`（**已修**：`kernel-latest` 旁边躺着一个陈旧的 `build-error.txt` 且排在前面，旧代码"页面上第一个 sha256"拿的是它的摘要，会一直误判"没出新内核"；现在按资产名配对取摘要） | — | — |
 
 **boot-args 必须逐条在打包产物里核对**（不是只核 cmdline 打印）：
 
