@@ -189,14 +189,14 @@ bash scripts/mkimage.sh sweethap=1 ...           # 位置参数会被追加到 c
   （C = `iid=0x428f` + `param=0x08001017`(12)/`0x0800101b`(28)、2 条、带内 80 B）。
   下一枪 **M1** = C 的形状**只**把 param 换成 `0x08001004`；再下一枪 **N1** 把 `error_code` 预置成
   非 0 哨兵（`0xa5a5a5a5`），让 `body touched!=0` 成为正证据。
+  三个码**除 `0` 外都是拒绝**、语义不命名；逐记录 `error_code` 已**八轮**全 0 ⇒ 记录级仍盲；
+  `body touched=` 只作观察（预置 0 ⇒ 分不清"没写回"与"写了 0"）。
+  另：`GRAPH_OPEN` 的 `status=0x2` 语义仍未查；18 KB 正文**一个字节都没拿到过**。
 - **② 的新离线结论（2026-11-05，零开机）**：子图 `0xb0000023` 的逐模块 cal 表 = **10 条**、
   全部 `param=0x08001015 size=8` ⇒ 上线正文 **240 B ≤256** ⇒ **一发带内 SET_CFG 就装得下整张表**，
   既不需要带外、也不需要切块、更与那 18 KB 无关（常量与几何见
   `docs/data/acdb-m2-subgraph23-records.txt`）。厂商 672 B OOB 正文**不等于**任何子图的记录长度和
   （最近 480）⇒ 672 仍是未解释项，不得据此认领内容组。
-  三个码**除 `0` 外都是拒绝**、语义不命名；逐记录 `error_code` 已**八轮**全 0 ⇒ 记录级仍盲；
-  `body touched=` 只作观察（预置 0 ⇒ 分不清"没写回"与"写了 0"）。
-  另：`GRAPH_OPEN` 的 `status=0x2` 语义仍未查；18 KB 正文**一个字节都没拿到过**。
 - **AudioReach 线上格式**（官方实现 + 我在本机 `libar-gsl.so` 上逐条反汇编复验）：
   - 记录头 = **`apm_module_param_data_t{module_instance_id, param_id, param_size, error_code}`
     = 16 B**，记录间 `GSL_ALIGN_8BYTE`。**没有** GSL 外层包装头。
