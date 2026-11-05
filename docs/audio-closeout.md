@@ -4553,3 +4553,40 @@ M1 只动 `sweetcccfg` 块、N1 只动 `sweetoobcfg` 块 ⇒ 各自 cmdline 只�
 
 限制：一次开机不足以命名机制；控制组只回答"是否与探针同现"，不回答"为什么"。
 记账：M1=第 27 枪；**M1c=第 28 枪**；N1 顺延为第 29 枪（原目标上限 28 由用户本次授权延长）。
+
+## M1c 判决（第 28 枪，控制组，`logs/ring-m1c-noprobe.txt`）
+
+| 门 | 读数 | 结论 |
+|---|---|---|
+| M1c-0 | ring `sweettime=1793883678`×2；产物 cmdline **569 B**、`sweetcccfg`/`sweetoobcfg` **都不在**；`window_check`：`total=0x162b3` 与解码字节**相等** | **成立** |
+| M1c-1 控制门 | `cccfg v2 dst=1 inband` 0、`cccfg v2 rec ` 0、`cc_batch` 0、`reject/bad size/walk` 0 | **成立**（探针确实没发） |
+| **M1c-2 主读数** | `pcm tone done` **1** / `===== done =====` **1** / `PSCI SYSTEM_RESET` **1**（都在窗口内；raw 里 0x1e965 那条 `===== done =====` 在窗口之后，由新自检显式判为**上一轮陈旧字节**） | **正常收尾** |
+| M1c-3 | 平面 31/4/0、`vp/` 18（9+9）、`gate flag` 1、内核 panic 0，与 M1 逐条等值 | **成立** |
+
+⇒ **落在开机前判决表第 1 支**：同一 kernel、同一音尾、同一档位，**不发那一发就能正常收尾**；
+M1 的早退与那一发 `status=0x3` **同现**（这是相关性，**不是机制**，n=1）。
+按同一条判据的走向：**N1 暂不开**，先补一发"重放 M1"看早退是否**可复现**。
+
+## M1r 判据（重放枪，第 29 枪；**开机前写死**）
+
+**用哪份 kernel**：手边 `out/kernel.adsp` 已是 0264（N1 那份）。0264 的两个 hunk **只碰**
+`SWEET_OOB_SEND` 宏与 `g_apm_set_cfg_oob`，**ccc‌fg 发送器逐字节未变** ⇒ 加 `sweetcccfg=1`、
+不加 `sweetoobcfg`，发出去的就是 M1 那一发；代价是 kernel 里多一段**永不调用**的带外代码。
+好处：`sweettime` 是新的，身份门不被"复用旧镜像"削弱（复用 `images/m1-cccfg-header-param.img`
+会连 `sweettime=1793880108` 一起复用，两轮 ring 就无法区分）。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| M1r-0 | 镜像含 `cccfg v2 `×4、`cccfg v1 `×0、`oobcfg v11 try `×1（**预期在**，但本轮不触发）；cmdline **583 B**、尾部 `sweetcccfg=1 sweettime=<本轮>` 连续、**不含** `sweetoobcfg` | 成立 | 发的是 M1 那一发 |
+| M1r-1 | 四行自证各 1：`cccfg v2 dst=1 inband recs=2 len=80`、`rec 0 iid=0x428f param=0x8001004 size=12`、`rec 1 … size=28`、`APM cc_batch src=0x2010 dst=0x1 (120 bytes)` | 全中 | 容器真发出去了 |
+| M1r-2 | `cc_batch rsp op=0x1001006 status=?` | 记录（预期 `0x3`） | `0x3` 是否可复现 |
+| **M1r-3（主判据）** | 窗口内是否齐 `pcm tone done` / `===== done =====` / `PSCI SYSTEM_RESET`（必须过 `window_check`，`total==decoded`） | 齐 / 仍截尾 | 早退是否可复现 |
+| M1r-4 | 平面 31/4/0、`vp/` 18、`gate flag` 1、panic 0、无 `reject/bad size/walk` | 等值 | 不成立 ⇒ 停手 |
+
+**判决（开机前定死）**
+1. **又截尾** ⇒ 早退**可复现且与那一发同现** ⇒ ② 的内容枪暂停，转"音尾为何死"这条设备安全线，
+   并**交回用户**（红线：尽量不要让设备处于未收尾状态）。
+2. **正常收尾** ⇒ M1 那次是**一次性**（n=1 不成现象）⇒ M1 的 `0x3` 读数站住，
+   接着开 **N1（第 30 枪）**，内容仍按 N1 原判据。
+3. `no rsp`、平面不等值、或内核 panic ⇒ **不判、停手交回**。
+记账：M1=27、M1c=28、**M1r=29**、N1 顺延为 30（用户在 21:00 授权"直接继续"）。
