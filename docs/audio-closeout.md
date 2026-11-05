@@ -4302,7 +4302,7 @@ M1 问的是反方向的、也是唯一还没问过的问题——**param 单独
 容器逐字保持 C：`iid=0x428f`（`G_VP_TDM_IID`，TDM sink）、两条记录 `size=12/28`、
 正文 `{96000,0x30020,1}` 与 `{0,2,0x10001,7,0x200004,0,1}`、`dst=1`、`g_apm_cmd` 带内、
 步距 `16+align8(12)=32` 与 `16+align8(28)=48` ⇒ **总长 80 B 不变**（整包 120 B），唯一变的两格是 param。
-marker 升到 `cccfg v2`（`v1` 归零），`error_code` 槽位仍只靠 `memset` 留 0（ccc‌fg 路径从不显式写它）。
+marker 升到 `cccfg v2`（`v1` 归零），`error_code` 槽位仍只靠 `memset` 留 0（cccfg 路径从不显式写它）。
 
 | 编号 | 判据 | 取值 | 含义 / 走向 |
 |---|---|---|---|
@@ -4570,7 +4570,7 @@ M1 的早退与那一发 `status=0x3` **同现**（这是相关性，**不是机
 ## M1r 判据（重放枪，第 29 枪；**开机前写死**）
 
 **用哪份 kernel**：手边 `out/kernel.adsp` 已是 0264（N1 那份）。0264 的两个 hunk **只碰**
-`SWEET_OOB_SEND` 宏与 `g_apm_set_cfg_oob`，**ccc‌fg 发送器逐字节未变** ⇒ 加 `sweetcccfg=1`、
+`SWEET_OOB_SEND` 宏与 `g_apm_set_cfg_oob`，**cccfg 发送器逐字节未变** ⇒ 加 `sweetcccfg=1`、
 不加 `sweetoobcfg`，发出去的就是 M1 那一发；代价是 kernel 里多一段**永不调用**的带外代码。
 好处：`sweettime` 是新的，身份门不被"复用旧镜像"削弱（复用 `images/m1-cccfg-header-param.img`
 会连 `sweettime=1793880108` 一起复用，两轮 ring 就无法区分）。
