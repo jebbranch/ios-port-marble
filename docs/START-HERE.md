@@ -242,18 +242,13 @@ cd $HOME/Desktop/marble-ios/work/xnu-gh
 | **震动/交互轮**（停在 iOS 让人按电源键） | `KEEPALIVE=1 bash scripts/mkimage.sh sweethap=1` | `SERIAL=2aa26095 bash scripts/boot_interactive.sh images/shim-iosroot-adsp.img` | 人重启到 TWRP 后 `SERIAL=2aa26095 ./scripts/pull_logs.sh <label>` |
 | **音频已知-good 配置**（b1/L/M 同一条，569 字节） | `bash scripts/mkimage.sh sweetexp=15 sweetbufs=30 sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4 sweets1ap=3 sweetampfirst=1 sweetaudioprobe=1` | `SERIAL=2aa26095 bash scripts/boot_one.sh images/<img> <label>`（自动复位+自动拉 ring） | 同左（boot_one 内置） |
 | **零补丁仪器轮**（用户态 IOKit 查询追踪） | 上面任一 + 环境变量 `SWEETIOLOG=mediaserverd,backboardd`（**替换** base 里的 `sweetiolog=-`，不是追加；boot-args 预算 590） | 同上 | 同上 |
-| **OOB SET_CFG 探针**（D–J 轮，2026-11-05，cmdline **583 B**） | 音频已知-good 那条**原样**，末尾追加 `sweetoobcfg=1`（**不带** `sweetcccfg`，一次一个容器） | 同上 | 同上；取完日志**先核 `sweettime` 与本次镜像一致**再打分。**探针每轮只发一发**；界内地址（如 `0x1000`）下数据面 = `data_buffer send` 31 + `done status=0` 4，越界/不可服务地址会把数据面打死 ⇒ 用它当"仪器 vs 地址"的分辨读数。**已知码基线（同址 `0x1000`、同长 288、同 `dst=1`、同句柄、同 cmdline）**：G `param=0x08001017` size 12 ×9 ⇒ `0x1`（**更正**：`0x08001017` 是真模块参数 `PARAM_ID_HW_EP_MF_CFG`，不是自创）；I 真实 id `0x08001004` 但仍 size 12 ×9 ⇒ **`0x1`**；H 真实 id + size 52 ×4 + 照抄 ACDB 的正文 ⇒ **`0x3`**；**J = H 但正文全零 ⇒ 仍 `0x3`（正文字节不参与）**。⇒ `status` 能分辨内容，
-**但 id 单独不换码、正文也不参与**；K1（0260，第 24 枪）把这三样里的 **iid** 拆出来了：
-H/J 逐字不动、**只**把 4 条记录的 `iid` 从 `1` 换成 MTP 给子图 `0xb0000023` 的真实模块号
-`0x40bd/0x40be/0x40bf/0x40c0` ⇒ **`0x3` 变成 `0x1`**。⇒ ① APM 确实读了正文（否则看不出 iid）；
-② **`每条 size` 与 `条数/步距` 失去信息量**（iid=真实时 size 12/52、4/9 条、自创/真实 param 全是 `0x1`，
-见 G、I、K1）⇒ 原 K2/K2b 记为**已淘汰、未花开机**。
-现在**唯一横跨 `0` 与 `0x1/0x3` 的差别是传输方式**：C（带内、真实 iid、多记录）= `0`；
-带外（G/I/H/J/K1）= `0x1` 或 `0x3`。⇒ 第 25 枪 **L1（0261）= 同一容器只改带内** ⇒ **实测仍 `0x1`**（判据 L1-0…L1-6 全绿，见 `audio-closeout.md` L1 判决）
-⇒ **传输轴关掉**；第 26 枪 L2 = L1 只把条数 4→3 ⇒ 216 B ≤256 带内 ⇒ **仍 `0x1` ⇒ 长度轴也关掉**。
-⇒ 与 C 的 `0` 之间只剩 **param id 与每条 size** 两格（对 C 是一起动），下一枪 **M1** = C 的形状只把 `param` 换成 `0x08001004`。
-两个码**都是拒绝**，语义不命名 |
-| **取产物** | `EXPECT_MARKER="SWEET MARK: oobcfg v9 try " bash scripts/fetch_kernel.sh`（**已修两处**：① `kernel-latest` 旁边躺着一个陈旧的 `build-error.txt` 且排在前面，旧代码"页面上第一个 sha256"拿的是它的摘要，会一直误判"没出新内核"，现在按资产名配对取摘要；② 摘要对不上时旧代码只要看到任何 `SWEET AUDIO: build v*` 就**警告后继续**——那句话每个内核都有，于是差点把上一轮的字节开机。现在 `EXPECT_MARKER` 缺失即失败、摘要不一致也失败（真要放行用 `ALLOW_DIGEST_MISMATCH=1`，且仍必须先命中 `EXPECT_MARKER`）） | — | — |
+| **OOB SET_CFG 探针**（D–N1 轮，2026-11-05，cmdline **583 B**） | 音频已知-good 那条**原样**，末尾追加 `sweetoobcfg=1`（**不带** `sweetcccfg`，一次一个容器） | 同上 | 同上；取完日志**先核 `sweettime` 与本次镜像一致**再打分，并跑 `tools/ring_window.py <label>`（ring 不清零，上一轮的 `===== done =====` / `PSCI SYSTEM_RESET` 会躺在本会话窗口之后冒充收尾）。**探针每轮只发一发**；界内地址 `0x1000` 下数据面 = `data_buffer send` 31 + `done status=0` 4，越界/不可服务地址会把数据面打死 ⇒ 用它分辨「仪器 vs 地址」。**已关门的轴**：地址与地址形式（E/F）、正文字节（J）、param 单独在被拒基线上（I）、iid 单独（K1）、**传输**（L1 带内 288 B 仍 `0x1`）、**长度**（L2 216 B 仍 `0x1`）、**记录编码 framing**（我们 344 B `GRAPH_OPEN` 正文与被拒容器同用 16 字节 `apm_module_param_data_t` + align8，`tools/walk_param_records.py` 能逐字节闭合到 0x158）、**逐记录 `error_code`**（N1 第 30 枪：预置 `0xa5a5a5a5` 后 `touched=0 of 288`、应答后四条 `err` 仍是哨兵 ⇒ 前八轮的 `err=0` 是「没人写过」而不是「写了 0」；头文件写明该字段只适用带外，32 B 应答也装不下逐记录码 ⇒ **不再为此花开机**）|
+| **带内 cccfg 容器**（C/M1/M1c/M1r，2026-11-05；cmdline **582 B**，比带外那支少 2 字符，**长度必须每轮从产物重测**） | 同一 base，末尾 `sweetcccfg=1` | 同上 | C（0252）= `iid=0x428f` + `param=0x08001017`(size 12)/`0x0800101b`(size 28)、2 条、80 B 带内 ⇒ **目前唯一 `status=0`**。**M1**（0263，第 27 枪）与 **M1r**（第 29 枪重放）= C 的形状**只把两条 `param` 换成 `0x08001004`** ⇒ **两次都 `0x3`**。⇒ **「iid 是 `0x1`↔`0x3` 分界」作废**（我先前写错过）：`(iid=0x428f, param=0x08001004)` 在 I 的 9 条容器里是 `0x1`、在 M1 的 2 条容器里是 `0x3`。能钉住的是 **只动 param 就能把 `0` 变成拒绝**，以及 `0x1`/`0x3` 跟的是**整个容器**。仍捆着没拆的四格：第二条 size（28 vs 12）、条数（2 vs 9）、总长（80 vs 288）、传输；传输已证明不改码 ⇒ **内容轴的下一枪应在带内侧做单变量**。两个码**都是拒绝**，语义不命名 |
+| **取产物** | `EXPECT_MARKER="SWEET MARK: oobcfg v11 try " bash scripts/fetch_kernel.sh`（**已修两处**：① `kernel-latest` 旁边躺着一个陈旧的 `build-error.txt` 且排在前面，旧代码"页面上第一个 sha256"拿的是它的摘要，会一直误判"没出新内核"，现在按资产名配对取摘要；② 摘要对不上时旧代码只要看到任何 `SWEET AUDIO: build v*` 就**警告后继续**——那句话每个内核都有，于是差点把上一轮的字节开机。现在 `EXPECT_MARKER` 缺失即失败、摘要不一致也失败（真要放行用 `ALLOW_DIGEST_MISMATCH=1`，且仍必须先命中 `EXPECT_MARKER`）。**控制枪/重放枪不要动 CI**：
+同一份 `out/kernel.adsp` 用 `D22AP_ADT=work/xnu/research/ipsw-x/d22ap.adt bash scripts/mkimage.sh <args…>`
+重打包即可（只换 boot-args 与 `sweettime`，20 秒），本轮 M1c/M1r/N1 三支全这么来的；
+打包后**必须**在产物里逐条核对：`sweettime` 唯一、cmdline 字节数、开关字符串连续、`cccfg/oobcfg` 新旧计数。
+CI 等价测试用 `bash tools/ci_replay.sh`（今天跑出的数是 applied=205 / skipped=49，产物与链树 HEAD 逐字节相同） | — | — |
 
 **boot-args 必须逐条在打包产物里核对**（不是只核 cmdline 打印）：
 

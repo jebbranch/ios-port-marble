@@ -1,0 +1,212 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 21ba9ee..9b49ac1 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5486,14 +5486,14 @@ static const uint32_t g_oob_offs[] = { 0x1000u };
+ #define SWEET_OOB_RECS  4
+ #define SWEET_OOB_STRIDE 72		/* 16-byte wire header + align8(52) */
+ /*
+- * L1 closed the transport axis: the same 288-byte container is refused 0x1
+- * out-of-band (K1) and in-band alike.  L2 moves one field against L1 - how many
+- * records go out, 4 -> 3 - which is the only knob that changes the payload
+- * length without touching the param id, the per-record size or the iids:
+- * 3 * 72 = 216 bytes, under the 256-byte in-band threshold.  The arrays stay at
+- * four rows so the record bytes are exactly L1's first three.
++ * L1 and L2 closed the transport and length axes: the same container is refused
++ * 0x1 out-of-band (K1) and in-band at 288 and at 216 bytes.  N1 goes back to
++ * K1's send - out-of-band, four records, 288 bytes - because the one thing that
++ * still cannot be read is the per-record error_code, and in-band the payload
++ * lives inside the ADSP-side packet, so the DSP has no way to write our body.
++ * Only the out-of-band side can produce a non-zero read.  K1 is the control.
+  */
+-#define SWEET_OOB_SEND  3
++#define SWEET_OOB_SEND  4
+ 
+ /*
+  * K1 round: J answered 0x3 with the payload zeroed, so APM does not look at the
+@@ -5526,93 +5526,135 @@ static int
+ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ {
+ 	uint8_t body[SWEET_OOB_RECS * SWEET_OOB_STRIDE];
++	uint8_t pkt[24 + 16];
+ 	uint32_t off = 0;
+ 	uint32_t i;
+ 	uint32_t j;
+ 	uint32_t t;
+ 
+ 	if (!g_shm_mapped || !g_shm_va) {
+-		printf("SWEET MARK: oobcfg v10 no mapping\n");
++		printf("SWEET MARK: oobcfg v11 no mapping\n");
+ 		return (-1);
+ 	}
+ 	memset(body, 0, sizeof(body));
++	memset(pkt, 0, sizeof(pkt));
+ 	g_smmu_faults("oobcfg-pre");
+ 	for (i = 0; i < SWEET_OOB_SEND; i++) {
+ 		g_put32(body + off + 0, g_oob_miids[i]);
+ 		g_put32(body + off + 4, 0x08001004u);
+ 		g_put32(body + off + 8, 52);
+-		g_put32(body + off + 12, 0);	/* error_code, written by the DSP */
++		g_put32(body + off + 12, 0xa5a5a5a5u);	/* error_code, pre-set */
+ 		for (j = 0; j < 13; j++) {
+ 			g_put32(body + off + 16 + j * 4, g_h_payload[i][j]);
+ 		}
+ 		off += SWEET_OOB_STRIDE;
+ 	}
+ 	/*
+-	 * L2 round: one field from L1 - how many records go out, 4 -> 3, so the
+-	 * in-band payload drops from 288 to 216 bytes and stops crossing 256.  The
+-	 * param id, the per-record size, the iids, the payload bytes, dst and the
+-	 * helper all stay exactly as L1 had them.  L1 is the control: same container
+-	 * at 288 B in-band answered 0x1, so if this answers 0 the length is in the
+-	 * boundary; if it answers 0x1 too, length is not and only the param id and
+-	 * the per-record size are left against C.
++	 * N1 round: the send below is K1's (0260's landed state, chain-tree
++	 * 021bb1e) restored verbatim apart from the marker and the pre-set
++	 * error_code, so K1 is the control and the sentinel is the only variable.
+ 	 */
+ 	for (t = 0; t < sizeof(g_oob_offs) / sizeof(g_oob_offs[0]); t++) {
+ 		const uint32_t oob_off = g_oob_offs[t];
+ 		const int in_bounds = (oob_off + off <= g_shm_region_size());
++		uint32_t f;
+ 
+ 		if (!in_bounds) {
+-			printf("SWEET MARK: oobcfg v10 off=%#x is past the declared region %#x, body not written\n",
++			printf("SWEET MARK: oobcfg v11 off=%#x is past the declared region %#x, body not written\n",
+ 			    oob_off, g_shm_region_size());
+ 		} else {
+ 			memcpy((void *)(g_shm_va + oob_off), body, off);
+ 		}
+ 		__asm__ volatile("dsb sy" ::: "memory");
+ 
+-		printf("SWEET MARK: oobcfg v10 try %u form=inband off=%#x len=%u recs=%u handle=%#x\n",
+-		    t, oob_off, off, SWEET_OOB_SEND, g_shm_handle);
+-		sweet_log_sync();
+-		(void)g_apm_cmd(src_port, 1, body, off, APM_CMD_SET_CFG, what);
+-		__asm__ volatile("dsb sy" ::: "memory");
+-		g_smmu_faults("oobcfg-post");
+-		if (!in_bounds) {
+-			printf("SWEET MARK: oobcfg v10 recs not read back (past the mapping)\n");
+-			sweet_log_sync();
+-			continue;
+-		}
+-		for (i = 0; i < SWEET_OOB_SEND; i++) {
+-			const uint8_t *rec = (const uint8_t *)g_shm_va +
+-			    oob_off + i * SWEET_OOB_STRIDE;
+-
+-			printf("SWEET MARK: oobcfg v10 rec %u iid=%#x param=%#x size=%u err=%#x\n",
+-			    i, g_le32(rec + 0), g_le32(rec + 4),
+-			    g_le32(rec + 8), g_le32(rec + 12));
+-		}
+-		/*
+-		 * error_code has read back zero on every probe boot, which only means
+-		 * something if we also know whether the DSP wrote the body at all:
+-		 * a non-zero count says where the first changed byte is.  It cannot
+-		 * separate "never wrote" from "wrote zero", because we pre-zero the
+-		 * field.  Reads nothing extra.
+-		 */
+-		{
+-			const uint8_t *region = (const uint8_t *)g_shm_va + oob_off;
+-			uint32_t k;
+-			uint32_t touched = 0;
+-			uint32_t first = 0;
++		for (f = 0; f < SWEET_OOB_FORMS; f++) {
++			uint64_t addr = (f == 0) ? (uint64_t)oob_off :
++			    g_map_pa + (uint64_t)oob_off;
+ 
+-			for (k = 0; k < off; k++) {
+-				if (body[k] == region[k]) {
+-					continue;
++			if (f == 1 && g_map_pa == 0) {
++				printf("SWEET MARK: oobcfg v11 try %u no region base, abs form skipped\n",
++				    t * SWEET_OOB_FORMS + f);
++				continue;
++			}
++			g_put32(pkt + 0, (6u << 4) | (sizeof(pkt) << 8));
++			g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
++			g_put32(pkt + 8, src_port);
++			g_put32(pkt + 12, 1);
++			g_put32(pkt + 16, 0x400u);
++			g_put32(pkt + 20, APM_CMD_SET_CFG);
++			g_put32(pkt + 24 + 0, (uint32_t)addr);
++			g_put32(pkt + 24 + 4, (uint32_t)(addr >> 32));
++			g_put32(pkt + 24 + 8, g_shm_handle);
++			g_put32(pkt + 24 + 12, off);
++			printf("SWEET MARK: oobcfg v11 try %u form=%s off=%#x addr=%#llx len=%u recs=%u handle=%#x\n",
++			    t * SWEET_OOB_FORMS + f, f == 0 ? "bare" : "abs",
++			    oob_off, addr, off, SWEET_OOB_SEND, g_shm_handle);
++			sweet_log_sync();
++			g_rsp_ready = 0;
++			g_rsp_len = 0;
++			g_send_gpr(pkt, sizeof(pkt));
++			for (unsigned n = 0; n < 5000; n += 5) {
++				g_drain(0);
++				if (g_rsp_ready) {
++					break;
+ 				}
+-				if (touched == 0) {
+-					first = k;
++				g_wait(5);
++			}
++			if (!g_rsp_ready) {
++				printf("SWEET GLINK: %s addr=%#llx: no response\n",
++				    what, addr);
++				g_smmu_faults("oobcfg-norsp");
++				continue;
++			}
++			printf("SWEET GLINK: %s addr=%#llx rsp op=%#x status=%#x hop=%#x len=%u\n",
++			    what, addr, g_le32(g_rsp + 24), g_le32(g_rsp + 28),
++			    g_le32(g_rsp + 20), g_rsp_len);
++			/* Kept because it is one MMIO read pass, but E measured that this
++			 * witness cannot currently speak: all six banks hold FSR=0x400 that
++			 * survives our W1C attempt and the post snapshots were byte-identical
++			 * to pre.  So "no new fault bits" is not evidence of no fault. */
++			g_smmu_faults("oobcfg-post");
++			__asm__ volatile("dsb sy" ::: "memory");
++			if (!in_bounds) {
++				printf("SWEET MARK: oobcfg v11 recs not read back (past the mapping)\n");
++				sweet_log_sync();
++				continue;
++			}
++			for (i = 0; i < SWEET_OOB_SEND; i++) {
++				const uint8_t *rec = (const uint8_t *)g_shm_va +
++				    oob_off + i * SWEET_OOB_STRIDE;
++
++				printf("SWEET MARK: oobcfg v11 rec %u iid=%#x param=%#x size=%u err=%#x\n",
++				    i, g_le32(rec + 0), g_le32(rec + 4),
++				    g_le32(rec + 8), g_le32(rec + 12));
++			}
++			/*
++			 * error_code read back zero on every probe boot, which could not
++			 * distinguish "the DSP never wrote the body" from "it wrote zero".
++			 * The field now starts at 0xa5a5a5a5, a value no answer can be, so
++			 * touched=0 is positive evidence of no write-back and a non-zero
++			 * count names the first changed byte.  Reads nothing extra.
++			 */
++			{
++				const uint8_t *region = (const uint8_t *)g_shm_va + oob_off;
++				uint32_t k;
++				uint32_t touched = 0;
++				uint32_t first = 0;
++
++				for (k = 0; k < off; k++) {
++					if (body[k] == region[k]) {
++						continue;
++					}
++					if (touched == 0) {
++						first = k;
++					}
++					touched++;
+ 				}
+-				touched++;
++				printf("SWEET MARK: oobcfg v11 body touched=%u first=%u of %u\n",
++				    touched, first, off);
+ 			}
+-			printf("SWEET MARK: oobcfg v10 body touched=%u first=%u of %u\n",
+-			    touched, first, off);
++			sweet_log_sync();
+ 		}
+-		sweet_log_sync();
+ 	}
+ 	return (0);
+ }

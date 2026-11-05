@@ -199,12 +199,16 @@ bash scripts/mkimage.sh sweethap=1 ...           # 位置参数会被追加到 c
   不是 SET_CFG 的 cal key ⇒ 曾排队的 **M2（发 `0x08001015`/size 8）撤回**。
   ⇒ M1 的问题改述为**命名空间测试**：把图级 `MODULE_CONN` 塞进模块记录，会不会把已被接受的容器变成被拒。
   **M1 的结果（第 27 枪）：会**（`0` → `0x3`，唯一动的就是 param）。
-  **但 M1-4（设备安全门）未满足**：本轮 ring 以 `data_buffer send` 截尾，没有 `pcm tone done`、
+  **M1 还触发了一个设备安全门未满足**：本轮 ring 以 `data_buffer send` 截尾，没有 `pcm tone done`、
   `===== done =====`、`PSCI SYSTEM_RESET`，而复位路径打印后**先 `sweet_log_sync()` 才 `smc`**，
-  解码窗口又与头部 `total` 逐字节相等 ⇒ 不是丢日志；前 12 轮全部正常收尾。**N1 因此不擅自开。**
-  下一枪 **N1** 把 `error_code` 预置成非 0 哨兵（`0xa5a5a5a5`），让 `body touched!=0` 成为正证据。
-  三个码**除 `0` 外都是拒绝**、语义不命名；逐记录 `error_code` 已**八轮**全 0 ⇒ 记录级仍盲；
-  `body touched=` 只作观察（预置 0 ⇒ 分不清"没写回"与"写了 0"）。
+  解码窗口又与头部 `total` 逐字节相等 ⇒ 不是丢日志（⇒ **不是**我的过滤器；`tools/ring_window.py` 现在会显式查这个）。
+  ⇒ 当轮停手，补两枪（**都只本地重打包，不动 CI**）：**M1c**（28，去掉开关 ⇒ 探针 0 发）**正常收尾**；
+  **M1r**（29，同一发重放）`0x3` **复现**且**正常收尾** ⇒ **M1 的早退是一次性**，探针无因果证据。
+  **N1（0264，第 30 枪）已把记录级仪器修成能自证，并顺手判死它**：`error_code` 预置 `0xa5a5a5a5` 后
+  `body touched=0 of 288`、应答后四条 `err` 仍是哨兵 ⇒ **前八轮的 `err=0` 是"没人写过"，不是"写了 0"**；
+  头文件也写明该字段 *"Applicable only for out-of-band command mode"*，而命令级应答只有 32 B 装不下逐记录码
+  ⇒ **记录级拒绝原因在当前协议形态下不可观察，别再为它花开机**。
+  三个码**除 `0` 外都是拒绝**、语义不命名；`0` 只写"命令级接受"。
   另：`GRAPH_OPEN` 的 `status=0x2` 语义仍未查；18 KB 正文**一个字节都没拿到过**。
 - **② 的新离线结论（2026-11-05，零开机）**：子图 `0xb0000023` 的逐模块 cal 表 = **10 条**、
   全部 `param=0x08001015 size=8` ⇒ 上线正文 **240 B ≤256** ⇒ **一发带内 SET_CFG 就装得下整张表**，
@@ -278,8 +282,9 @@ bash scripts/mkimage.sh sweethap=1 ...           # 位置参数会被追加到 c
 
 ```
 work/xnu-gh/                     补丁、脚本、docs、logs（git 仓库）
-  xnu/patches/NNNN-*.patch       补丁序列（当前到 0251）
+  xnu/patches/NNNN-*.patch       补丁序列（当前到 0264；0261-0264 = L1/L2/M1/N1）
   .github/workflows/xnu.yml      CI，含 "Verify our patches applied" marker 列表
+  docs/HANDOFF-2026-11-05.md     **交接入口**：轴拆到哪、别再走哪些、下一枪的投入/收益排序、复现配方
   docs/status-log.md             按时间的实验日志（最新看这里）
   docs/audio-closeout.md         ② 与音频收尾 + 每轮判据/判决（H/I/J/K/L/M/N、②攻坚 1-6）
   docs/audio-hal-bridge.md       iOS 侧出声还差什么（路线排序、ep 序列）
@@ -287,6 +292,11 @@ work/xnu-gh/                     补丁、脚本、docs、logs（git 仓库）
   docs/gpu-probe.md / smmu-dead-ends.md / speaker-path.md / handoff.md / required-assets.md
   tools/acdb_graph_rebuild.py    ACDB TLV 走链 + 容器对表
   tools/acdb_size_scan.py        整文件 u32 尺寸扫描
+  tools/ci_replay.sh             推送前的 CI 等价测试（base + 全链重放 vs 链树 HEAD）
+  tools/walk_param_records.py    多记录 apm_module_param_data 容器逐字节走链
+  tools/ring_window.py           SWEETLOG 头部 total vs 解码字节；窗口后的收尾串判为陈旧字节
+  tools/score_probe.py           按开机前判据打分（l1/l2/m1/m1c/n1），含上面两条自检
+  work/archive/tmp-scratch-2026-11-05/  /tmp 里历次草稿收进来的存档（见其 MANIFEST.md）
 work/chain-tree/                 常驻重建树（git，按文件跟踪；见第 4 节）
 work/chain-tree-i2c/             I2C 子树的另一链位
 work/ci-src/xnu-xnu-8796.141.3/  过滤过的源码快照（不可当基线）
