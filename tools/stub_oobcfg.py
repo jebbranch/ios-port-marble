@@ -6,11 +6,13 @@ The code we are about to boot has never seen a real compiler - run 387 skipped
 and runs it against an emulated DSP in both branches the gates care about.
 """
 import subprocess
+import os
 import re
 import sys
 import pathlib
 
-SRC = pathlib.Path("/tmp/v0261/bsd/dev/sweet_glink.c")
+SRC = pathlib.Path(os.environ.get("STUB_SRC", "/tmp/v0261/bsd/dev/sweet_glink.c"))
+print(f"extracting from {SRC}")
 lines = SRC.read_text().splitlines(True)
 
 # 1-based ranges: g_oob_offs .. end of g_apm_set_cfg_oob, verified by the markers
@@ -19,7 +21,7 @@ defs = [i for i, l in enumerate(lines) if i > start and re.match(r"^g_[a-z_]+\("
 # the first hit is g_apm_set_cfg_oob's own definition line, which we want in
 end = defs[1]
 body = "".join(lines[start:end])
-assert "g_apm_set_cfg_oob" in body and body.count("oobcfg v9") >= 5, "extraction window wrong"
+assert "g_apm_set_cfg_oob" in body and body.count("oobcfg v") >= 5, "extraction window wrong"
 # trim back to the end of g_apm_set_cfg_oob (the next function's comment block)
 cut = body.rindex("\n}\n") + 3
 body = body[:cut]

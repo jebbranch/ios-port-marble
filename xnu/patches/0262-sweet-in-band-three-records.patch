@@ -1,0 +1,113 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 0100a12..ffb71e5 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5485,6 +5485,15 @@ static const uint32_t g_oob_offs[] = { 0x1000u };
+ #define SWEET_OOB_FORMS 1		/* 0 = bare offset, 1 = base + offset */
+ #define SWEET_OOB_RECS  4
+ #define SWEET_OOB_STRIDE 72		/* 16-byte wire header + align8(52) */
++/*
++ * L1 closed the transport axis: the same 288-byte container is refused 0x1
++ * out-of-band (K1) and in-band alike.  L2 moves one field against L1 - how many
++ * records go out, 4 -> 3 - which is the only knob that changes the payload
++ * length without touching the param id, the per-record size or the iids:
++ * 3 * 72 = 216 bytes, under the 256-byte in-band threshold.  The arrays stay at
++ * four rows so the record bytes are exactly L1's first three.
++ */
++#define SWEET_OOB_SEND  3
+ 
+ /*
+  * K1 round: J answered 0x3 with the payload zeroed, so APM does not look at the
+@@ -5523,12 +5532,12 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 	uint32_t t;
+ 
+ 	if (!g_shm_mapped || !g_shm_va) {
+-		printf("SWEET MARK: oobcfg v9 no mapping\n");
++		printf("SWEET MARK: oobcfg v10 no mapping\n");
+ 		return (-1);
+ 	}
+ 	memset(body, 0, sizeof(body));
+ 	g_smmu_faults("oobcfg-pre");
+-	for (i = 0; i < SWEET_OOB_RECS; i++) {
++	for (i = 0; i < SWEET_OOB_SEND; i++) {
+ 		g_put32(body + off + 0, g_oob_miids[i]);
+ 		g_put32(body + off + 4, 0x08001004u);
+ 		g_put32(body + off + 8, 52);
+@@ -5539,51 +5548,51 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 		off += SWEET_OOB_STRIDE;
+ 	}
+ 	/*
+-	 * L1 round: one field from K1 - the transport.  C sent a multi-record
+-	 * container with real module iids in-band and got status 0; K1 sent the same
+-	 * kind of container out-of-band and got 0x1; K1 also showed that with real
+-	 * iids the size and the record count do not change the answer, so those two
+-	 * axes were retired unspent.  The container here is K1's byte for byte, and it
+-	 * is still written to the mapped region so the read back and the touched check
+-	 * mean what they meant on K1 - only the packet changes, going through the same
+-	 * helper C used.
++	 * L2 round: one field from L1 - how many records go out, 4 -> 3, so the
++	 * in-band payload drops from 288 to 216 bytes and stops crossing 256.  The
++	 * param id, the per-record size, the iids, the payload bytes, dst and the
++	 * helper all stay exactly as L1 had them.  L1 is the control: same container
++	 * at 288 B in-band answered 0x1, so if this answers 0 the length is in the
++	 * boundary; if it answers 0x1 too, length is not and only the param id and
++	 * the per-record size are left against C.
+ 	 */
+ 	for (t = 0; t < sizeof(g_oob_offs) / sizeof(g_oob_offs[0]); t++) {
+ 		const uint32_t oob_off = g_oob_offs[t];
+ 		const int in_bounds = (oob_off + off <= g_shm_region_size());
+ 
+ 		if (!in_bounds) {
+-			printf("SWEET MARK: oobcfg v9 off=%#x is past the declared region %#x, body not written\n",
++			printf("SWEET MARK: oobcfg v10 off=%#x is past the declared region %#x, body not written\n",
+ 			    oob_off, g_shm_region_size());
+ 		} else {
+ 			memcpy((void *)(g_shm_va + oob_off), body, off);
+ 		}
+ 		__asm__ volatile("dsb sy" ::: "memory");
+ 
+-		printf("SWEET MARK: oobcfg v9 try %u form=inband off=%#x len=%u recs=%u handle=%#x\n",
+-		    t, oob_off, off, SWEET_OOB_RECS, g_shm_handle);
++		printf("SWEET MARK: oobcfg v10 try %u form=inband off=%#x len=%u recs=%u handle=%#x\n",
++		    t, oob_off, off, SWEET_OOB_SEND, g_shm_handle);
+ 		sweet_log_sync();
+ 		(void)g_apm_cmd(src_port, 1, body, off, APM_CMD_SET_CFG, what);
+ 		__asm__ volatile("dsb sy" ::: "memory");
+ 		g_smmu_faults("oobcfg-post");
+ 		if (!in_bounds) {
+-			printf("SWEET MARK: oobcfg v9 recs not read back (past the mapping)\n");
++			printf("SWEET MARK: oobcfg v10 recs not read back (past the mapping)\n");
+ 			sweet_log_sync();
+ 			continue;
+ 		}
+-		for (i = 0; i < SWEET_OOB_RECS; i++) {
++		for (i = 0; i < SWEET_OOB_SEND; i++) {
+ 			const uint8_t *rec = (const uint8_t *)g_shm_va +
+ 			    oob_off + i * SWEET_OOB_STRIDE;
+ 
+-			printf("SWEET MARK: oobcfg v9 rec %u iid=%#x param=%#x size=%u err=%#x\n",
++			printf("SWEET MARK: oobcfg v10 rec %u iid=%#x param=%#x size=%u err=%#x\n",
+ 			    i, g_le32(rec + 0), g_le32(rec + 4),
+ 			    g_le32(rec + 8), g_le32(rec + 12));
+ 		}
+ 		/*
+-		 * error_code has read back zero for five boots, which only means
++		 * error_code has read back zero on every probe boot, which only means
+ 		 * something if we also know whether the DSP wrote the body at all:
+-		 * touched=0 is positive evidence that it never did, and a non-zero count
+-		 * says where the first changed byte is.  Reads nothing extra.
++		 * a non-zero count says where the first changed byte is.  It cannot
++		 * separate "never wrote" from "wrote zero", because we pre-zero the
++		 * field.  Reads nothing extra.
+ 		 */
+ 		{
+ 			const uint8_t *region = (const uint8_t *)g_shm_va + oob_off;
+@@ -5600,7 +5609,7 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 				}
+ 				touched++;
+ 			}
+-			printf("SWEET MARK: oobcfg v9 body touched=%u first=%u of %u\n",
++			printf("SWEET MARK: oobcfg v10 body touched=%u first=%u of %u\n",
+ 			    touched, first, off);
+ 		}
+ 		sweet_log_sync();

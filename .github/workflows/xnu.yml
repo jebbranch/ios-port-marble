@@ -203,8 +203,8 @@ jobs:
                    "SWEET HAP: fault after clear=" \
                    "SWEET MARK: aopval=" \
                    "SWEET MARK: cccfg v1 " \
-                   "SWEET MARK: oobcfg v9 try " \
-                   "SWEET MARK: oobcfg v9 body touched=%u first=%u of " \
+                   "SWEET MARK: oobcfg v10 try " \
+                   "SWEET MARK: oobcfg v10 body touched=%u first=%u of " \
                    "recs not read back (past the mapping)" \
                    "is past the declared region" ; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
