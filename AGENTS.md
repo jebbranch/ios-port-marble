@@ -167,9 +167,14 @@ bash scripts/mkimage.sh sweethap=1 ...           # 位置参数会被追加到 c
 ### 音频（iOS ⇄ ADSP）
 - 控制面**全绿**：`GRAPH_OPEN`/`PREPARE`/`START` `status=0`，`DATA_BUFFER` 被 ADSP 消费
   （`data_buffer … done status=0`），`sweets1ap=1`（S1 叶子 AP=01）第一次拿到响应。
-- **②**：厂商容器形态的 `GRAPH_OPEN` 回 `status=0x2`；`status=0x2` 是**本次包/本次脉冲产生的**
-  （不是历史闩锁），语义**仍未查**（不许写"过流/开路"）。真正的缺口是那次 `SET_CFG` 的
-  18 KB 正文——**一个字节都没拿到过**。
+- **②（2026-11-05 更新，四枪实测 F–J）**：带外 `SET_CFG` 的 `status` **现在能分辨内容**，
+  同址 `0x1000`、同长 288、同 `dst=1`、同句柄、每轮只发一发：
+  自创 `param=0x08001017` ⇒ `0x1`；真实 id 但仍 size 12 ⇒ **还是 `0x1`**；
+  真实 `iid=1 / param=0x08001004 / size=52` ×4（正文照抄 ACDB）⇒ **`0x3`**；
+  **正文全零 ⇒ 仍 `0x3`**。⇒ 已排除：**地址 / 地址形式 / param id 单独 / 正文字节**；
+  **仍未拆**：每条 size、条数(步距)、iid —— 三样捆在 H/J 里，**一枪只改一格**才谈得上分辨。
+  两个码**都是拒绝**，语义不命名；逐记录 `error_code` 已**五轮**实测全 0 ⇒ 记录级仍盲。
+  另：`GRAPH_OPEN` 的 `status=0x2` 语义仍未查；18 KB 正文**一个字节都没拿到过**。
 - **AudioReach 线上格式**（官方实现 + 我在本机 `libar-gsl.so` 上逐条反汇编复验）：
   - 记录头 = **`apm_module_param_data_t{module_instance_id, param_id, param_size, error_code}`
     = 16 B**，记录间 `GSL_ALIGN_8BYTE`。**没有** GSL 外层包装头。
