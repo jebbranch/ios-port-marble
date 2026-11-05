@@ -4889,3 +4889,77 @@ cmdline = 音频已知-good 那条 + `sweettdmpwr=2`；**不带** `sweetcccfg`�
 `sweetsample=-` **保留**（删它会打开采样线程，见上一节）。
 最终 cmdline **566 B**、`sweettime=1793892602`、`sweettdmclk=1 sweetvol=16 sweetbufs=200` 全在，
 镜像内 `tdmclk v1 `×1、`cccfg v3 `×6、`cccfg v2 `×0。
+
+---
+
+## 第 33 枪 T1 判决（`logs/ring-t1-tdmclk.txt`，打分于开机后当场）
+
+**T1-0 身份：成立。** `sweettime=1793892602` 命中 2 次；`ring_window.py t1-tdmclk` 报
+`total=0x1358c == decoded 0x1358c`（窗口吻合=True），`tdmclk v1 ` 恰 1 行且在窗口内。
+⇒ 这份 ring 就是本轮的，没有吃到上一轮的尾巴。
+
+**T1-1 开关门：成立，且 `rc=0`。**
+`SWEET MARK: tdmclk v1 id=0x204 freq=12288000 attr=4 root=0 rc=0`（ring `:1556`），
+前面是 `clk 0x204 attr=4 root=0 ok`。⇒ 那一票发了，ADSP 在**命令级**接受了它。
+
+**T1-2 主判据：无法读，因为声根本没能发出去。** 本轮出现了一个**新的、更靠前的门**：
+
+```
+:1689 SWEET GLINK: graph_prepare rsp op=0x1001001 status=0  hop=0x2001005 len=32
+:1690 SWEET GLINK: graph_start    rsp op=0x1001002 status=0x1 hop=0x2001005 len=32
+:1691 SWEET GLINK: vp-wr graph opened but did not start
+```
+
+`op=` 打印的是响应正文 `g_le32(g_rsp+24)`（`sweet_glink.c:2641`）——**回显的是命令自己的 opcode**，
+所以这不是把前一封的响应错认成 `graph_start` 的关联错位；`status` 取 `g_rsp+28`。
+按既有规矩，`0x1` 只当"另一种拒绝"，不命名机制。
+
+**T1-3 回归：下游全部归零，但不是采样器/流的问题。**
+
+| 判据 | 期望 | 实测 |
+|---|---|---|
+| `tone gain g=16` | 1 | **1**（`:1654`，峰 16384 = −6.0 dBFS）✓ |
+| `pcm tone done (200 buffers)` | 1 | **0**（只在窗口外 `0x184a5` 命中 = 上一轮的字节）✗ |
+| `data_buffer send` | ≈201 | **0** ✗ |
+| `no rsp` | 0 | 0 ✓ |
+| panic | 0 | 0 ✓，收尾 `===== done =====` / `PSCI SYSTEM_RESET` 都在窗口内 ✓ |
+
+`data_buffer` 循环本来就在 `did not start` 之后被跳过，所以这三行 ✗ 全部由**同一个更早的门**解释，
+不构成第二件事。
+
+**这条 `0x1` 有多反常（离线普查，零开机）**：`logs/ring-*.txt` 里
+`graph_start rsp op=0x1001002 status=0` **157 次**，非零 **仅 T1 这 1 次**（共 158 次机会）。
+⇒ 不是"以前也偶尔失败"，这是这个阶梯上的第一次。
+
+**混淆项已量化（这是我该在开机前就抓出来的）**：T1 相对绿色基线**同时换了两件事**——
+内核 0264→0265 **和** `sweettdmclk=1`。证据（打产物里的标记字符串）：
+`images/t0-tdmpwr-off.img`、`images/t0b-audible-probe.img` 内 `tdmclk v1 `×**0**、`cccfg v3 `×**0**；
+`images/t1-tdmclk.img` 内 ×**1**、×**6**。⇒ T0/T0b 跑的是 0264。
+0265 里另外两个功能在本轮**运行期证明是休眠的**：ring 内 `cccfg v3` 0 行、`oobcfg v11` 0 行
+（两个开关都不在 cmdline 里）。cmdline 上除被试变量外的差异（`sweetexp=15`、`sweetaudioprobe=1` 缺席）
+只减见证打印，`sweetaudioprobe` 在链树源码里 grep 为 0 命中。
+⇒ **执行过的代码里唯一的差异就是那一票**，但它不是"内核相同、只差一票"的那种对照，
+所以 T1 单独一次开机**不能**给"票导致拒绝"定罪。
+
+**关于"听"**：本轮**不向你索取听感读数**——一帧样本都没发出，物理上不可能有声音。
+上一轮 T0b（−12 dBFS / 720 ms）你答"没有声音传出"仍是有效读数。
+
+## 下一枪：C1 对照（第 34 枪）——重建 `graph_start` 基线。判决表在开机前写死。
+
+镜像 `images/c1-no-vote.img`，本地重打包（**不跑 CI**），内核与 T1 同一个文件
+（`out/kernel.adsp` sha256 `52ebd21c0b463b60…`，23:26 取来后未再生成）。
+cmdline = **T1 逐字去掉 ` sweettdmclk=1`**，实测 **552 B**（= 566−14，本轮重测、不继承），
+`sweettime=1793893320`，产物内核里 `tdmclk v1 `×1 / `cccfg v3 `×6 仍在（⇒ 仍是 0265，只是没触发）。
+
+**为什么先花这一枪而不是直接开 `sweetcccfg=2/3/4`**：阶梯的绿色基线断了。基线不重建，
+之后任何一枪的 `graph_start` 读数都没法解释。这一枪同时还顺手是我们**迄今最响的一次流**
+（g=16、200 buf ≈1.2 s），与 T1 完全同档，不新增响度许可。
+
+| 编号 | 判据 | 取值 | 结论分支（开机前定死，事后只许追加） |
+|---|---|---|---|
+| C1-0 身份 | ring 内 `sweettime=1793893320` 命中；`ring_window` 窗口吻合=True；`tdmclk v1 ` 运行期 **0 行**；`tone gain g=16` ×1 | 全部成立 | 任一不成立 ⇒ 本轮作废、不判、交回 |
+| **C1-1 主判据** | `graph_start rsp op=0x1001002 status=?` | 0 | 票（在这个位置、这个形态）与 `graph_start` 被拒**相关**（1/1，仍不命名机制）。⇒ "补 TDM 位时钟能打通声音"这一格**在该位置不可测**；下一枪=同一票移到 `graph_start` **之后**（要编译，走 CI） |
+| | | 0x1 | 票被**洗清**：差异要么在 0265 本身，要么偶然。⇒ 先在 0265 上**重放同一枪**（第 2 次，仍是无票），两次都 0x1 才允许谈 0265；两次都 0 才允许谈票 |
+| C1-2 回归 | `pcm tone done (200 buffers)`、`data_buffer send`≈201、`no rsp` 0、panic 0、收尾在窗口内、控制面 4 行绿（`graph_open status=0`、`cb5 cba2r=0x1`、`ats1pr … par=0 OK`、`sctlr=0xc00027`） | 等值 | 不成立 ⇒ 不判 |
+| C1-3 听感（仅当 C1-1=0 且 C1-2 齐） | 手机回到 adb 前最后 ≈1.2 s 有没有"哔——" | 听到 | "无声"前提**塌掉**：DAC/功放链路本来就能响，我们只是太轻；方向立刻改为响度与连续性 |
+| | | 没听到 | −6 dBFS 下无声是**确证**（不是听阈问题）⇒ 回到功放/供电那一侧（`aw_cfg`、`tdm_power`、SPMI 轨），②/cccfd 系列降为次要 |
