@@ -106,6 +106,17 @@ bash scripts/mkimage.sh sweethap=1 ...           # 位置参数会被追加到 c
      （HEAD 若已含上一版，你会拿到只有一行的碎片，`0251` 上真踩过）；
   4. 在一份**纯净基线副本**上 `git apply --check -p1`，再 apply，再 `diff -q` 对比你写的树；
   5. 数 hunk：和改动点数一致才提交（多出来的 hunk = 别人的补丁混进来了）。
+- **基线 rev = 最后一个"已经变成补丁"的 rev，不是最后一个本地 commit**。
+  链树里没落成 `.patch` 的 commit 在 CI 里**不存在**，据它 `git diff` 出来的上下文
+  CI 树里没有 ⇒ `git apply --check` 直接拒（dxb 用的正是 `git apply --check` + `git apply`，
+  所以只要基线选对，本地这一条就是 CI 的等价测试）。
+  run 387（0261）就是这么红的：链树 `1a2266b` 加的 `body touched=` 观察块还没进任何补丁，
+  0261 的 hunk 2 却把它当既有上下文 ⇒ `error: patch failed: bsd/dev/sweet_glink.c:5540` ⇒
+  补丁被跳过 ⇒ 产物里是 K1 的 `oobcfg v8`。**marker 门把损失压成一次 CI 红，零次开机。**
+- **看跳过原因不要下 44 MB 作业日志**：dxb 把 `git apply` 的报错塞进同一条
+  `Skipping patch …` 行，而我们的 errors 抓取正好排除了它。
+  现在 `build-error.txt` 自带 `=== skip detail ===` 段；历史轮次用
+  `python3 tools/ci_joblog.py <sha>`（Keychain 里的 token，直接取作业日志里的 skip 行 + 失败步骤）。
 - **每个补丁自带 marker**，且 marker = **整条 printf 格式串**、跨补丁唯一、在镜像里连续。
   作为**运行时参数**传入的 tag 不是 marker（字面量不连续）。
 - **修上一版也要带可区分字面量**（如 `SWEET MARK: dtprop v3`）。`0251` v2/v3 只差代码、

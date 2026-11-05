@@ -2389,3 +2389,26 @@ PSCI SYSTEM_RESET（已验证可用）。
 - 新仪器（只观察、不改发送）：`body touched=%u first=%u of 288`，给"`error_code` 五轮全 0"补一条
   独立读数（到底没写回，还是写在别处）。
 - 开机记账：**24/120**。
+
+## 2026-11-05 run 387 复盘（0261 被 CI 跳过）——**零次开机浪费，判据表未动**
+
+- 现象：run #387 红，`FAILED STEP 7: Verify our patches applied`；发布产物 sha `8860fe9a…` 里
+  `oobcfg v8` ×5、`oobcfg v9` ×0 ⇒ 那个 kernel 仍是 K1 的。**没有可开机的镜像，一次开机都没花。**
+- 根因（作业日志原文，`tools/ci_joblog.py`）：
+  `Skipping patch …/0261-…patch: error: patch failed: bsd/dev/sweet_glink.c:5540`
+  —— dxb 用 `git apply --check` + `git apply`（**无 fuzz**）。链树 `1a2266b` 的
+  `body touched=` 观察块**只落了 commit、没落成补丁**，0261 的 hunk 2 却把它当既有上下文，
+  CI 树里不存在 ⇒ 拒收。
+- 修法：0261 **就地重生成**为 `git diff 021bb1e(K1 落库态) 8f358b3 -- bsd/dev/sweet_glink.c`
+  （52+/64−，两 hunk）。用 CI 的同一条命令验：`git apply --check -p1` OK、`git apply` OK、
+  结果与手写树 `diff -q` **逐字节相同**；`oobcfg v8`=0 / `v9`=6。
+  ⇒ L1 这轮实际带上两件事：K1 的容器改带内（唯一发送变量）+ `body touched=` 观察（不发东西），
+  与 `1a2266b` 自己写的"rides with the next patch"一致。
+- 宿主机 stub 重跑（`tools/stub_oobcfg.py`，`-Wall -Wextra -Wformat=2 -Werror` 编译 + 三种模式跑）：
+  一发、`plen=288`、包 328 B、`form=inband`、四条 `iid/param/size` 正确；
+  DSP 沉默 ⇒ `touched=0`，DSP 回写 `0x3` ⇒ `touched=4 first=12`，DSP 回写 `0` ⇒ `touched=0`
+  ⇒ **`touched=0` 不能读成"没写回"**，L1-5/L1-6 已按这条改写（开机前）。
+- 门与工具加固：marker 列表加 `SWEET MARK: oobcfg v9 body touched=%u first=%u of `（补丁里唯一命中）；
+  `build-error.txt` 新增 `=== skip detail ===` 段（以后不必再拖 44 MB 日志）；AGENTS.md §4 加"基线 rev = 最后一个已变成补丁的 rev"。
+- 开机记账：**仍 24/120**（本条为零开机轮）。
+

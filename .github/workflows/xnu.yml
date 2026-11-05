@@ -204,6 +204,7 @@ jobs:
                    "SWEET MARK: aopval=" \
                    "SWEET MARK: cccfg v1 " \
                    "SWEET MARK: oobcfg v9 try " \
+                   "SWEET MARK: oobcfg v9 body touched=%u first=%u of " \
                    "recs not read back (past the mapping)" \
                    "is past the declared region" ; do
             if ! LC_ALL=C grep -aq "$s" "$K"; then
@@ -229,6 +230,13 @@ jobs:
             grep -nE 'error:|fatal error|Undefined symbols|duplicate symbol|ld: ' /tmp/build.log \
               | grep -viE 'unifdef|--- ERROR ---|patch does not apply|already exists in working directory|Skipping patch|warning:' \
               | head -160 || true
+            echo
+            echo "=== skip detail ==="
+            # dxb prints git apply's own complaint inside the same line that our
+            # errors grep excludes ("Skipping patch"), so a skipped patch was
+            # invisible in this file - run 387 lost its whole hunk-failure text
+            # to that and the only way to see it was a 44 MB job log.
+            grep -aE 'Skipping patch|Applying patch: .*sweet' /tmp/build.log | head -40 || true
             echo
             echo "=== linker context ==="
             grep -n -A4 'Undefined symbols\|duplicate symbol' /tmp/build.log | head -60 || true

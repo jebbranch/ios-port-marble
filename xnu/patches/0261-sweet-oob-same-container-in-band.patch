@@ -1,5 +1,5 @@
 diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
-index 8db361a..0100a12 100644
+index 1892bba..0100a12 100644
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
 @@ -5517,18 +5517,16 @@ static int
@@ -22,7 +22,7 @@ index 8db361a..0100a12 100644
  	g_smmu_faults("oobcfg-pre");
  	for (i = 0; i < SWEET_OOB_RECS; i++) {
  		g_put32(body + off + 0, g_oob_miids[i]);
-@@ -5540,106 +5538,72 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+@@ -5540,82 +5538,72 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
  		}
  		off += SWEET_OOB_STRIDE;
  	}
@@ -119,31 +119,7 @@ index 8db361a..0100a12 100644
 +		for (i = 0; i < SWEET_OOB_RECS; i++) {
 +			const uint8_t *rec = (const uint8_t *)g_shm_va +
 +			    oob_off + i * SWEET_OOB_STRIDE;
- 
--				printf("SWEET MARK: oobcfg v8 rec %u iid=%#x param=%#x size=%u err=%#x\n",
--				    i, g_le32(rec + 0), g_le32(rec + 4),
--				    g_le32(rec + 8), g_le32(rec + 12));
--			}
--			/* error_code has read back zero for five boots, which is only
--			 * meaningful if the DSP writes the body at all.  Compare every byte
--			 * we wrote against what is there now: touched=0 is positive
--			 * evidence that nothing was written back, and a non-zero count says
--			 * where the first changed byte is, which is a second look at the
--			 * same question without sending anything different. */
--			{
--				const uint8_t *region = (const uint8_t *)g_shm_va + oob_off;
--				uint32_t k;
--				uint32_t touched = 0;
--				uint32_t first = 0;
--
--				for (k = 0; k < off; k++) {
--					if (body[k] == region[k]) {
--						continue;
--					}
--					if (touched == 0) {
--						first = k;
--					}
--					touched++;
++
 +			printf("SWEET MARK: oobcfg v9 rec %u iid=%#x param=%#x size=%u err=%#x\n",
 +			    i, g_le32(rec + 0), g_le32(rec + 4),
 +			    g_le32(rec + 8), g_le32(rec + 12));
@@ -159,16 +135,17 @@ index 8db361a..0100a12 100644
 +			uint32_t k;
 +			uint32_t touched = 0;
 +			uint32_t first = 0;
-+
+ 
+-				printf("SWEET MARK: oobcfg v8 rec %u iid=%#x param=%#x size=%u err=%#x\n",
+-				    i, g_le32(rec + 0), g_le32(rec + 4),
+-				    g_le32(rec + 8), g_le32(rec + 12));
 +			for (k = 0; k < off; k++) {
 +				if (body[k] == region[k]) {
 +					continue;
 +				}
 +				if (touched == 0) {
 +					first = k;
- 				}
--				printf("SWEET MARK: oobcfg v8 body touched=%u first=%u of %u\n",
--				    touched, first, off);
++				}
 +				touched++;
  			}
 -			sweet_log_sync();
