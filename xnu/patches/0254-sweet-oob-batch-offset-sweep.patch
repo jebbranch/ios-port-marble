@@ -1,8 +1,16 @@
 diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
-index a8c8595..21745e7 100644
+index a8c8595..f8df75d 100644
 --- a/bsd/dev/sweet_glink.c
 +++ b/bsd/dev/sweet_glink.c
-@@ -5462,7 +5462,23 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+@@ -971,6 +971,7 @@ g_prm_vote_lpass(void)
+ }
+ 
+ static uint32_t g_le32(const uint8_t *p);
++static void g_smmu_faults(const char *tag);
+ 
+ #define PARAM_ID_RSC_AUDIO_HW_CLK 0x0800102Cu
+ 
+@@ -5462,7 +5463,23 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
   * variable between records is the module instance id; the first three are
   * instances this graph definitely contains and act as the positive control.
   */
@@ -27,7 +35,7 @@ index a8c8595..21745e7 100644
  #define SWEET_OOB_RECS  9
  
  static const uint32_t g_oob_miids[SWEET_OOB_RECS] = {
-@@ -5478,9 +5494,10 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+@@ -5478,13 +5495,15 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
  	uint8_t pkt[24 + 16];
  	uint32_t off = 0;
  	uint32_t i;
@@ -39,7 +47,12 @@ index a8c8595..21745e7 100644
  		return (-1);
  	}
  	memset(body, 0, sizeof(body));
-@@ -5495,48 +5512,71 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 	memset(pkt, 0, sizeof(pkt));
++	g_smmu_faults("oobcfg-pre");
+ 	for (i = 0; i < SWEET_OOB_RECS; i++) {
+ 		g_put32(body + off + 0, g_oob_miids[i]);
+ 		g_put32(body + off + 4, 0x08001017u);
+@@ -5495,48 +5514,80 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
  		g_put32(body + off + 24, 1);
  		off += 32;
  	}
@@ -128,11 +141,20 @@ index a8c8595..21745e7 100644
 +			if (!g_rsp_ready) {
 +				printf("SWEET GLINK: %s addr=%#llx: no response\n",
 +				    what, addr);
++				g_smmu_faults("oobcfg-norsp");
 +				continue;
 +			}
 +			printf("SWEET GLINK: %s addr=%#llx rsp op=%#x status=%#x hop=%#x len=%u\n",
 +			    what, addr, g_le32(g_rsp + 24), g_le32(g_rsp + 28),
 +			    g_le32(g_rsp + 20), g_rsp_len);
++			/* If APM refused because the DSP could not *read* the body, the
++			 * context bank's fault address register is the only thing that
++			 * says which address it actually tried.  The vendor's own packet
++			 * is byte-for-byte our shape (bare offset + handle + size), so
++			 * the packet form is not what differs; this asks the next
++			 * question, namely whether the dereference faulted.  FAR is
++			 * latched, so the pre-snapshot below is the control. */
++			g_smmu_faults("oobcfg-post");
 +			__asm__ volatile("dsb sy" ::: "memory");
 +			for (i = 0; i < SWEET_OOB_RECS; i++) {
 +				const uint8_t *rec = (const uint8_t *)g_shm_va +
