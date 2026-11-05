@@ -47,17 +47,25 @@ for try in 1 2 3 4 5; do
   sleep 30
 done
 GOT=$(shasum -a 256 "$RAW" | awk '{print $1}')
+# EXPECT_MARKER is the only freshness proof that distinguishes rounds: the digest
+# can be served stale, and every kernel ever built carries "SWEET AUDIO: build v",
+# so a generic marker accepted the previous round's bytes and nearly booted them.
+if [ -n "${EXPECT_MARKER:-}" ] && ! LC_ALL=C grep -aqF "$EXPECT_MARKER" "$RAW"; then
+  echo "error: $NAME payload does not contain EXPECT_MARKER=$EXPECT_MARKER" >&2
+  echo "       (sha $GOT) - this is not the build you are waiting for" >&2
+  exit 1
+fi
 if [ "$GOT" != "$DIGEST" ]; then
   # Documented in the handoff notes: the release digest and the bytes the CDN
-  # actually serves can disagree (and differ between attempts).  The build
-  # marker inside the kernel is the trustworthy check, so fall back to it.
-  MARK=$(LC_ALL=C grep -ao 'SWEET AUDIO: build v[0-9]*' "$RAW" 2>/dev/null | head -1)
-  if [ -n "$MARK" ]; then
-    echo "warning: digest mismatch, but the payload looks like a real kernel:" >&2
+  # actually serves can disagree (and differ between attempts).  Refuse rather
+  # than warn: with EXPECT_MARKER already proven above the bytes are from the
+  # right round, but a mismatched digest still means we cannot name the build.
+  if [ -n "${ALLOW_DIGEST_MISMATCH:-}" ]; then
+    echo "warning: digest mismatch accepted because ALLOW_DIGEST_MISMATCH is set:" >&2
     echo "         got $GOT, want $DIGEST" >&2
-    echo "         marker: $MARK" >&2
   else
-    echo "error: sha256 $GOT != $DIGEST and no build marker in the payload" >&2
+    echo "error: sha256 $GOT != $DIGEST after 5 attempts" >&2
+    echo "       re-run, or set ALLOW_DIGEST_MISMATCH=1 with EXPECT_MARKER set" >&2
     exit 1
   fi
 fi
