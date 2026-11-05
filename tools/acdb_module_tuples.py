@@ -92,19 +92,64 @@ def module_tuples(size, body, buf):
             yield (miid, pid, psize, tuple(data))
 
 
+def dump_top_level_records(bufs, wanted_param, wanted_size, limit):
+    """Emit C initializer rows for chain-level records {iid, param, size, bytes}.
+
+    The K rounds send records whose param/size pair appears as its own TLV record
+    (0x08001004 does), which is a different place from the per-module table inside
+    0x08001003, so it needs its own extraction path.
+    """
+    seen = set()
+    rows = []
+    for name, buf in bufs:
+        off = buf.find(SIG_HEAD)
+        while off >= 0:
+            for iid, pid, size, body in chain_records(buf, off):
+                if pid != wanted_param or (wanted_size and size != wanted_size):
+                    continue
+                words = struct.unpack_from("<%dI" % ((size + 3) // 4), buf, body)
+                if words in seen:
+                    continue
+                seen.add(words)
+                rows.append((name, iid, pid, size, words, off))
+                if limit and len(rows) >= limit:
+                    return rows
+            off = buf.find(SIG_HEAD, off + 1)
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--acdb-dir", default=os.path.join(os.path.dirname(__file__),
                                                        "..", "..", "phone-acdb"))
     ap.add_argument("--subgraph", default="0xb0000002,0xb0000025,0xb0000024,0xb0000023")
     ap.add_argument("--limit", type=int, default=0, help="stop after N tuples")
+    ap.add_argument("--record", default="",
+                    help="dump chain-level records instead: PARAM:SIZE[:COUNT]")
+    ap.add_argument("--file", default="",
+                    help="only read ACDB files whose name contains this string")
     args = ap.parse_args()
 
-    wanted = {int(x, 16) if x.lower().startswith("0x") else int(x)
-              for x in args.subgraph.split(",") if x}
+    wanted = {int(x, 0) for x in args.subgraph.split(",") if x}
     files = sorted(glob.glob(os.path.join(args.acdb_dir, "*.acdb")))
+    if args.file:
+        files = [p for p in files if args.file in os.path.basename(p)]
     if not files:
         sys.exit("no .acdb under %s" % args.acdb_dir)
+    bufs = [(os.path.basename(p), open(p, "rb").read()) for p in files]
+
+    if args.record:
+        parts = [int(x, 0) for x in args.record.split(":")]
+        rows = dump_top_level_records(bufs, parts[0],
+                                      parts[1] if len(parts) > 1 else 0,
+                                      parts[2] if len(parts) > 2 else 0)
+        for name, iid, pid, size, words, off in rows:
+            print("/* %s @%#x iid=%#x param=%#010x size=%u */" % (name, off,
+                                                                  iid, pid, size))
+            print("\t" + ", ".join("0x%08xu" % w for w in words) + ",")
+        print("# %d distinct records for param %#x size %s" % (
+            len(rows), parts[0], parts[1] if len(parts) > 1 else "any"))
+        return
 
     seen = set()
     shown = 0
