@@ -4371,3 +4371,26 @@ M1 是第 **27** 枪；N1 是第 **28** 枪（本目标上限）。
 限制照写：`status=0` 仍只是"命令级接受"；`0x1/0x2/0x3` 都是拒绝、不命名机制；
 `err=` 读的是**区域副本**，只有带外侧可能被 DSP 改到 —— 这正是 N1 存在的理由。
 预算：M1 第 27、N1 第 28（本目标上限），已用 26/120。
+
+### 离线改写 ② 前提的一条（我自己读到的原文，不是转述）
+
+`work/sweet-audio/refs/audioreach/audioreach-graphservices-master/spf/api/apm/apm_module_api.h:150-158`：
+
+> `#define APM_PARAM_ID_MODULE_CONN 0x08001004` … "ID of the parameter to configure the connection between
+> module ports. **This parameter ID must be used under command APM_CMD_GRAPH_OPEN.**"
+
+配合 `apm_api.h:245-252`（APM 模块 `iid=1` 名下挂的那串 param：`SUB_GRAPH_CFG / CONTAINER_CFG / MODULES_LIST / MODULE_PROP / MODULE_CONN / …`，
+且 `@calibration_hdr_field module_id -- APM_MODULE_INSTANCE_ID`），得到：
+
+1. 我们从 **H 起**就在 `SET_CFG` 里携带 `0x08001004`，而规范把它划给 **`GRAPH_OPEN`**；
+   `iid=1` 那支拿到 `0x3`、模块 iid 那支拿到 `0x1` —— 两支**可以同源**：命令与 param 不匹配，而不是"内容/地址/长度不对"。
+   这一条**不命名机制**，只是把"为什么 26 枪里内容怎么换都是那两码"变成一个可测的前提。
+2. M1 因此是这条前提的第一个判据：在**本来被接受的容器**（C）上只换成 `0x08001004`。
+   预期 `0x1` ⇒ "SET_CFG 携带连线 param 被拒"成立 ⇒ ② 的下一步从"再猜内容"改成
+   **把连线数据放回 `GRAPH_OPEN` 正文**（我们的 2960 B `GRAPH_OPEN` 已经会被响应），
+   `SET_CFG` 只留给真模块 param（`0x08001017/0x0800101b` 这一类，C 已证明可用）。
+3. 反面也写死：若 M1 拿到 `0` ⇒ 头文件这句话**不足以**解释我们的读数（APM 没按它校验），
+   那么 ② 继续留在内容轴上，下一枪改走"每条 size"（C 的容器只把 12/28 换成 52/52）。
+
+注意不要再犯的错：厂商 `GRAPH_OPEN` 的 OOB 正文是 1520 B（`0x5f0`），
+**不要**用"长度凑得上"去认领它就是连线记录组（AGENTS §5：尺寸匹配不是证据）。
