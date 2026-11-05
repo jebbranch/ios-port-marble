@@ -1,0 +1,130 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index a8c8595..15f4b7d 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5462,7 +5462,15 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+  * variable between records is the module instance id; the first three are
+  * instances this graph definitely contains and act as the positive control.
+  */
+-#define SWEET_OOB_OFF   0x3000u
++/*
++ * Offsets to try, in order.  0x1000 is one the vendor actually uses for an
++ * out-of-band SET_CFG body and it is free in our region (PCM sits at 0x0 and
++ * 0x800, the graph payload at 0x2000); 0x3000 is the offset boot 17 used and
++ * was refused with status 0x1.  Everything else about the two sends is
++ * identical, so this separates "the offset was the problem" from "the out-of-
++ * band path itself is refused".
++ */
++static const uint32_t g_oob_offs[] = { 0x1000u, 0x3000u };
+ #define SWEET_OOB_RECS  9
+ 
+ static const uint32_t g_oob_miids[SWEET_OOB_RECS] = {
+@@ -5478,9 +5486,10 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 	uint8_t pkt[24 + 16];
+ 	uint32_t off = 0;
+ 	uint32_t i;
++	uint32_t t;
+ 
+ 	if (!g_shm_mapped || !g_shm_va) {
+-		printf("SWEET MARK: oobcfg v1 no mapping\n");
++		printf("SWEET MARK: oobcfg v2 no mapping\n");
+ 		return (-1);
+ 	}
+ 	memset(body, 0, sizeof(body));
+@@ -5495,48 +5504,58 @@ g_apm_set_cfg_oob(uint32_t src_port, const char *what)
+ 		g_put32(body + off + 24, 1);
+ 		off += 32;
+ 	}
+-	memcpy((void *)(g_shm_va + SWEET_OOB_OFF), body, off);
+-	__asm__ volatile("dsb sy" ::: "memory");
++	for (t = 0; t < sizeof(g_oob_offs) / sizeof(g_oob_offs[0]); t++) {
++		const uint32_t oob_off = g_oob_offs[t];
+ 
+-	g_put32(pkt + 0, (6u << 4) | (sizeof(pkt) << 8));
+-	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
+-	g_put32(pkt + 8, src_port);
+-	g_put32(pkt + 12, 1);
+-	g_put32(pkt + 16, 0x400u);
+-	g_put32(pkt + 20, APM_CMD_SET_CFG);
+-	g_put32(pkt + 24 + 0, SWEET_OOB_OFF);
+-	g_put32(pkt + 24 + 4, 0);
+-	g_put32(pkt + 24 + 8, g_shm_handle);
+-	g_put32(pkt + 24 + 12, off);
+-	printf("SWEET MARK: oobcfg v1 off=%#x len=%u recs=%u handle=%#x\n",
+-	    SWEET_OOB_OFF, off, SWEET_OOB_RECS, g_shm_handle);
+-	sweet_log_sync();
+-	g_rsp_ready = 0;
+-	g_rsp_len = 0;
+-	g_send_gpr(pkt, sizeof(pkt));
+-	for (unsigned n = 0; n < 5000; n += 5) {
+-		g_drain(0);
+-		if (g_rsp_ready) {
+-			break;
++		if (oob_off + off > g_shm_region_size()) {
++			printf("SWEET MARK: oobcfg v2 try %u off=%#x skipped (region %#x)\n",
++			    t, oob_off, g_shm_region_size());
++			continue;
+ 		}
+-		g_wait(5);
+-	}
+-	if (!g_rsp_ready) {
+-		printf("SWEET GLINK: %s: no response\n", what);
+-		return (-1);
+-	}
+-	printf("SWEET GLINK: %s rsp op=%#x status=%#x\n", what,
+-	    g_le32(g_rsp + 24), g_le32(g_rsp + 28));
+-	__asm__ volatile("dsb sy" ::: "memory");
+-	for (i = 0; i < SWEET_OOB_RECS; i++) {
+-		const uint8_t *rec = (const uint8_t *)g_shm_va + SWEET_OOB_OFF +
+-		    i * 32;
++		memcpy((void *)(g_shm_va + oob_off), body, off);
++		__asm__ volatile("dsb sy" ::: "memory");
+ 
+-		printf("SWEET MARK: oobcfg v1 rec %u iid=%#x param=%#x size=%u err=%#x\n",
+-		    i, g_le32(rec + 0), g_le32(rec + 4), g_le32(rec + 8),
+-		    g_le32(rec + 12));
++		g_put32(pkt + 0, (6u << 4) | (sizeof(pkt) << 8));
++		g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
++		g_put32(pkt + 8, src_port);
++		g_put32(pkt + 12, 1);
++		g_put32(pkt + 16, 0x400u);
++		g_put32(pkt + 20, APM_CMD_SET_CFG);
++		g_put32(pkt + 24 + 0, oob_off);
++		g_put32(pkt + 24 + 4, 0);
++		g_put32(pkt + 24 + 8, g_shm_handle);
++		g_put32(pkt + 24 + 12, off);
++		printf("SWEET MARK: oobcfg v2 try %u off=%#x len=%u recs=%u handle=%#x\n",
++		    t, oob_off, off, SWEET_OOB_RECS, g_shm_handle);
++		sweet_log_sync();
++		g_rsp_ready = 0;
++		g_rsp_len = 0;
++		g_send_gpr(pkt, sizeof(pkt));
++		for (unsigned n = 0; n < 5000; n += 5) {
++			g_drain(0);
++			if (g_rsp_ready) {
++				break;
++			}
++			g_wait(5);
++		}
++		if (!g_rsp_ready) {
++			printf("SWEET GLINK: %s off=%#x: no response\n", what, oob_off);
++			continue;
++		}
++		printf("SWEET GLINK: %s off=%#x rsp op=%#x status=%#x hop=%#x len=%u\n",
++		    what, oob_off, g_le32(g_rsp + 24), g_le32(g_rsp + 28),
++		    g_le32(g_rsp + 20), g_rsp_len);
++		__asm__ volatile("dsb sy" ::: "memory");
++		for (i = 0; i < SWEET_OOB_RECS; i++) {
++			const uint8_t *rec = (const uint8_t *)g_shm_va + oob_off +
++			    i * 32;
++
++			printf("SWEET MARK: oobcfg v2 rec %u iid=%#x param=%#x size=%u err=%#x\n",
++			    i, g_le32(rec + 0), g_le32(rec + 4), g_le32(rec + 8),
++			    g_le32(rec + 12));
++		}
++		sweet_log_sync();
+ 	}
+-	sweet_log_sync();
+ 	return (0);
+ }
+ 
