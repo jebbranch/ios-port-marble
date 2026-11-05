@@ -111,7 +111,7 @@ main(int argc, char **argv)
 	g_shm_va = (vm_offset_t)(uintptr_t)region;
 	memset(region, 0xa5, sizeof(region));
 	printf("STUB %s\n", dsp_writes ? "dsp writes" : "dsp silent");
-	return (g_apm_set_cfg_oob(0x2001005u, "oob-batch") == 0 ? 0 : 1);
+	return (g_apm_set_cfg_oob(0x2010u, "oob_batch") == 0 ? 0 : 1);
 }
 """
 
