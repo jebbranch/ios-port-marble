@@ -4832,3 +4832,18 @@ cmdline = 音频已知-good 那条 + `sweettdmpwr=2`；**不带** `sweetcccfg`�
 （这道守卫就是历史上把 `sweetbufs=30` 切成 `3` 的那类事故的防线，不许绕过）。
 ⇒ T0b **去掉 `sweettdmpwr=2`**，测"**出厂配置 + 抬音量**"：T0 已经量过"少发那一票"对平面无影响
 （31/4/0 与 M1r 等值），所以把 T0b 定义成"出厂形状的可听性"最干净，变量仍然只有一个（音量/长度＝仪器）。
+
+## T0b 判决（第 32 枪，`logs/ring-t0b-audible.txt`）⇒ **静音不是阈值假象**
+
+仪器自证：`SWEET MARK: tone gain g=8 peak=8192`（−12.0 dBFS，是出厂 1/8 振幅）、
+`pcm tone done (120 buffers)`（≈720 ms）、`data_buffer send` **121**、`done status=0` 4、`no rsp` 0、
+`gate flag` 1、panic 0、`===== done =====` 与 `PSCI SYSTEM_RESET` 均在本会话窗口内。
+用户报告：**没有声音传出**。
+
+⇒ 从"可听性"这条轴上，**−12 dBFS / 720 ms / 1 kHz 应当是可听见的**，因此：
+**"控制面全绿 + PCM 被消费 + 无声"是真实的故障，不是音量档位造成的测量假象。**
+（这条只否定"阈值解释"，不否定 T0 那一枪的开关门结论。）
+⇒ 下一枪按 T0b 判据第 2 支走：**T1 = 0265 内核 + `sweettdmclk=1`**，补厂商投而从没投的
+播放侧 TDM 位时钟 `0x204 @ 12.288 MHz / attr 4 / root 0`（`PRM_REQUEST_HW_RSC`，Android 侧 `status=0`）。
+仪器档位改为**可听优先**：`sweetvol=31`（峰 31744 ≈ −0.3 dBFS）+ `sweetbufs=200`（≈1.2 s）——
+振幅是测量条件、不是被试变量，故与"配不配时钟"这一格不冲突；开这一枪前须用户确认可以响。
