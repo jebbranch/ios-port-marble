@@ -1,0 +1,91 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 0b310df..411d915 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -6717,6 +6717,7 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 	};
+ 	uint8_t mf[32];
+ 	uint32_t v;
++	int tdm_sup = 0;
+ 	int rc;
+ 
+ 	/* The AP endpoint is the WR_SHARED_MEM_EP, not SAL: in the vendor
+@@ -6928,32 +6929,72 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 	(void)g_apm_set_cfg(src_port, G_VP_TDM_IID, 0x08001017, mf, 12,
+ 	    "vp/tdm_ep_mf");
+ 
+-	v = 1;
+-	(void)g_apm_set_cfg(src_port, G_VP_TDM_IID, 0x08001018, &v, 4,
+-	    "vp/tdm_frame");
++	/*
++	 * 0267: three of the five parameters we push to the TDM module (0x428f)
++	 * appear nowhere in the vendor's accepted traffic - 0x08001018 = 1,
++	 * 0x08001176 = 0 and 0x0800113c = {0, 12288000, 0, 0} come from the
++	 * CDMA-era list in this driver.  All three answer status=0, but
++	 * "command-level accepted" is not "harmless": F1 proved the graph plays
++	 * a full-scale tone that nobody hears, and the AW-side payloads (0x42d3,
++	 * param 0x10013d2a) are already byte-exact against the capture, so the
++	 * TDM module's own parameter list is the last place our traffic differs
++	 * from the vendor's.  sweettdmvendor is a bitmask so one build can bisect
++	 * it with boot args only: bit0 drops 0x08001018, bit1 drops 0x08001176,
++	 * bit2 drops 0x0800113c, 7 = exactly the vendor's two records.
++	 */
++	{
++		int tdmsup = 0;
++		int tp_shown = 0;
++
++		(void)PE_parse_boot_argn("sweettdmvendor", &tdmsup,
++		    sizeof(tdmsup));
++		(void)PE_parse_boot_argn("sweettdmpwr", &tp_shown,
++		    sizeof(tp_shown));
++		printf("SWEET MARK: tdmcfg v1 sup=%d tdpwr=%d\n", tdmsup,
++		    tp_shown);
++		sweet_log_sync();
++		tdm_sup = tdmsup;
++	}
++
++	if (!(tdm_sup & 1)) {
++		v = 1;
++		(void)g_apm_set_cfg(src_port, G_VP_TDM_IID, 0x08001018, &v, 4,
++		    "vp/tdm_frame");
++	} else {
++		printf("SWEET MARK: tdmcfg v1 1018 not sent\n");
++		sweet_log_sync();
++	}
+ 	/*
+ 	 * 0248: the vendor trace never sends 0x08001176 at all - it comes from the
+ 	 * CDMA-era list.  sweettdmpwr keeps the shipped behaviour (0) addressable
+ 	 * without another build: 1 sends the value 1, 2 does not send the packet.
++	 * 0267 adds the value to the log: before this, tp=0 and tp=1 printed
++	 * exactly the same lines, so a round could not prove which value went out.
+ 	 */
+ 	{
+ 		int tp = 0;
+ 
+ 		(void)PE_parse_boot_argn("sweettdmpwr", &tp, sizeof(tp));
+-		if (tp != 2) {
++		if (tp != 2 && !(tdm_sup & 2)) {
+ 			v = tp == 1 ? 1 : 0;
++			printf("SWEET MARK: tdmcfg v1 1176 val=%u\n", v);
++			sweet_log_sync();
+ 			(void)g_apm_set_cfg(src_port, G_VP_TDM_IID, 0x08001176,
+ 			    &v, 4, "vp/tdm_power");
+ 		} else {
+-			printf("SWEET GLINK: tdm_power skipped (vendor does not send it)\n");
++			printf("SWEET MARK: tdmcfg v1 1176 not sent (tp=%d sup=%d)\n",
++			    tp, tdm_sup);
+ 			sweet_log_sync();
+ 		}
+ 	}
+-	{
++	if (!(tdm_sup & 4)) {
+ 		uint32_t clk[4] = { 0, 12288000, 0, 0 };
+ 
+ 		(void)g_apm_set_cfg(src_port, G_VP_TDM_IID, 0x0800113c, clk,
+ 		    16, "vp/tdm_clk");
++	} else {
++		printf("SWEET MARK: tdmcfg v1 113c not sent\n");
++		sweet_log_sync();
+ 	}
+ 
+ 	(void)g_apm_set_cfg(src_port, G_VP_AW_IID, 0x10013d2a, aw,
