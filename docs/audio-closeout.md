@@ -5186,3 +5186,12 @@ F1 是**满幅（−0.27 dBFS，代码钳位上限）、完整 0.72 s、收尾�
 | **H1-1 主判据（两读）** | ① `vp/tdm_cfg` 与 `vp/tdm_ep_mf` 仍 `status=0`、`graph_start=0`、`pcm tone done (120 buffers)`、**用户听到** ⇒ 三封里至少一封是有害的，立刻按 `sup=1/2/4` 三枪二分定位是哪封；② 同样全绿但**仍无声** ⇒ "**我们发给 TDM/AW 的带内参数内容**"这一整条轴关闭（与厂商完全一致仍无声），下一枪只能往 **ADSP 之后的物理侧**追：PA 是否在总线上（0240 那条读路）、`tdm_power` 之外功放自己的供电轨、以及"这张 760 B 图里 TDM 输出到底接到哪个 MI2S 实例" | 见左 | 两种都有信息；不依赖成功 |
 | H1-2 回归 | `tone gain g=31`、`data_buffer send`≈121、`no rsp` 0、panic 0、`===== done =====` 与 `PSCI SYSTEM_RESET` 在窗口内、控制面四绿行、`geni amp 0x34/0x35 … profile 44/44` 早于 `pcm tone start` | 等值 | 不齐 ⇒ 不判 |
 参数预算：F1 566 B − ` sweettdmclk=2`(14) + ` sweettdmvendor=7`(18) = **570 B**（本轮实测填死）。
+
+### H1 打包实测（开机前，逐条核产物）
+`sweettime=1793930330` 命中 1 次，cmdline 实测 **569 B** —— **预测 570 差 1**：
+` sweettdmvendor=7` 是 17 字节不是 18（`sweettdmvendor=7` 本身 16 个字符）。
+这是同一类错误的第三次（T1 两次预测 583 实际 582），**长度永远是本轮实测值，预测只用于抓意外，不用于继承**。
+569 < 590 ✓。尾部连续：`… sweetvol=31 sweettdmvendor=7 sweettime=1793930330`，无 `sweettdmclk` 在 cmdline 里
+（镜像内那个 1 次命中是内核里的参数名字符串）。产物内核标记：
+`tdmcfg v1 sup=`×1、`1018 not sent`×1、`1176 val=`×1、`113c not sent`×1、`tdmclk v2 late `×1、`cccfg v3 `×6。
+`out/kernel.adsp` sha256 `67b24f148512259d…`（CI 摘要一致，`EXPECT_MARKER` 过门）。
