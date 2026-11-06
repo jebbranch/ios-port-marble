@@ -5371,3 +5371,60 @@ CI `6daab4e` 的 build = completed/success）。
 **回归门**（不齐则不判）：`graph_start status=0`、`tone gain g=6`、`pcm tone done (120 buffers)`、
 `data_buffer send`≈121、`no rsp` 0、panic 0、`===== done =====`/`PSCI SYSTEM_RESET` 在窗口内、
 控制面四绿行、`tdmcfg v1 sup=7` 的三条 not sent 仍在。
+
+---
+
+## 第 37 枪 J1 判决（`logs/ring-j1-get-mfc-rate.txt`）—— 整条音频线**第一条正向机制读数**
+
+**J1-0 身份：成立。** `sweettime=1793957309` ×2；`ring_window` 报 `total=0x162af == decoded`（窗口吻合 True）；
+`mfc v1 sel=` 运行期 **0 行**（真的只读不写）；`tdmcfg v1 sup=7` 三条 `not sent` 仍在；
+`tone gain g=6 peak=6144`。
+
+**仪器本身先被证明能用**（这是过去几个月最缺的东西）：三行都走了**结构化分支**
+`get_cfg`（应答 opcode = `0x02001000`，不是 basic result），
+`st=0`、`err=0`，而且 **`size` 从我们提供的 72 变成 8** ⇒ **模块真的写回来了**
+——这正是 N1 那次"`err=0` 其实是没人写过"的反向哨兵。`len=116`。
+
+**读到的内容（三行逐字）：**
+
+```
+:1675 mfcget v3 pre-set       get_cfg len=116 st=0 iid=0x48ba param=0x8001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+:1680 mfcget v3 post-prepare  get_cfg len=116 st=0 iid=0x48ba param=0x8001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+:1686 mfcget v3 post-start    get_cfg len=116 st=0 iid=0x48ba param=0x8001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+```
+
+`rate=-1`、`nch=0xFFFF`（即 -1）、`bw=32` —— **`bw=32` 不是"输出 32 bit"**，
+而是外部答案预言过的那个形状：无效 Q 值走 helper 的默认分支落回 32。
+⇒ **命中的是"备选预测"（MFC 从未收到有效输入格式），不是主预测 `{48000,16,2}`。**
+
+**这条读数的意义（也是它的边界）**：
+- 意义：**OPEN 之后的配置、PREPARE 的控制路径传播、START 之后——三个时刻 MFC 都没有媒体格式。**
+  这是本项目第一次不需要靠"哪个命令被拒"来定位：**没有任何东西被拒**（本枪里
+  `graph_open/prepare/start` 与全部 SET_CFG 都是 `status=0`），而链路上的转换级**根本没被喂过格式**。
+  它同时解释了长期现象："全部接受、PCM 被消费、满幅仍无声"。
+- 边界：**还不能说断在哪一段**。三种可能都还活着：
+  (a) WR 自己就没有把格式发布成"模块的输出格式"；
+  (b) SAL 拒收（位宽/Q 那一维，见 §15：我们声明 16/Q15，厂商 24/Q23）；
+  (c) 格式本来该由图内各模块的 cal 数据给出，而我们拿不到那份 18 KB 自定义配置（②的老墙）。
+  ⇒ 下一枪用**多模块读回**来定位，而不是继续猜。
+
+**J1-2 回归：全绿。** `graph_prepare status=0`、**`graph_start status=0`**、
+`pcm tone done (120 buffers)`、`data_buffer send` 121、`no rsp` 0、panic 0、
+`===== done =====` 与 `PSCI SYSTEM_RESET` 在窗口内、控制面四绿行齐
+（`graph_open status=0`、`cb5 cba2r=0x1`、`ats1pr par=0 OK`、`geni amp 0x34 r=0 id=0x2032` 早于 tone）。
+
+## 下一枪 0272 / K1：把"读回"从 MFC 一点扩到三点 + 第四个相位
+
+改动很小（只读，零状态写入）：
+1. 读回**三个模块各自的格式参数**：`0x40bd` 的 `0x0800100c`（WR）、`0x428f` 的 `0x08001017`（TDM_SINK 接收格式）、
+   `0x48ba` 的 `0x08001024`（MFC 输出）。
+2. 相位加第四个：**`post-tone`**（`g_audio_tone()` 返回之后，120 帧真的流过去之后）。
+
+判读（开机前写死）：
+
+| 观察 | 结论 |
+|---|---|
+| WR 有效(48000/16/2) 且 TDM 有效，**只有 MFC 无效** | 断点在 WR→SAL→MFC 之间的**传播**；优先测 `sweetwrmf=2`（厂商逐字 24/Q23）与 SAL 位宽那一维 |
+| **WR 也无效** | 我们的 `SET_CFG(0x0800100c)` 虽然 `status=0` 但**没被当成模块格式存下来** ⇒ 格式来自图内 cal 数据 ⇒ ②那堵 18 KB 墙重新变成主线，且这次有寄存器依据 |
+| TDM 无效 | 硬件端点也没被喂格式 ⇒ 无声更可能直接由端点未配置解释 |
+| 三点都无效、但 `post-tone` 变有效 | 格式只在数据路径上发布 ⇒ 我们的读取时序是问题，图本身可能没坏 |
