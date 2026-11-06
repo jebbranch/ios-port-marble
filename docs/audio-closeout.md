@@ -5868,3 +5868,45 @@ MFC 对照与 K4 完全一致（`size=14 rate=96000 bw=24 nch=3` 四处）；WR 
 
 推荐 **K6a**：它是剩下三条里唯一"用现有仪器能直接判"的，且失败也不会污染别的轴
 （容器不同 ⇒ 读回与 graph 应答都自证；不改时钟、不写盘、不碰 GPU）。
+
+---
+
+## 0274 之后两枪的判决表（**开机前写死**）
+
+### K6a（第 43 枪）：`sweetvgraph=4` —— 厂商形状的容器，**带内**发送，我们一个字都不写
+
+cmdline = K5 那条去掉 `sweetnolpass=1`（−15，见下方证据）再加 ` sweetvgraph=4`（+14）
+⇒ **预测 578 B**，打包时实测。`sweetmfc` **不在 cmdline**，这是这一枪的全部意义。
+
+腾 `sweetnolpass=1` 的证据（不是"看着无关"）：`g_nolpass` 在本文件里只出现两次
+（`:2794` 声明、`:6219` 赋值），**从不被读**；`sweetnolpass` 唯一的作用是发送失败路径里那 20 行
+"nolpass alive" 打印，而最近每一轮 `no rsp` 都是 0 ⇒ 它打印的条件从未发生。
+
+| 门 | 期望 | 命中含义 |
+|---|---|---|
+| K6a-0 身份 | 产物内 `vginl v1 `×1、`dbb v1 `×1、`tdmmf v1 `×1、`mfcget v4 `×5；ring 内 `sweettime=<本轮>` + 窗口吻合 | 不过门不开机 |
+| K6a-1 证人 | `SWEET MARK: vginl v1 vg=4 off=16 len=2944 form=inband` 恰 1 行；`dbb v1 bytes=1152 ms=6`（本轮不动缓冲区）| 打印自己算出的 off/len，避免我事后"记得"是哪种形式 |
+| K6a-2 容器被接受 | `graph_open/ukee2960-inband rsp op=0x1001000 status=0` | 非 0 ⇒ **同一个容器换成带内就被拒**（此前所有 vgraph 结果都同时是 SHM 传输的结果，从没被单独判过）⇒ 这一格本身就是新信息，不算失败 |
+| K6a-3 图起来 | `vgraph 4 (in band) started` 或 `did not start` + `graph_start rsp … status=` | 与 K6a-2 分开算，两者可能不同 |
+| **K6a-4 主判据** | **`pre-set` 那一行的 MFC**（我们此时**还没有对 0x48ba 写过任何东西**）| `rate=96000/48000` 有效 ⇒ **容器自己就把格式喂给了转换级** ⇒ 差异在图数据，不在命令序列；仍 `rate=-1` ⇒ 换厂商形状容器也救不了转换级 ⇒ 嫌疑集中到 18128 配置与 `0x40bf/0x40c0` 两处缺失 |
+| K6a-5 数据被消费 | `pcm tone done (120 buffers)` 且 `pcm buffer` `not consumed` = 0 | 出现 not consumed ⇒ 这个容器里没有能收 DATA_BUFFER_V2 的端点 ⇒ **听感作废**，读数仍有效 |
+| K6a-6 回归（**换图后定义不同，先写清楚**）| `ats1pr … par=0 OK`、`cba2r@…=0x1`、`geni amp 0x34 r=0 id=0x2032`、`tone gain g=6 peak=6144`、`no rsp` 0、panic 0、窗口吻合 | `graph_open/vp-wr` 那行**必然缺席**（我们不再走自己的容器）——这是预期，不算不一致；打分器按这条写 |
+| K6a-7 听感 | `sweetvol=6` = −14.5 dBFS，120 帧 × 6 ms ≈ 0.7 s | 次要；K6a-5 不过则记"未测" |
+
+风险：容器与 `g_ukee_current_sgs` 的 4 个 subgraph id 若与 DSP 侧不符，start 会拒——那也是读数；
+不改时钟、不写盘、不碰 GPU；这一枪**可能整轮都拿不到耳朵**，换来的是"图数据 vs 命令序列"第一次被分开。
+
+### K7（第 44 枪）：我们自己的图 + `sweetdbb=4096 sweetvol=16` —— 专门给用户耳朵的那一发
+
+cmdline = 579 − 15（同样腾掉 nolpass）+ 14（` sweetdbb=4096`）+ 1（`sweetvol=6`→`=16`）
+⇒ **预测 579 B**。寄存器门 = 与 K4 等值（`pre-set` 无效、`post-set/prepare/start/tone` 四处
+`size=14 rate=96000 bw=24`、TDM `0x30020`），新增证人 `dbb v1 bytes=4096 ms=21`。
+
+| 门 | 期望 | 含义 |
+|---|---|---|
+| K7-1 | `dbb v1 bytes=4096 ms=21` 恰 1 行 | 缓冲区几何真的换了（不是我只改了个字符串）|
+| K7-2 | `pcm tone done (120 buffers)`、`not consumed` 0、`no rsp` 0、panic 0、窗口吻合、尾部 `===== done =====`/`PSCI` 在窗内 | **尾部在窗口内**是这枪的硬条件：4096×120 会让会话变长，若 watchdog 切断尾部 ⇒ 听感记"未测"，`sweetdbs` 回 1152 重放，不追加别的变量 |
+| K7-3 听感 | 120 帧 × 21 ms ≈ **2.5 秒**，`peak=16384` = **−6.0 dBFS**（比 K2–K5 响 8.5 dB；clamp 上限是 g=31 = −0.27 dBFS，需要更响要说一声）| 这一枪的**唯一产物就是耳朵**；读数只用来证明"几何换了但一切照旧" |
+
+已声明风险：更大的缓冲区会拉长会话，可能顶到 watchdog（120 是学到的上限，200 曾在 135 发被切）；
+若被切，本轮作废重放 1152，不把它算作"无声"。
