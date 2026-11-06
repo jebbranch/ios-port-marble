@@ -5769,3 +5769,46 @@ Keychain 里那条 github.com 只有账号没有 token；直连 github.com 超�
 打分：`./tools/score_k45.py k4 logs/ring-k4-mfc24.txt 1793963894 images/k4-mfc24.img`
 （该工具的判决副本已在 `02c9e2b` 开机前提交，并用 boot 40 的 ring 做过反向对照：旧产物会被打成
 IDENTITY FAIL + 证人 MISS）。
+
+---
+
+## 第 41 枪 K4 判决（`logs/ring-k4-mfc24.txt`，`sweettime=1793963894`）
+## **STORED-24：厂商那份四词记录整份被 MFC 收下，并且仍然完全无声**
+
+**K4-0 身份：成立。** `sweettime` 命中 2；产物 `tdmmf v1 `×1、`mfcget v4 `×5、`v3 `×0；
+`ring_window` `total=0x165d6 == decoded`、**window-match True**。
+证人如期：`tdmmf v1 tv=7 w1=0x30020`（⇒ 这一枪的 bit3 是关的，TDM 那一维没被顺手改动，
+单变量成立）+ `mfc v1 sel=4 iid=0x48ba param=0x8001024 rc=0`。
+
+**九行读数（9 次 GET 全出，no-response/basic/unexpected 各 0）：**
+
+```
+pre-set      size=8  err=0 rate=-1    bw=32 nch=65535        ← 写之前仍是初始化默认
+post-set     size=14 err=0 rate=96000 bw=24 nch=3 cmap=0x20001   ← 主判据
+post-prepare size=14 err=0 rate=96000 bw=24 nch=3 cmap=0x20001
+post-start   size=14 err=0 rate=96000 bw=24 nch=3 cmap=0x20001
+post-tone    size=14 err=0 rate=96000 bw=24 nch=3 cmap=0x20001
+WR   0x40bd/0x0800100c  post-start / post-tone：st=0x1 err=1 size=72 全零（E2，两向都不算证据）
+TDM  0x428f/0x08001017  post-start / post-tone：0x17700 / 0x30020 / 0x1（仪器对照）
+```
+
+**判决（对照开机前那张表）**
+- K4-3 = **STORED-24**。而且带回来一个比 K2 更强的形状证据：**模块自报的 `param_size` 从 8 变成了 14**，
+  即它按厂商声明的那个"四词、14 字节"的长度作答——不是我们把 12 字节记录改了个数值，
+  而是**厂商那份记录的形状整体被接受**。K2 那次（12 字节 / `size=8`）与之形成干净对照。
+- K4-3 的三处后续相位一致 ⇒ "**START 重置转换级**"再次被排除（K2 已排除过一次，这次是带着厂商形状再排除一次）。
+- K4-6 回归与 K2/K3 逐项等值（120 帧、`data_buffer send` 121、`no rsp` 0、panic 0、控制面全绿、窗口内收尾）。
+- **K4-4 听感：用户在场，答"完全没有"**（`sweetvol=6` = −14.5 dBFS）。
+
+**⇒ 内容轴在 MFC 这一侧彻底关闭。** 现在的事实是：
+转换级的输出格式 = 厂商逐字形状（96000 / 24-bit 容器 / `{1,2}` / 声明 14），
+读回自证、熬过 PREPARE/START/120 帧，**然后仍然一点声音都没有**。
+"没被喂格式"与"喂的是我们自创的形状"两种解释同时出局。
+
+## 第 42 枪 K5 开机前快照（真实产物）
+`images/k5-tdm24.img`：cmdline 实测 **579 B**（预测 579 = 578 + `7`→`15` 的 1 字节），尾部
+`1ap=3 sweetampfirst=1 sweetvol=6 sweettdmvendor=15 sweetmfc=4 sweetmfcget=3 sweettime=1793964411` 连续；
+镜像内 `tdmmf v1 `×1、`mfcget v4 `×5、`v3 `×0。同一颗 0273 内核，**唯一变量 = TDM 端点容器位宽**
+（`0x08001017` 第二词 `0x00030020` → 厂商的 `0x00030018`），主判据是端点读回 `d1=0x30018`；
+MFC 这一枪保持 K4 判出来的 `sweetmfc=4` 不变（表里就是这么定的）。
+预算 42/120。
