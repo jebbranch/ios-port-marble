@@ -5428,3 +5428,56 @@ CI `6daab4e` 的 build = completed/success）。
 | **WR 也无效** | 我们的 `SET_CFG(0x0800100c)` 虽然 `status=0` 但**没被当成模块格式存下来** ⇒ 格式来自图内 cal 数据 ⇒ ②那堵 18 KB 墙重新变成主线，且这次有寄存器依据 |
 | TDM 无效 | 硬件端点也没被喂格式 ⇒ 无声更可能直接由端点未配置解释 |
 | 三点都无效、但 `post-tone` 变有效 | 格式只在数据路径上发布 ⇒ 我们的读取时序是问题，图本身可能没坏 |
+
+---
+
+## 第 38 枪 K1 判决表（**开机前写死**，0272 内核 `mfcget v4`）
+
+**本轮唯一变量**：`sweetmfcget` 2 → **3**。其余与 J1 逐字相同
+（`sweettdmvendor=7 sweetvol=6 sweetbufs=120`，**`sweetmfc=` 仍不在 cmdline** ⇒ 全程只读、零写入）。
+0272 是纯读扩展：`g_apm_get_cfg_readset()` 只发 GET_CFG，不改任何 SET_CFG / 图 / 时钟。
+
+**身份门（不过就不许开机）**：产物内 `mfcget v4 `×**5**（五个分支各一条 printf：
+no-response / get_cfg-decoded / get_cfg-raw / basic / unexpected）、
+且 `mfcget v3 `×**0**、`v2 `×**0**、`v1 `×**0**；ring 内 `sweettime=<本轮>` 命中、`ring_window` 窗口吻合。
+
+**预期 8 行 `SWEET MARK: mfcget v4 <相位> …`（逐字预期值）**
+
+| # | 相位 / 模块 | 预期 |
+|---|---|---|
+| 1 | `pre-set` 0x48ba/0x08001024（解码分支）| 重复 J1：`size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0` |
+| 2 | `post-prepare` 0x48ba（解码分支）| 同上（仍无效）|
+| 3 | `post-start` **0x40bd/0x0800100c**（RAW 分支）| 若 SET 被当格式存下：`size=30 d0=0x1 d1=0x9001000 d2=0x12 d3=0xbb80 d4=0x10010 d5=0xf0010` |
+| 4 | `post-start` **0x428f/0x08001017**（RAW 分支）| 若存下：`size=12 d0=0x17700 d1=0x30020 d2=0x1`，`d3..d5=0` |
+| 5 | `post-start` 0x48ba/0x08001024 | 无效（J1 三点皆如此）|
+| 6-8 | `post-tone` 0x40bd / 0x428f / 0x48ba | 前三行不变；**只有 0x48ba 允许在这里变有效** |
+
+（3、4 的"存下形状"= 我们自己 0267/0268 发出去的那段字节；RAW 分支**不做解码**，
+`d*` 只有在**应答长度和模块自报 `param_size` 都覆盖**时才读——
+`len=` 与 `size=` 两个字段就是这条界的证据，宿主 stub 已用"截到 d2 的应答"验过。）
+
+**判读（互斥，先命中的那条算）**
+
+| 观察 | 结论 | 下一枪 |
+|---|---|---|
+| A：3 有效、4 有效、5 无效 | 端点都发布了，**只有转换级没被喂** ⇒ 断点在 WR→SAL→MFC 的传播 | 同一内核 `sweetmfc=1 sweetmfcget=3`：0268 那条写我们从来没在有读回的情况下试过 |
+| B：3 无效（`size` 仍 72 / `d3≠0xbb80`） | `SET_CFG(0x0800100c)` 虽然 `status=0` 但**没被当格式存下来** ⇒ 格式来自图内 cal 数据，②那堵 18 KB 墙带着寄存器依据回到主线 | 转 ②：cal 对象正文，不是再加探针 |
+| C：3 有效、4 无效 | 硬件 sink 也没被喂 ⇒ 无声可直接由端点未配置解释 | TDM 侧参数集（`sweettdmvendor` 的另一组）|
+| D：1-5 全无效，6-8 里 0x48ba 变有效 | 格式只在数据路径上发布 ⇒ **是我们的读取时序**，图本身没坏 | 把读取点固定到 post-tone，再谈内容 |
+| E：3/4 走 `basic … echoed_op=0x1001007 status=0xN` | **不是仪器故障**：同一个 `g_apm_get_cfg_dump()` 构造器在 0x48ba 上拿到过结构化应答，所以这里 basic 只可能是**该模块/该参数不支持 GET**（0x3=EUNSUPPORTED）| 该模块的格式只能从写侧证据推断；不为它单独开枪 |
+| F：`no response` ≥ 3 行 | 传输层问题（端口/应答分配），全部按仪器读数处理 | 先修仪器 |
+
+**仪器故障类（不算模块结论）**：`size` 仍 =72 且 `err=0`（没人写回）、`len=` 与 `size=` 矛盾、
+`unexpected rsp=`、`no response`。
+
+**回归门（不齐则不判）**：`graph_prepare status=0`、`graph_start status=0`、
+`tone gain g=6 peak=6144`、`pcm tone done (120 buffers)`、`data_buffer send`≈121、`no rsp` 0、
+panic 0、`===== done =====` / `PSCI SYSTEM_RESET` 在窗口内、控制面四绿行、
+`tdmcfg v1 sup=7` 的三条 `not sent` 仍在、`mfc v1 sel=` 运行期 0 行。
+
+**已声明的风险（本轮改动自带）**
+1. 8 次 GET 各含一个最长 ~5 ms 的应答等待 ⇒ 会话多花 ≤40 ms；`sweetbufs` 仍在 watchdog 学到的 ≤120 以内。
+2. 对 0x40bd/0x428f 发 GET 是本项目第一次向这两个实例问话。GET 按定义只读；
+   但"参数不支持 GET"会走 E 行，不产生模块状态改变。
+3. RAW 分支的 `d*` 若某模块把 body 放在与 `param_size` 不一致的位置，会显示成 `size` 小而 `d*` 有值——
+   这一形状已在 stub 里被 `len` 界住，真机上出现即按仪器读数处理。
