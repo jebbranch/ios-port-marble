@@ -1,0 +1,179 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 59e5d13..1ef08bc 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5483,6 +5483,15 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+  * Expected public layout of the structured reply after the 24-byte GPR header:
+  *   w6 status | w7 iid | w8 param | w9 param_size | w10 error_code | w11 data
+  * which puts sampling_rate at absolute +44 (w11) for param 0x08001024.
++ *
++ * 0272 extends this from one module to three, and the offsets have to follow:
++ * the only param whose DATA is decoded here is 0x08001024, because that body is
++ * one we ourselves constructed byte-for-byte in 0268 ({rate, bits|nch<<16,
++ * chmap}) - for any other param the reply's data is printed as RAW words.  The
++ * WR's 0x0800100c body is 30 bytes with the rate at its offset +12 and the
++ * TDM's 0x08001017 body 12 bytes starting with the rate, but that is what we
++ * SENT; assuming the module answers with the same shape would be guessing, so
++ * the shape is what this round has to observe.  Marker v3 -> v4.
+  */
+ static void
+ g_apm_get_cfg_dump(uint32_t src_port, uint32_t iid, uint32_t pid,
+@@ -5532,7 +5541,7 @@ g_apm_get_cfg_dump(uint32_t src_port, uint32_t iid, uint32_t pid,
+ 		g_wait(5);
+ 	}
+ 	if (!g_rsp_ready) {
+-		printf("SWEET MARK: mfcget v3 %s no response pkt=%u\n", phase,
++		printf("SWEET MARK: mfcget v4 %s no response pkt=%u\n", phase,
+ 		    pkt_size);
+ 		sweet_log_sync();
+ 		return;
+@@ -5560,21 +5569,79 @@ g_apm_get_cfg_dump(uint32_t src_port, uint32_t iid, uint32_t pid,
+ 		if (rsz >= 12 && 56 <= g_rsp_len) {
+ 			cmap = g_le32(g_rsp + 52);
+ 		}
+-		printf("SWEET MARK: mfcget v3 %s get_cfg len=%u st=%#x iid=%#x "
+-		    "param=%#x size=%u err=%u rate=%d bw=%u nch=%u cmap=%#x\n",
+-		    phase, g_rsp_len, st, riid, rpid, rsz, rerr, rate,
+-		    (unsigned)(bwnch & 0xffffu), (unsigned)(bwnch >> 16), cmap);
++		if (rpid == 0x08001024u) {
++			printf("SWEET MARK: mfcget v4 %s get_cfg len=%u st=%#x "
++			    "iid=%#x param=%#x size=%u err=%u rate=%d bw=%u "
++			    "nch=%u cmap=%#x\n",
++			    phase, g_rsp_len, st, riid, rpid, rsz, rerr, rate,
++			    (unsigned)(bwnch & 0xffffu),
++			    (unsigned)(bwnch >> 16), cmap);
++		} else {
++			/* Unknown body: print six raw data words, each only if the
++			 * reply is long enough to contain it.  A word the module
++			 * never wrote stays whatever g_drain left in the buffer, so
++			 * the LENGTH bound is the load-bearing part here. */
++			uint32_t d[6] = { 0, 0, 0, 0, 0, 0 };
++			unsigned int k;
++
++			for (k = 0; k < 6u; k++) {
++				if (44 + 4 * k < g_rsp_len && rsz >= 4 + 4 * k) {
++					d[k] = g_le32(g_rsp + 44 + 4 * k);
++				}
++			}
++			printf("SWEET MARK: mfcget v4 %s raw len=%u st=%#x iid=%#x "
++			    "param=%#x size=%u err=%u d0=%#x d1=%#x d2=%#x "
++			    "d3=%#x d4=%#x d5=%#x\n",
++			    phase, g_rsp_len, st, riid, rpid, rsz, rerr,
++			    d[0], d[1], d[2], d[3], d[4], d[5]);
++		}
+ 	} else if (rsp == 0x02001005u) {
+-		printf("SWEET MARK: mfcget v3 %s basic len=%u echoed_op=%#x status=%#x\n",
++		printf("SWEET MARK: mfcget v4 %s basic len=%u echoed_op=%#x status=%#x\n",
+ 		    phase, g_rsp_len, g_le32(g_rsp + 24), g_le32(g_rsp + 28));
+ 	} else {
+-		printf("SWEET MARK: mfcget v3 %s unexpected rsp=%#x len=%u w6=%#x w7=%#x\n",
++		printf("SWEET MARK: mfcget v4 %s unexpected rsp=%#x len=%u w6=%#x w7=%#x\n",
+ 		    phase, rsp, g_rsp_len, g_le32(g_rsp + 24),
+ 		    g_le32(g_rsp + 28));
+ 	}
+ 	sweet_log_sync();
+ }
+ 
++/*
++ * 0272: the three-module read set, sent read-only in graph order.
++ *
++ * J1 (boot 37) closed the "is the MFC fed" question with the port's first
++ * positive mechanism reading - rate=-1, num_channels=0xFFFF at pre-set,
++ * post-prepare AND post-start - while every SET_CFG, GRAPH_OPEN, PREPARE, START
++ * and 120 DATA_BUFFERs came back accepted.  One invalid module on a five-module
++ * chain is still three explanations wide: the WR endpoint never published a
++ * format (so the propagation had nothing to hand on), the propagation ran and
++ * dropped it before the TDM sink, or the whole chain is fine and only the
++ * converter's own output default is never overwritten.  Reading the three
++ * modules we do have parameter bodies for separates them in one boot:
++ *   0x40bd WR_SHARED_MEM_EP  PARAM_ID_MEDIA_FORMAT           0x0800100c (30 B sent)
++ *   0x428f TDM_SINK          PARAM_ID_HW_EP_MF_CFG           0x08001017 (12 B sent)
++ *   0x48ba MFC               PARAM_ID_MFC_OUTPUT_MEDIA_FORMAT 0x08001024 (12 B sent)
++ * (the three names are PARAM_ID_* defines in
++ * work/sweet-audio/refs/qdsp6/ko-sound_soc_qcom_qdsp6_audioreach.h:283/626/730;
++ * the driver itself keeps using the literal ids it already sends.)
++ * The iids come from g_graph_vp_wr's own module/connection tables; the params
++ * are the ones g_audio_graph_cfg_vp() actually writes to those instances, so no
++ * new parameter id is introduced here - only the direction of the traffic.
++ *
++ * sweetmfcget: 0 nothing (default, shipped sequence unchanged) | 1 read the MFC
++ * around the sweetmfc set | 2 + post-prepare + post-start | 3 = this read set at
++ * post-start and again after the tone, on top of 1's pre-set and 2's
++ * post-prepare MFC reads.  A GET is answered or not; nothing here changes what
++ * the graph is told.
++ */
++static void
++g_apm_get_cfg_readset(uint32_t src_port, const char *phase)
++{
++	g_apm_get_cfg_dump(src_port, G_VP_WR_IID, 0x0800100cu, 72, phase);
++	g_apm_get_cfg_dump(src_port, G_VP_TDM_IID, 0x08001017u, 72, phase);
++	g_apm_get_cfg_dump(src_port, G_VP_MFC_IID, 0x08001024u, 72, phase);
++}
++
+ /*
+  * One SET_CFG carried in shared memory: the OOB form.
+  *
+@@ -7383,13 +7450,15 @@ g_apm_graph_start(uint32_t src_port, uint32_t sg_id)
+ 	 * after START splits two explanations that every round so far has lumped
+ 	 * together: "the WR's format never reached the MFC" (invalid at both points)
+ 	 * versus "the MFC was configured but something at START drops it"
+-	 * (valid here, gone later).  sweetmfcget=2 only; =1 stays read-around-the-set.
++	 * (valid here, gone later).  sweetmfcget>=2; =1 stays read-around-the-set.
++	 * 0272 made this a threshold so that =3 is a superset of =2 rather than a
++	 * mutually exclusive mode.
+ 	 */
+ 	{
+ 		int mfc_get = 0;
+ 
+ 		(void)PE_parse_boot_argn("sweetmfcget", &mfc_get, sizeof(mfc_get));
+-		if (mfc_get == 2) {
++		if (mfc_get >= 2) {
+ 			g_apm_get_cfg_dump(src_port, G_VP_MFC_IID, 0x08001024u,
+ 			    72, "post-prepare");
+ 		}
+@@ -7563,18 +7632,44 @@ g_apm_graph_bringup(void)
+ 			 * any sweetmfc set - the only reading that separates "MFC is
+ 			 * still Native at 48 kHz" from "MFC says 96 kHz and the wire
+ 			 * is silent anyway".
++			 * 0272: =3 reads WR + TDM_SINK + MFC here instead, so the
++			 * propagation is visible at every hop rather than only at its
++			 * last one.
+ 			 */
+ 			{
+ 				int mfc_get2 = 0;
+ 
+ 				(void)PE_parse_boot_argn("sweetmfcget", &mfc_get2,
+ 				    sizeof(mfc_get2));
+-				if (mfc_get2 == 2) {
++				if (mfc_get2 >= 3) {
++					g_apm_get_cfg_readset(port, "post-start");
++				} else if (mfc_get2 == 2) {
+ 					g_apm_get_cfg_dump(port, G_VP_MFC_IID,
+ 					    0x08001024u, 72, "post-start");
+ 				}
+ 			}
+ 			g_audio_tone(port, G_VP_WR_IID);
++			/*
++			 * 0272, the fourth phase: after the tone has returned, i.e.
++			 * after 120 DATA_BUFFER_V2s actually crossed the wire to
++			 * 0x40bd.  The three earlier phases all sit before any PCM
++			 * exists, so none of them can see a format that is only
++			 * derived from the first real frame - which is what a WR
++			 * endpoint does with in-band data.  If the three modules are
++			 * invalid everywhere except here, the blocker is timing and
++			 * not content; if they are invalid here too, the graph really
++			 * carries no format at all and the 18 KB cal object is back as
++			 * the suspect with register evidence behind it.
++			 */
++			{
++				int mfc_get3 = 0;
++
++				(void)PE_parse_boot_argn("sweetmfcget", &mfc_get3,
++				    sizeof(mfc_get3));
++				if (mfc_get3 >= 3) {
++					g_apm_get_cfg_readset(port, "post-tone");
++				}
++			}
+ 		} else {
+ 			printf("SWEET GLINK: vp-wr graph opened but did not start\n");
+ 			sweet_log_sync();

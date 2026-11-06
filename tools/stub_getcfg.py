@@ -130,12 +130,18 @@ sweet_log_sync(void)
 
 /* kind 0 = structured reply carrying data; 1 = structured reply whose
  * param_size is still the 72 we offered (nobody wrote); 2 = basic result;
- * 3 = nothing arrives. */
+ * 3 = nothing arrives; 4 = a NON-MFC param (0x0800100c) answering with the
+ * 30-byte body shape we ourselves send the WR, so the raw window is exercised;
+ * 5 = the same but truncated mid-body, which is the case where the length
+ * guard has to win over the param_size the module claims. */
 static void
-fake_reply(int kind, uint32_t rate)
+fake_reply(int kind, uint32_t rate, uint32_t iid, uint32_t pid)
 {
 	memset(pending, 0, sizeof(pending));
-	memset(g_rsp, 0, sizeof(g_rsp));
+	/* g_rsp is deliberately NOT cleared: only g_drain's pending_len bytes
+	 * reach it, so if the driver ever read past the reply it was handed, it
+	 * would print the PREVIOUS reply's bytes as if they had just arrived -
+	 * which is the failure mode the length guards are here to prevent. */
 	g_rsp_ready = 0;
 	g_rsp_len = 0;
 	pending_len = 0;
@@ -148,6 +154,20 @@ fake_reply(int kind, uint32_t rate)
 		pending_len = 32;
 		g_put32(pending + 24, 0x01001007u);	/* the ORIGINAL opcode */
 		g_put32(pending + 28, 0x3u);		/* AR_EUNSUPPORTED */
+	} else if (kind == 4 || kind == 5) {
+		pending_len = kind == 4 ? 44 + 30 : 56;	/* 56 = mid-body */
+		g_put32(pending + 24, 0u);
+		g_put32(pending + 28, iid);
+		g_put32(pending + 32, pid);
+		g_put32(pending + 36, 30u);		/* claims the whole body */
+		g_put32(pending + 40, 0u);
+		g_put32(pending + 44, 1u);		/* the bytes 0267 sends */
+		g_put32(pending + 48, 0x09001000u);
+		g_put32(pending + 52, 18u);
+		g_put32(pending + 56, 48000u);
+		g_put32(pending + 60, 0x00010010u);
+		g_put32(pending + 64, 0x000f0010u);
+		g_put32(pending + 68, 0x00020001u);
 	} else {
 		pending_len = kind == 0 ? 44 + 12 : 44;
 		g_put32(pending + 24, 0u);		/* overall status */
@@ -174,16 +194,22 @@ main(void)
 	    sent_hdr[4], sent_hdr[5]);
 	printf("      record{iid=%#x param=%#x size=%u err=%u}  (size = the 72-byte CAPACITY)\\n",
 	    sent_rec[0], sent_rec[1], sent_rec[2], sent_rec[3]);
-	fake_reply(0, 96000u);
+	fake_reply(0, 96000u, 0x48bau, 0x08001024u);
 	g_apm_get_cfg_dump(0x2010u, 0x48bau, 0x08001024u, 72, "got96k");
-	fake_reply(0, 48000u);
+	fake_reply(0, 48000u, 0x48bau, 0x08001024u);
 	g_apm_get_cfg_dump(0x2010u, 0x48bau, 0x08001024u, 72, "got48k");
-	fake_reply(1, 0u);
+	fake_reply(1, 0u, 0x48bau, 0x08001024u);
 	g_apm_get_cfg_dump(0x2010u, 0x48bau, 0x08001024u, 72, "size-not-written-back");
-	fake_reply(2, 0u);
+	fake_reply(2, 0u, 0x48bau, 0x08001024u);
 	g_apm_get_cfg_dump(0x2010u, 0x48bau, 0x08001024u, 72, "basic-result");
-	fake_reply(3, 0u);
+	fake_reply(3, 0u, 0x48bau, 0x08001024u);
 	g_apm_get_cfg_dump(0x2010u, 0x48bau, 0x08001024u, 72, "no-reply");
+	/* 0272: a param other than 0x08001024 must NOT be decoded as if it were
+	 * the MFC body - it is printed raw, and only up to what actually arrived. */
+	fake_reply(4, 0u, 0x40bdu, 0x0800100cu);
+	g_apm_get_cfg_dump(0x2010u, 0x40bdu, 0x0800100cu, 72, "wr-full");
+	fake_reply(5, 0u, 0x428fu, 0x08001017u);
+	g_apm_get_cfg_dump(0x2010u, 0x428fu, 0x08001017u, 72, "tdm-truncated");
 	return 0;
 }
 """
@@ -218,4 +244,8 @@ print("        got96k -> rate=96000 bw=32 nch=2 cmap=0x20001 (L,R) size=12;")
 print("        got48k -> rate=48000;")
 print("        size-not-written-back -> size=72 rate=0 (instrument reading, not a verdict);")
 print("        basic-result -> echoed_op=0x1001007 status=0x3 and NO param fields;")
-print("        no-reply -> one honest 'no response' line, never a dump of zeros.")
+print("        no-reply -> one honest 'no response' line, never a dump of zeros;")
+print("        wr-full -> RAW line (param is not 0x08001024), size=30 and")
+print("        d0=0x1 d1=0x9001000 d2=0x12 d3=0xbb80 d4=0x10010 d5=0xf0010;")
+print("        tdm-truncated -> RAW line with len=56, size=30 still claimed, but")
+print("        d3=d4=d5=0: the reply ended after d2, and the print says so.")
