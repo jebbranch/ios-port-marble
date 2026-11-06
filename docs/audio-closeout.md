@@ -5636,3 +5636,59 @@ TDM 的先例说明"写进去能原样读回来"在这套固件上是成立的�
 **风险（写明）**：K2 是本项目**第一次真的往 MFC 模块写状态**。若该模块因非法/不支持的格式内部出错，
 图的后半段可能报错——但读回与回归门都能看见，且不改图、不改时钟、不写盘；
 最坏情况是这一发的三模块读数变脏，代价一发开机，不换不可逆状态。
+
+---
+
+## 第 39 枪 K2 判决（`logs/ring-k2-mfc-set.txt`，`sweettime=1793959887`）——
+## **本项目第一次把一个模块的媒体格式写成真的、并且它一直保持**
+
+**K2-0 身份：成立。** `sweettime` 命中 2；`ring_window` `total=0x1654a == decoded`，
+**window-match True**（三条收尾 in-window=1，past-window 的 `0x184a5/0x18917/0x1e965` 仍是上一轮残留）；
+产物 `mfcget v4 `×5 / `v3`×0；9 次 GET 全部打出行（no-response 0、basic 0、unexpected 0）。
+
+**K2-1 写确实发了**：`SWEET MARK: mfc v1 sel=1 iid=0x48ba param=0x8001024 rc=0`。
+
+**K2-3 主判据 = STORED**，并且 K2-4 显示它**没有被任何后续步骤丢掉**：
+
+```
+pre-set      rate=-1    bw=32 nch=65535 size=8    (写之前：仍是初始化默认)
+post-set     rate=96000 bw=32 nch=2    size=12 cmap=0x20001   ← 我们写的 12 字节原样读回
+post-prepare rate=96000 bw=32 nch=2    size=12
+post-start   rate=96000 bw=32 nch=2    size=12
+post-tone    rate=96000 bw=32 nch=2    size=12    (120 帧 DATA_BUFFER 流过去之后依然如此)
+```
+
+仪器自身的两个对照也如期：TDM 槽仍然 `0x17700/0x30020/0x1`；WR 槽仍然 `st=0x1 err=1 size=72`
+（K1 已证明这个模块不答这个 GET，**两向都不算证据**）。
+
+**K2-6 回归：与 K1 逐项等值**（`graph_open/prepare/start … status=0`、`tone gain g=6 peak=6144`、
+`pcm tone done (120 buffers)`、`data_buffer send` 121、`no rsp` 0、panic 0、`cba2r@…=0x1`、
+`ats1pr … par=0 OK`、`geni amp 0x34 r=0 id=0x2032`、`shm mapped … mode=offset`（腾字节的
+证人替代已兑现）、三条 `not sent`、`===== done =====`/`PSCI SYSTEM_RESET` 在窗口内）。
+
+**这一枪关掉的轴**：
+- "**START 时会重置转换级**"这个候选当场死（post-prepare / post-start / post-tone 三处都是 96000）。
+- 预登记的 NOT STORED / UNCHANGED 两条都没命中，所以 **0x08001024 在 0x48ba 上是可写、可存、可读的**，
+  iid 也没选错。
+- 公开 API 里**没有 MFC 输入格式参数**：`0x08001023` 在他核两个公开版本里都不存在
+  （`docs/data/audioreach-graph-format-2026-11-06.md:230` 已撤回过），
+  所以输入侧只能靠传播，读不到；本轮之后"读 MFC 输入"这条路**不值得再花一发**。
+
+**还欠的、也是唯一还没拿的**：**耳朵**。判决表里 K2-5 是次判据，但这一枪之后它的权重变了——
+以前"无声"发生在**一个从未被喂过格式的转换级**上，现在发生在**一个已经带有效输出格式、
+并且格式在 START 和 120 帧之后都还在的转换级**上。同样一行"没听到"，
+从这一枪之后含义完全不同。
+
+## 第 40 枪 K3：**同一份产物重放**，唯一变量是人耳
+
+K2 的产物已经判过寄存器部分，`images/k2-mfc-set.img` 一个字节都不用变：
+**重放同一镜像，人在手机旁边听**。`sweetvol=6` = **−14.5 dBFS**（用户定的上限），120 帧。
+
+| 观察 | 结论 | 下一枪 |
+|---|---|---|
+| 听到（任何声音，含噪声/杂音） | 转换级就是那个卡点，音频"有没有输出"轴关闭 | 转音质/采样率匹配（先比对 `g_audio_tone` 生成的 PCM 速率与 WR 声明的 48000） |
+| 仍然完全无声 | **带有效格式的转换级 + 全绿控制面 + 120 帧 = 仍然无声** ⇒ 格式内容轴（输出侧）到此关闭，剩余嫌疑集中在 WR 声明的位宽（我们 16/Q15 vs 厂商 24/Q23，§15）与端点之后的物理层 | `sweetwrmf=2`（发厂商逐字 24/Q23 四字节）——**需要 0273**（现在 `sweetwrmf` 只有 0/1 语义：`rc = wrmf ? set_cfg(…) : 0`），不占本发 |
+
+风险：重放同一产物不引入任何新变量，`sweettime` 会变（新时间戳 ⇒ 新 cmdline ⇒ 重新打包；
+若要保持字节全同，就用同一份镜像直接 `fastboot boot`，`sweettime` 不变，
+身份改用 `ring_window` 的 seq + 本轮 9 行读数确认）。
