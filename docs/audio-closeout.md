@@ -5527,3 +5527,29 @@ sweettdmvendor=7 17  sweetmfcget=2 14  sweettime=xxxxxxxxxx 21
 
 ⇒ 腾出 `sweetshmflag=4` 之后：582 − 15 = 567，A 行的 `sweetmfc=1` = **578 ✓**，
 将来 `sweetwrmf=2`（+11）同一算法也放得下。K1 本身不动预算。
+
+### K1 开机前快照（真实产物；第 38 枪 / 预算 120）
+
+内核 `out/kernel.adsp` sha256 `a94454809af0e9f0…`，18:01 取回，
+`EXPECT_MARKER="SWEET MARK: mfcget v4 "` 过门（CI 构建 `af240bc`；重试 1 次是因为当时
+release 里还是 0271 的 `f0f353ba…`，被 marker 正确拒掉——这条正是"摘要可能是旧的"的那道门）。
+**取回后在 `out/kernel.adsp` 上直接查标记**：`mfcget v4 `×**5**、`v3 `×**0**、`v2 `×**0**、`v1 `×**0**
+⇒ 这就是 0272；另有 `mfc v1 sel=`×2、`tdmcfg v1 sup=`×1、`tdmclk v2 late `×1、`cccfg v3 `×6。
+
+产物 `images/k1-3module.img`（由已过门的 `out/kernel.adsp` 现打包，cp 前先验过新产物里
+`sweettime=1793959323`×1）：cmdline 实测 **582 B**（与 J1 同长，本轮只把末位 `2` 换成 `3`，
+字节预算算过：`sweetmfcget=3` 仍是 14 B），尾部
+`… sweetvol=6 sweettdmvendor=7 sweetmfcget=3 sweettime=1793959323` 连续；
+镜像内 `mfcget v4 `×**5** / `v3`/`v2`/`v1`×**0**；
+cmdline 内 `sweetmfc=` ×**0** ⇒ **单变量成立：这一枪只读，不发任何 SET_CFG**；
+`sweetvol=6`、`sweettdmvendor=7`、`sweetbufs=120` 各 ×1。
+
+**打包命令（原样可复现）**：
+`D22AP_ADT=…/work/xnu/research/ipsw-x/d22ap.adt ./scripts/mkimage.sh sweetbufs=120 sweetpcm=1
+sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetnolpass=1 sweetshmhi=1 sweetshmflag=4
+sweets1ap=3 sweetampfirst=1 sweetvol=6 sweettdmvendor=7 sweetmfcget=3`
+（**不带 `CPUS=8`**：J1 产物里是 `cpus=1`，本轮要与它逐字同形；`GPU_PROBE_LEVEL` 已不是
+`mkimage.sh` 的变量，文档里那几处是历史记录。）
+
+打分：`./tools/score_k1.py logs/ring-k1-3module.txt 1793959323 images/k1-3module.img`
+判读以本文件"K1 判决表"为准，表外形状照实报告，不改名。
