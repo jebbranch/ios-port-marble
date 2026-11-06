@@ -264,3 +264,20 @@ mfcget v2 no-reply no response pkt=128
 ```
 `tools/ci_replay.sh`：`applied=211 / skipped=49`，`OK: CI post-image == chain-tree HEAD`。
 **编号提醒**：0270 已用于音频 ⇒ GPU PR 的重编号目标再顺延为 **0271/0272/0273**。
+
+## 13. 更正：第 11(d) 节里"SAL 对 0x0800100C 返回 EUNSUPPORTED"**不是我们的观测**
+
+我写那一节时把它当作"我们此前观察到"的事来转述——**错了，那是外部答案里的前提**。
+回我们自己的证据查：
+
+- 归档 ring 里**没有任何** `cdma/mf_cfg` / `sal/output_cfg` / `sal/mf` 行
+  （`grep -l 'sal/mf' logs/ring-*.txt` 与 `grep -rl 'apm/mf48|sal/mf|mf_cfg' logs/ring-*.txt` 都是 0 命中）。
+- 原因在代码里：那些发送在 `g_audio_graph_cfg()`（`sweet_glink.c:6662`），
+  只有 **CODEC_DMA 那两条图路径**才会调用它（`:7619`、`:7639`）；
+  我们实际开的 `vp-wr` 走的是 `g_audio_graph_cfg_vp()`，两回事。
+- 我们在带内被拒过的记录只有 `vp/cfg_40bf / 40c0 / 40c8 / 4165`（`status=0x1`，见 `ring-vcfg2.txt`），
+  那是**厂商的实例 id 不在我们图里**，与 SAL 无关。
+
+⇒ 结论：**"SAL 不吃 `0x0800100C`" 在我们这里既没有被证实也没有被否证**，它不该出现在判据或推理链里。
+对 J1 没有影响（J1 读的是 MFC `0x48ba`，与 SAL 无关），但这条要立个规矩：
+**外部答案里的前提，凡我没在我们 ring/源码里核过的，一律先标"外部前提"再引用**（这次是核过之后发现自己转述成了"我们观察到"）。
