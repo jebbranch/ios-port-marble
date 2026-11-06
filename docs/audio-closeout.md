@@ -5324,3 +5324,14 @@ J1 其余条件沿用 H1 的绿基线：`sweettdmvendor=7 sweetvol=6 sweetbufs=1
 | | 无回包 / `hop!=0x2001000` / `w9` 仍是 72 | ⇒ GET 形状或该模块的 get 能力不对，**这是仪器读数，不是负结果**；先换 `sweetmfc=1`（J2）拿写侧的 rc 再定 |
 | J1-2 回归 | 与 H1 逐项等值：`graph_start status=0`、`tone gain g=6`、`pcm tone done (120 buffers)`、`data_buffer send`≈121、`no rsp` 0、panic 0、收尾两行在窗口内、控制面四绿行、三条 `not sent` 仍在 | 等值 | 不齐 ⇒ 不判 |
 字节预算：H1 569 − ` sweettdmclk=2`? （H1 没有该参数）+ ` sweetmfcget=2`(14) = **583 预测**，本轮实测填死。
+
+### J1 判据修订（**开机前**，0270 替换 0269 的解析；J1 仍未打过）
+- 镜像 marker 门：`mfcget v2 `×1（`mfcget v1 ` 已不存在 ⇒ 若产物里还是 v1，说明取到的是 0269 内核，**不许开机**）。
+- J1-1 的取值改成"看应答的 opcode 分支"：
+  `get_cfg … rate=` 行 ⇒ 有结构化应答，`rate` 就是 MFC 当前输出采样率（48000/96000 两个结局同前）；
+  `basic … echoed_op=0x1001007 status=0xN` ⇒ 请求没进结构化路径（路由/头/映射/应答分配层失败），
+  **这是仪器故障**，不是"MFC 不支持 Get"；
+  `get_cfg … size=72 rate=0` ⇒ 应答结构对了但**没人写回来** ⇒ 该模块的 Get 能力/容器转发有问题，
+  同样不算 MFC 的负结果；
+  `no response` ⇒ 传输层无应答，按仪器故障处理。
+- 其余回归项不变。

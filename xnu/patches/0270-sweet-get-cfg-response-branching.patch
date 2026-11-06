@@ -1,0 +1,127 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 54315fb..e1222a2 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5474,10 +5474,13 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+  * real current output format rather than an echo of whatever we last sent, so a
+  * single GET distinguishes "still Native at 48 kHz" from "already 96 kHz".
+  *
+- * g_apm_cmd() parses every reply as a basic response, so on this opcode the
+- * "status=" it prints is really the echoed instance id - the dump below is the
+- * authority, and it prints the raw word window so nothing about the reply
+- * layout is assumed.  Expected public layout after the 24-byte GPR header:
++ * 0270 rewrote this to send the command itself and to branch on the reply's own
++ * opcode.  Reason: the first version reused g_apm_cmd(), which parses every
++ * reply as a basic response - for a structured GET_CFG reply (0x02001000) that
++ * reads the echoed instance id as "status", so a perfectly good answer would
++ * have looked like an error, and a basic result (0x02001005) would have had its
++ * ORIGINAL OPCODE printed as our status.
++ * Expected public layout of the structured reply after the 24-byte GPR header:
+  *   w6 status | w7 iid | w8 param | w9 param_size | w10 error_code | w11 data
+  * which puts sampling_rate at absolute +44 (w11) for param 0x08001024.
+  */
+@@ -5485,25 +5488,89 @@ static void
+ g_apm_get_cfg_dump(uint32_t src_port, uint32_t iid, uint32_t pid,
+     uint32_t bufsize, const char *phase)
+ {
+-	uint8_t pl[16 + 72];
+-	uint32_t plen;
++	uint8_t pkt[24 + 16 + 16 + 72];
+ 	uint32_t bs = bufsize > 72 ? 72 : bufsize;
++	uint32_t plen = (16 + bs + 7u) & ~7u;
++	uint32_t pkt_size = 24 + 16 + plen;
++	uint32_t rsp;
++
++	/* 0270: build and send the GET ourselves.  Routing a GET_CFG reply
++	 * through g_apm_cmd() was wrong: that helper parses every reply as a
++	 * basic response, so with the structured GET_CFG reply its "status=" field
++	 * is really the echoed module instance id (0x48ba, never zero) and the
++	 * function would report success as failure.  Branch on the GPR packet's own
++	 * opcode instead - 0x02001000 is the structured answer, 0x02001005 is a
++	 * basic result whose first payload DWORD is the ORIGINAL command opcode,
++	 * and the two must never be read with the same offsets. */
++	if (plen > sizeof(pkt) - 40) {
++		return;
++	}
++	memset(pkt, 0, sizeof(pkt));
++	g_put32(pkt + 0, (6u << 4) | (pkt_size << 8));
++	g_put32(pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
++	g_put32(pkt + 8, src_port);
++	g_put32(pkt + 12, iid);	/* one record -> dst is the module itself */
++	g_put32(pkt + 16, 0x100u + APM_CMD_GET_CFG);
++	g_put32(pkt + 20, APM_CMD_GET_CFG);
++	g_put32(pkt + 24 + 0, 0);	/* payload_address_lsw (in-band) */
++	g_put32(pkt + 24 + 4, 0);	/* payload_address_msw */
++	g_put32(pkt + 24 + 8, 0);	/* mem_map_handle */
++	g_put32(pkt + 24 + 12, plen);	/* payload_size = record + capacity */
++	g_put32(pkt + 40 + 0, iid);
++	g_put32(pkt + 40 + 4, pid);
++	g_put32(pkt + 40 + 8, bs);	/* capacity offered, NOT a payload length */
++	g_put32(pkt + 40 + 12, 0);
+ 
+-	memset(pl, 0, sizeof(pl));
+-	g_put32(pl + 0, iid);
+-	g_put32(pl + 4, pid);
+-	g_put32(pl + 8, bs);	/* capacity we offer, not a payload length */
+-	plen = (16 + bs + 7u) & ~7u;
+-	(void)g_apm_cmd(src_port, iid, pl, plen, APM_CMD_GET_CFG, "get_cfg");
+-
+-	printf("SWEET MARK: mfcget v1 %s raw:", phase);
+-	if (g_rsp_ready) {
+-		for (uint32_t k = 5; k < 14 && (k + 1) * 4 <= g_rsp_len; k++) {
+-			printf(" w%u=%#x", k, g_le32(g_rsp + k * 4));
++	g_rsp_ready = 0;
++	g_rsp_len = 0;
++	g_send_gpr(pkt, pkt_size);
++	for (unsigned i = 0; i < 5000u; i += 5u) {
++		g_drain(0);
++		if (g_rsp_ready) {
++			break;
+ 		}
+-		printf(" len=%u\n", g_rsp_len);
++		g_wait(5);
++	}
++	if (!g_rsp_ready) {
++		printf("SWEET MARK: mfcget v2 %s no response pkt=%u\n", phase,
++		    pkt_size);
++		sweet_log_sync();
++		return;
++	}
++	rsp = g_le32(g_rsp + 20);	/* the reply's OWN opcode, not our guess */
++	if (rsp == APM_CMD_RSP_GET_CFG) {
++		uint32_t st = g_le32(g_rsp + 24);
++		uint32_t riid = g_le32(g_rsp + 28);
++		uint32_t rpid = g_le32(g_rsp + 32);
++		uint32_t rsz = g_le32(g_rsp + 36);
++		uint32_t rerr = g_le32(g_rsp + 40);
++		int32_t rate = 0;
++		uint32_t bwnch = 0;
++		uint32_t cmap = 0;
++
++		/* size came BACK from the module: 72 -> the real length means it
++		 * wrote; staying 72 or 0 means nothing was returned, which is an
++		 * instrument reading and never a negative result about the MFC. */
++		if (rsz >= 4 && 48 <= g_rsp_len) {
++			rate = (int32_t)g_le32(g_rsp + 44);
++		}
++		if (rsz >= 8 && 52 <= g_rsp_len) {
++			bwnch = g_le32(g_rsp + 48);
++		}
++		if (rsz >= 12 && 56 <= g_rsp_len) {
++			cmap = g_le32(g_rsp + 52);
++		}
++		printf("SWEET MARK: mfcget v2 %s get_cfg len=%u st=%#x iid=%#x "
++		    "param=%#x size=%u err=%u rate=%d bw=%u nch=%u cmap=%#x\n",
++		    phase, g_rsp_len, st, riid, rpid, rsz, rerr, rate,
++		    (unsigned)(bwnch & 0xffffu), (unsigned)(bwnch >> 16), cmap);
++	} else if (rsp == 0x02001005u) {
++		printf("SWEET MARK: mfcget v2 %s basic len=%u echoed_op=%#x status=%#x\n",
++		    phase, g_rsp_len, g_le32(g_rsp + 24), g_le32(g_rsp + 28));
+ 	} else {
+-		printf(" no response\n");
++		printf("SWEET MARK: mfcget v2 %s unexpected rsp=%#x len=%u w6=%#x w7=%#x\n",
++		    phase, rsp, g_rsp_len, g_le32(g_rsp + 24),
++		    g_le32(g_rsp + 28));
+ 	}
+ 	sweet_log_sync();
+ }

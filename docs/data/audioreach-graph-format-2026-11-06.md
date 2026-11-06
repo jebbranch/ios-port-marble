@@ -202,3 +202,65 @@ stub 自己也错过一次（把记录字段按 16 字节步进去读，`param` 
 `sweetmfcget=1` 在 set 之前与之后各读一次；`=2` 再加一次**在 PREPARE/START 之后**（格式传播完）；
 默认 0 一个字节都不发。
 **注意编号**：0269 已被音频占用 ⇒ GPU PR 若要落库，重编号目标改为 **0270/0271/0272**（任务 #37 已相应改写）。
+
+## 11. 第三轮外部答案：核对结果与 0270
+
+**（a）最重要的一条自我更正：0269 的应答解析是错的，且错在"会把好答案读成失败"。**
+0269 让 `g_apm_cmd()` 代发 GET_CFG，而那个 helper **把每一封应答都当 basic response 解析**
+（`status = g_le32(g_rsp+28)`）。对结构化应答 `0x02001000` 来说 `+28` 是**回显的 module iid**（=0x48ba≠0），
+于是**一次完全成功的读回会被判成 rc=-1**；对 basic result `0x02001005` 来说 `+24` 是**原命令 opcode**，
+会被当成 status 打印。⇒ **0270 改成自己发包 + 按应答自己的 opcode 分支**，
+marker 由 `mfcget v1 ` 升为 `mfcget v2 `（workflow 同步）。
+
+**（b）他还给了一层我没写进去的区别，值得记：模块"不支持 Get" ≠ 一定收到 Basic Result。**
+公开容器实现对 GET_CFG 会调模块 `get_param`，把结果写进该记录的 `error_code`、
+把累计结果写进 `0x02001000` 的整体 `status`；只有请求在**进入结构化处理之前**失败
+（路由/命令头/映射/应答分配）才走 `__gpr_end_command()` 发 Basic Result。
+⇒ 我们的分支必须区分四件事：应答 opcode、整体 status、记录 `error_code`、实际应答长度——
+**0270 四件都打印**。
+
+**（c）in-band 与 OOB 的读偏移不同（我们只用 in-band）。**
+公开容器对 OOB GET_CFG 只回 4 字节的 `status`，参数记录留在共享内存里；
+in-band 才是 `status + 记录 + 数据`。我们的 GET 是 in-band（记录 16 + 容量 72，`payload_size=88`），
+所以 `sampling_rate` 在绝对 `+44`。**若哪天改 OOB，绝不能在应答包 `+4` 处找 iid。**
+
+**（d）输入媒体格式：这一格关掉，别再发。**
+公开 MFC 实现里输入格式是经 **SPF 的媒体格式传播 → `CAPI_INPUT_MEDIA_FORMAT_V2`**（CAPI 属性，**不是 APM param_id**）
+进入模块的，客户端不需要也不应该再对 MFC 发一封 `0x0800100C`；
+`0x08001023` 在他核的两个公开版本里**根本不存在**（我上一轮把它当候选问出去，是错的，撤回）。
+他的 `handle_input_media_fmt()` 片段也把默认语义钉死了：
+`if (PARAM_VAL_NATIVE == configured_media_fmt->sampling_rate) out->sampling_rate = in->sampling_rate;`
+⇒ "从没下发输出格式 ⇒ MFC 输出就是 Native（跟输入 48k）"这条从推测变成有源码路径的推断。
+**但注意他给的反向提醒**：我们观察到 SAL 对 `0x0800100C` 直接 SET_CFG 被拒，
+那**只说明 SAL 不吃这个 APM 参数**，**不能**推出 SAL 不通过 CAPI 框架向下传播格式——
+所以"MFC 到底收到没有 48k 输入"仍未测，只能由 J1 的读回去回答。
+
+**（e）channel_type 枚举：可用，但两代公开定义不同。**
+`PCM_CHANNEL_L=1 … PCM_CHANNEL_R=2 … PCM_MAX_CHANNEL_MAP=63`（GraphServices `558ddfc2`，35–47 未定义，48–63 自定义）；
+Engine `5773bf8` 扩到 `…_V2 = 128`。⇒ **不得**用公开头断言 SM7475 固件用哪一版；
+我们那条 MFC 输出记录里的 `cmap={1,2}` 与 `nch=2` 自洽（L,R），这就够了。
+另外他纠正的用法要记：`MUX_DEMUX_CONFIG` 里的 `input_channel_index/output_channel_index`
+是**位置序号**，不是 `PCM_CHANNEL_*`；只有 `OUT_FORMAT` 的 `channel_type[]` 才是声道语义。
+⇒ 想解释 TDM 那 3 个 active slot，必须同时看 `0x4006` 的两段 + TDM 自己的格式与 slot_mask，
+单看 `slot_mask=7` 推不出对应哪三个通道。
+（我们自己的普查仍然成立：**厂商没有任何一封 SET_CFG 指向 `0x4006`**，
+所以"厂商给 MUX_DEMUX 下发过配置"目前**无证据**，别当既有事实。）
+
+## 12. 0270 的宿主机证据（真编译真跑，`tools/stub_getcfg.py`）
+
+stub 特意把应答做成 **pending → `g_drain()` 投递**，这样能测到函数自己的
+"发之前先清 `g_rsp_ready`"——旧写法若在 `fake_reply` 里直接置 ready，
+就会被函数清掉，**五次读回全部打印 no response**，看着像代码坏了，其实先错的是 stub。
+（另一次 stub 自己的错：把记录字段按 16 字节步进读，`param` 显示成 0。）
+
+```
+sent: pkt_size=128 hdr{ver+len=0x8060 dom=0x302 src=0x2010 dst=0x48ba tok=0x1001107 op=0x1001007}
+      record{iid=0x48ba param=0x8001024 size=72(CAPACITY) err=0}
+mfcget v2 got96k   get_cfg len=56 st=0 iid=0x48ba param=0x8001024 size=12 err=0 rate=96000 bw=32 nch=2 cmap=0x20001
+mfcget v2 got48k   get_cfg … size=12 err=0 rate=48000 bw=32 nch=2 cmap=0x20001
+mfcget v2 size-not-written-back get_cfg len=44 … size=72 err=0 rate=0 bw=0 nch=0 cmap=0
+mfcget v2 basic-result basic len=32 echoed_op=0x1001007 status=0x3
+mfcget v2 no-reply no response pkt=128
+```
+`tools/ci_replay.sh`：`applied=211 / skipped=49`，`OK: CI post-image == chain-tree HEAD`。
+**编号提醒**：0270 已用于音频 ⇒ GPU PR 的重编号目标再顺延为 **0271/0272/0273**。
