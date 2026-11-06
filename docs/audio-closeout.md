@@ -5302,3 +5302,25 @@ rec2 {iid=0x40c8, param=0x08001024, size=12, err=0, data={0x00017700(96000), 0x0
 | **G1-1 主判据（三读）** | ① `rc=0` 且**听到** ⇒ MFC 输出格式就是缺失的那一环，下一步把厂商的 48k/96k 成对结构补全（`sel=3`）并讨论音质；② `rc=0` 且**仍无声** ⇒ "配置我们自己的 MFC"这一格关闭，**只剩改图**（加 PCM_CNV/PCM_DEC 实例或补流子图）；③ **`rc!=0`** ⇒ 这个 iid 不吃这个 param（配对规则在我们自己模块上也成立），同样是实质读数 | 见左 | 三种都有信息，不依赖成功 |
 | G1-2 回归 | `tone gain g=6`、`graph_start status=0`、`pcm tone done (120 buffers)`、`data_buffer send`≈121、`no rsp` 0、panic 0、`===== done =====`/`PSCI SYSTEM_RESET` 在窗口内、`tdmcfg v1 sup=7` 三行 not sent 仍在、控制面四绿行 | 等值 | 不齐 ⇒ 不判 |
 预算：H1 实测 569 − `sweetvol=31`+`sweetvol=6`（−1）+ ` sweetmfc=1`（+12）= **预测 580，本轮实测填死**。
+
+## 轮次重排（开机前，G1 未打过 ⇒ 不是事后改表）
+
+0269（GET_CFG 读回）落库后，下一枪从 G1 改为 **J1**：
+
+| 枪 | 参数 | 为什么先看它 |
+|---|---|---|
+| **J1（第 37 枪）= 只读** | `sweetmfcget=2`（不发 set，`sweetmfc` 保持 0） | GET 不改模块状态；一次开机直接拿到 **MFC 此刻真实输出速率**（post-start 那次尤其关键）。读数就分胜负：`48000/16` ⇒ "MFC 还停在 Native"被**寄存器**支持；`96000/32` ⇒ MFC 这条轴当场关掉，不必再花耳朵 |
+| **J2 = 设 + 重读** | `sweetmfcget=2 sweetmfc=1` | 同一次开机里 pre-set/post-set/post-start 三个读数互为对照，"设了以后变没变"不再依赖开机间比较 |
+| G1（表已提交，**未打过**） | `sweetmfc=1` 单变量 | 降级为 J2 的备选形状；它仍然只动一个变量，但少了读回，信息量低于 J1 |
+
+J1 其余条件沿用 H1 的绿基线：`sweettdmvendor=7 sweetvol=6 sweetbufs=120`（−14.5 dBFS、看门狗上限内），
+`sweetmfc=0`（不发 set）。**判据（开机前写死）**：
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| J1-0 身份 | 镜像内 `mfcget v1 `×1、`mfc v1 sel=`×2；ring `sweettime=<本轮>` 命中 + 窗口吻合；运行期 `mfcget v1 pre-set raw:`、`mfcget v1 post-start raw:` 各恰 1 行，且**没有** `mfc v1 sel=` 行（`=0` 不发） | 全成立 | 只发了读，没发写 |
+| **J1-1 主判据** | `post-start` 那行的 `w11`（预期采样率）与 `w9`（预期实际返回长度，若从 72 变小即"模块真的写了回来"） | `w11=0xbb80`(48000) | MFC 仍在 Native/输入速率 ⇒ 速率不匹配由寄存器成立，G1/J2 的"设 96k"就是对症；且这是**不依赖耳朵**的第一条音频机制读数 |
+| | `w11=0x17700`(96000) | ⇒ MFC 已经在出 96k，这一轴当场关掉，回到"线上有没有时钟/功放有没有供电" |
+| | 无回包 / `hop!=0x2001000` / `w9` 仍是 72 | ⇒ GET 形状或该模块的 get 能力不对，**这是仪器读数，不是负结果**；先换 `sweetmfc=1`（J2）拿写侧的 rc 再定 |
+| J1-2 回归 | 与 H1 逐项等值：`graph_start status=0`、`tone gain g=6`、`pcm tone done (120 buffers)`、`data_buffer send`≈121、`no rsp` 0、panic 0、收尾两行在窗口内、控制面四绿行、三条 `not sent` 仍在 | 等值 | 不齐 ⇒ 不判 |
+字节预算：H1 569 − ` sweettdmclk=2`? （H1 没有该参数）+ ` sweetmfcget=2`(14) = **583 预测**，本轮实测填死。

@@ -1,0 +1,124 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 5ba50e4..54315fb 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -2559,6 +2559,17 @@ static const uint32_t g_ukee_current_sgs[4] = {
+ #define APM_CMD_GRAPH_PREPARE               0x01001001u
+ #define APM_CMD_GRAPH_START                 0x01001002u
+ #define APM_CMD_SET_CFG                     0x01001006u
++/*
++ * 0269: the read side of the same door.  APM_CMD_GET_CFG asks a module for the
++ * value it is *currently* using, and the public MFC get_param returns the real
++ * output format (out_media_fmt[port].format), not an echo of what we last sent.
++ * That turns "is the MFC actually producing 96 kHz" from an ear reading into a
++ * number in the ring.  Note the negative: apm_api.h has no APM_CMD_GET_DATA and
++ * no 0x01001011 - my own earlier decode script labelled that opcode GET_DATA,
++ * and that label was a guess, so nothing here may lean on it.
++ */
++#define APM_CMD_GET_CFG                     0x01001007u
++#define APM_CMD_RSP_GET_CFG                 0x02001000u
+ #define APM_CMD_SHARED_MEM_MAP_REGIONS      0x0100100Cu
+ #define APM_PARAM_ID_SUB_GRAPH_LIST         0x08001005u
+ #define APM_GRAPH_SG_ID                     0xb000013du
+@@ -5452,6 +5463,51 @@ g_apm_set_cfg(uint32_t src_port, uint32_t mod_iid, uint32_t pid,
+ 	return g_apm_cmd(src_port, mod_iid, pl, plen, APM_CMD_SET_CFG, what);
+ }
+ 
++/*
++ * 0269: read one parameter back from one module - APM_CMD_GET_CFG.
++ *
++ * Why this exists: every reading so far about the MFC was indirect.  H1 proved
++ * removing our three invented TDM params changes nothing, the vendor's own
++ * traffic never names our MFC instance 0x48ba, and the ear said "silent" at the
++ * clamp maximum - none of that says what rate the MFC is actually emitting.
++ * The public MFC get_param returns out_media_fmt[port].format, i.e. the module's
++ * real current output format rather than an echo of whatever we last sent, so a
++ * single GET distinguishes "still Native at 48 kHz" from "already 96 kHz".
++ *
++ * g_apm_cmd() parses every reply as a basic response, so on this opcode the
++ * "status=" it prints is really the echoed instance id - the dump below is the
++ * authority, and it prints the raw word window so nothing about the reply
++ * layout is assumed.  Expected public layout after the 24-byte GPR header:
++ *   w6 status | w7 iid | w8 param | w9 param_size | w10 error_code | w11 data
++ * which puts sampling_rate at absolute +44 (w11) for param 0x08001024.
++ */
++static void
++g_apm_get_cfg_dump(uint32_t src_port, uint32_t iid, uint32_t pid,
++    uint32_t bufsize, const char *phase)
++{
++	uint8_t pl[16 + 72];
++	uint32_t plen;
++	uint32_t bs = bufsize > 72 ? 72 : bufsize;
++
++	memset(pl, 0, sizeof(pl));
++	g_put32(pl + 0, iid);
++	g_put32(pl + 4, pid);
++	g_put32(pl + 8, bs);	/* capacity we offer, not a payload length */
++	plen = (16 + bs + 7u) & ~7u;
++	(void)g_apm_cmd(src_port, iid, pl, plen, APM_CMD_GET_CFG, "get_cfg");
++
++	printf("SWEET MARK: mfcget v1 %s raw:", phase);
++	if (g_rsp_ready) {
++		for (uint32_t k = 5; k < 14 && (k + 1) * 4 <= g_rsp_len; k++) {
++			printf(" w%u=%#x", k, g_le32(g_rsp + k * 4));
++		}
++		printf(" len=%u\n", g_rsp_len);
++	} else {
++		printf(" no response\n");
++	}
++	sweet_log_sync();
++}
++
+ /*
+  * One SET_CFG carried in shared memory: the OOB form.
+  *
+@@ -7027,8 +7083,14 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 	 */
+ 	{
+ 		int mfc_sel = 0;
++		int mfc_get = 0;
+ 
+ 		(void)PE_parse_boot_argn("sweetmfc", &mfc_sel, sizeof(mfc_sel));
++		(void)PE_parse_boot_argn("sweetmfcget", &mfc_get, sizeof(mfc_get));
++		if (mfc_get != 0) {
++			g_apm_get_cfg_dump(src_port, G_VP_MFC_IID, 0x08001024u,
++			    72, "pre-set");
++		}
+ 		if (mfc_sel != 0) {
+ 			static const uint32_t mfc_out[3] = {
+ 				0x00017700u, 0x00020020u, 0x00020001u
+@@ -7087,6 +7149,10 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 				    mfc_sel, G_VP_MFC_IID, 0x08001024u, mfc_rc);
+ 				sweet_log_sync();
+ 			}
++			if (mfc_get != 0) {
++				g_apm_get_cfg_dump(src_port, G_VP_MFC_IID,
++				    0x08001024u, 72, "post-set");
++			}
+ 		}
+ 	}
+ 
+@@ -7405,6 +7471,23 @@ g_apm_graph_bringup(void)
+ 					sweet_log_sync();
+ 				}
+ 			}
++			/*
++			 * 0269: sweetmfcget=2 asks the MFC what it is emitting now,
++			 * after PREPARE/START have propagated media formats and after
++			 * any sweetmfc set - the only reading that separates "MFC is
++			 * still Native at 48 kHz" from "MFC says 96 kHz and the wire
++			 * is silent anyway".
++			 */
++			{
++				int mfc_get2 = 0;
++
++				(void)PE_parse_boot_argn("sweetmfcget", &mfc_get2,
++				    sizeof(mfc_get2));
++				if (mfc_get2 == 2) {
++					g_apm_get_cfg_dump(port, G_VP_MFC_IID,
++					    0x08001024u, 72, "post-start");
++				}
++			}
+ 			g_audio_tone(port, G_VP_WR_IID);
+ 		} else {
+ 			printf("SWEET GLINK: vp-wr graph opened but did not start\n");

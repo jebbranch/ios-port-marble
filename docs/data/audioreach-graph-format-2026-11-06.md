@@ -148,3 +148,57 @@ slot_mask=7, nslots_per_frame=4, slot_width=32, sync_mode=0(short), invert=0, sy
 0x07001032 SPR / 0x07001098 MUX_DEMUX / 0x10013D01 AWDSP_RX` 在本地 ASoC 头里 **grep 不到**（已核：`No matches found`）
 ⇒ 只算外部命名，读数据时不许当证据。注意 `0x0700101b`（模块 VOL_CTRL）与 `0x0800101b`（参数 TDM_INTF_CFG）
 是两个命名空间，别写串。
+
+## 9. 第二轮 GPT 答案：核对结果、一处自我更正、以及它没意识到的事
+
+**（a）它引用我们仓库的那句话是真的，而且它问的问题我们已经答过自己了。**
+`g_graph_vp_wr` 的头注释（链树 `:1986-1991`）原文就是：
+> Vendor device graph 0xb0000002 with a WR_SHARED_MEM_EP (0x07001000, iid 0x40bd) prepended and
+> wired to SAL input port 2. **The vendor does this with a second (stream) subgraph and a
+> cross-graph connection; a single merged subgraph avoids having to open and bind two graphs.**
+
+⇒ 所以"单图 vs 双图"这一格**不是新信息**：我们的图从设计上就是"把 WR 塞进设备子图"的合并方案。
+GPT 的判断（可以先试合并单图）**与我们的设计意图一致**；他补的那句限制才是有价值的：
+这只回答"数据通路是否自包含"，**不等于**证明单图能出正确波形。
+（顺带：同一注释还写了我们的模块/端口/连接取自厂商 stream 图 **`0xb00000d6`** 的 dump——
+这个 sg id 与 vendor4 里那四个（`0xb0000002/81/24/23`）**不是一个来源**，别混用。）
+
+**（b）我自己的一处猜测必须收回。** GPT 说他在公开 `apm_api.h` 里找不到 `APM_CMD_GET_DATA`
+/`apm_cmd_get_data_t`/`apm_param_id_gdr_t`，也没有 `0x01001011`。核对：我们源码里
+`APM_CMD_*` 定义只有 `0x01001000/01/02/06/0C` + `0x0400100A`/`0x05001004`，**从来没有 0x01001011**；
+那个"GET_DATA = 0x01001011"的标签来自**我自己某次解包脚本里写的一张 NAMES 猜测表**，
+它后来被我当成"已知名字"引用过。⇒ **作废**，任何判据/文档不得再引用它。
+采用的公开值是 `APM_CMD_GET_CFG = 0x01001007`、`APM_CMD_RSP_GET_CFG = 0x02001000`
+（已在 `:2562` 附近定义，且 0269 的包型由宿主机 stub 实测过）。
+
+**（c）MUX_DEMUX 的参数 id 是外部-only，且他给的一条否证很有用。**
+`PARAM_ID_MUX_DEMUX_CONFIG = 0x080011BD`（`{num_connections}` + 每条 16 B
+`{in_port, in_chan, out_port, out_chan}`）、`PARAM_ID_MUX_DEMUX_OUT_FORMAT = 0x080011BE`
+（每配置固定 12 B：`{out_port, bits_per_sample(u16), q_factor(u16), num_channels(u32)}` + `channel_type[]`）。
+本地 ASoC 头里**grep 不到这两个号** ⇒ 只当外部命名，等真发/真读回再升格。
+他点出的要害：**MUX_DEMUX 的输出格式里没有采样率字段** ⇒ 它能解释声道重排，
+**不能**解释 48k→96k，所以速率问题只能回到 MFC。
+（我们自己的普查补充：厂商抓包里**没有任何一封 SET_CFG 指向 `0x4006`**，
+所以"厂商给 MUX_DEMUX 下发过配置"目前**没有证据**，不能当既有事实引用。）
+
+**（d）GET_CFG 的两个坑，第二个我们以前踩过同类。**
+`param_size` 必须填**缓冲区容量**（容器把它当 `max_data_len` 传给模块，之后用实际长度写回），
+填 0 就什么都读不到；响应里 `param_size` 会**从 72 变成实际返回长度**——这正好是
+"N1 那次 `err=0` 其实是没人写过"的同一类陷阱的反向利用：**写回变化本身就是"模块真被问到过"的哨兵**。
+包型由 `tools/stub_getcfg.py` 实测（真编译真跑）：
+```
+dst=0x48ba opcode=0x1001007 record{iid=0x48ba,param=0x8001024,size=72(CAPACITY),err=0}
+apm_payload=88 (=0x58)  whole gpr packet=128
+假响应回放：w5=0x2001000 w6=0 w7=0x48ba w8=0x8001024 w9=0xc w11=0x17700(96000) len=56
+短响应只打印放得下的字；无响应打印 "no response"（不会 dump 零）
+```
+stub 自己也错过一次（把记录字段按 16 字节步进去读，`param` 显示成 0）——那是 stub 的错，不是代码的错。
+
+## 10. 落库：0269（GET_CFG 读回）
+
+链树 `c34824b`，补丁 `xnu/patches/0269-sweet-apm-get-cfg-mfc-readback.patch`，
+标记 `SWEET MARK: mfcget v1 `；`tools/ci_replay.sh`：`applied=210 / skipped=49`，
+`OK: CI post-image == chain-tree HEAD`。
+`sweetmfcget=1` 在 set 之前与之后各读一次；`=2` 再加一次**在 PREPARE/START 之后**（格式传播完）；
+默认 0 一个字节都不发。
+**注意编号**：0269 已被音频占用 ⇒ GPU PR 若要落库，重编号目标改为 **0270/0271/0272**（任务 #37 已相应改写）。
