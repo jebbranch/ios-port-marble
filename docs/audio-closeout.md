@@ -5066,3 +5066,48 @@ F1-1 的三种读数与响度无关，表格其余部分逐字沿用上一节。
 尾部 `sweetvol=31 sweettdmclk=2 sweettime=…` 连续，产物内
 `tdmclk v2 late `×1 / `tdmclk v1 `×1 / `cccfg v3 `×6 / `oobcfg v11 try `×1 / `sweetvol=16`×0（旧值不在镜像里）。
 内核 `out/kernel.adsp` sha256 `4e5bc152b5e341bb…`（CI 摘要一致，`EXPECT_MARKER="SWEET MARK: tdmclk v2 late "` 过门）。
+
+---
+
+## 第 35 枪 F1 判决（`logs/ring-f1-late-tdmclk.txt`）—— 落在预登记的③，而且是个对称读数
+
+**F1-0 身份：成立。** `sweettime=1793927938` ×2；`ring_window` 报 `total=0x16336 == decoded`、窗口吻合=True；
+运行期 `tdmclk v1 ` **0 行**、`tdmclk v2 late ` **1 行**，且位置正如设计：
+
+```
+:1683 graph_start rsp op=0x1001002 status=0     <== 图起来了
+:1684 vendor graph + WR input started
+:1685 PRM clk 0x204 @ 12288000 attr=4 root=0    <== 晚票在这里才发
+:1686 TX_DATA iid=112 len=76
+:1687 clk 0x204 attr=4 root=0 status 0x1        <== PRM 拒了
+:1688 SWEET MARK: tdmclk v2 late ... rc=-1
+```
+
+`rc=-1` 的来源是**响应 status 非 0**（`g_prm_vote_clock_ex` 的两条 -1 分支里，`no response` 那条本轮 0 命中），
+`-1` 具体是 `0x1`——按既有规矩只记成"另一种拒绝"，不命名机制。
+
+**F1-2 回归：第一次全绿的完整会话（看门狗规矩生效）**
+
+| 判据 | 实测 |
+|---|---|
+| `tone gain g=31 peak=31744` | ✓（−0.27 dBFS，代码钳位允许的最响一档） |
+| `pcm tone done (120 buffers)` | ✓ 在窗口内（`:2008`） |
+| `data_buffer send` | **121** ✓ |
+| `no rsp` / panic | 0 / 0 ✓ |
+| `===== done =====` / `PSCI SYSTEM_RESET` | 各 1，**都在窗口内** ✓（`ibat post` 与 `lpass read skipped` 也跑到了） |
+| 控制面 | `graph_open/vp-wr status=0`、`graph_prepare status=0`、`vp/tdm_*` 与 `vp/aw_cfg*` 全 `status=0` |
+
+**把三枪合起来读（同一包 76 B、逐字段与厂商一致，只换位置）**：
+
+| 0x204 那一票的位置 | 票的答复 | `graph_start` | 流 |
+|---|---|---|---|
+| `GRAPH_OPEN` 之前（T1，0265 `=1`） | **status 0（接受）** | **0x1 拒绝** | 0 帧 |
+| 完全不投（C1，0265 无参） | — | 0 | 135 帧后被看门狗咬 |
+| `GRAPH_START` 之后（F1，0266 `=2`） | **status 0x1（拒绝）** | 0 | **120 帧跑完，满幅** |
+
+⇒ 事实是"**这一个资源在我们这张图的两侧各拒一次，而且总是另一侧通**"。
+厂商能在 `OPEN` 之前投成，是因为它那时候开的是**它自己的 496 B 小图**（`0x2010`）+ **2872 B 大图（`0x2011`）**；
+我们的 760 B `vp-wr` 既不是它任何一张。所以"抄厂商的包"这条路到 F1 已经走到头：**包对了，图不对**。
+
+**这一枪的声学状态**：F1 是我们**第一次**在"满幅 −0.27 dBFS、完整 0.72 s、收尾全部跑到"的条件下放音，
+所以听感读数只可能由它给出（C1 的 0.8 s/−6 dBFS 是被截断的辅助读数）。
