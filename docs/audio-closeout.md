@@ -5195,3 +5195,55 @@ F1 是**满幅（−0.27 dBFS，代码钳位上限）、完整 0.72 s、收尾�
 （镜像内那个 1 次命中是内核里的参数名字符串）。产物内核标记：
 `tdmcfg v1 sup=`×1、`1018 not sent`×1、`1176 val=`×1、`113c not sent`×1、`tdmclk v2 late `×1、`cccfg v3 `×6。
 `out/kernel.adsp` sha256 `67b24f148512259d…`（CI 摘要一致，`EXPECT_MARKER` 过门）。
+
+---
+
+## 第 36 枪 H1 判决（`logs/ring-h1-vendor-minimal.txt`）—— 自创参数这条轴关闭
+
+**H1-0 全部成立，仪器自证到位。** `sweettime=1793930330` ×2、`ring_window` 窗口吻合=True；
+运行期四条标记按序出现（`:1652-1655`）：
+
+```
+tdmcfg v1 sup=7 tdpwr=0
+tdmcfg v1 1018 not sent
+tdmcfg v1 1176 not sent (tp=0 sup=7)
+tdmcfg v1 113c not sent
+```
+并且 `vp/tdm_frame` / `vp/tdm_power` / `vp/tdm_clk` 在整条 ring 里 **0 次**，
+厂商那两封仍在：`vp/tdm_cfg` ×2、`vp/tdm_ep_mf` ×2、`vp/aw_cfg*` ×4，全部 `status=0`。
+
+**H1-1/H1-2：全绿。** `graph_open status=0`、`graph_prepare status=0`、**`graph_start status=0`**、
+`tone gain g=31 peak=31744`、`pcm tone done (120 buffers)`、`data_buffer send` 121、`no rsp` 0、panic 0、
+`===== done =====` 与 `PSCI SYSTEM_RESET` 在窗口内、控制面四绿行齐、`geni amp 0x34/0x35 r=0 id=0x2032 profile 44/44` 早于 `pcm tone start`。
+
+**听感：用户答"没响"，且 H1-2 齐 ⇒ 这是一条有效负读数。**
+⇒ **预登记分支②**：三封自创包**不是**元凶（去掉它们什么也没变），
+"我们发给 TDM/AW 的带内参数内容"这条轴**正式关闭**——因为此刻我们与厂商在带内单包上已经完全一致。
+
+## 零开机普查（由外部建议"修音频解码"触发）：我们整张图里**没有转换级**
+
+把三个 blob 的字节直接扫一遍（`python3`，只读源码数组，不猜格式）：
+
+| blob | 实例 iid 集合 |
+|---|---|
+| `g_graph_vp_wr`（760 B，我们在开的） | `0x4006 0x4007 0x4012 0x40bd 0x418e 0x4199 0x41e2 0x422c 0x428f 0x42d3 0x4333 0x4436 0x4448 0x467e 0x468d 0x48ba` |
+| `g_graph_vendor4`（2724 B，厂商真图） | 上面这些 **加上** `0x4008 0x40be 0x40bf 0x40c0 0x40c1 0x40c2 0x40c4 0x40c6 0x40c8 0x4165 0x42a1 0x42a4 0x42a6 0x42a7 0x42ad 0x42d4 0x42d7` |
+
+而厂商 accepted 流量里，`0x40bf` / `0x40c0` 各收到一封
+`0x08001008 PARAM_ID_PCM_OUTPUT_FORMAT_CFG`（30 B，正文含 48000 与 0x1b0020/0x20001 等），
+`0x40bd` 收到 `0x0800100c`；我们源码 :2047 自己的注释就把这些实例称作
+**MFC/CONVERTER instances 0x40c8/0x40bf/0x40c0**。
+
+再看两端声明（都在我们自己的代码里）：
+- WR 端点 `0x0800100c` = **48000 Hz / 16 bit / q15 / 立体声**（:6731-6742，逐字来自厂商 kprobe）——我们的正弦也按 48k/16bit 填；
+- TDM 侧 `0x08001017` = **96000 Hz / 0x30020**、`0x0800101b` 含 `0x200004`，位时钟 `0x204 @ 12288000 = 96000×128`（:6783-6790、:6925-6929）。
+
+⇒ **48 kHz/16-bit 进去、96 kHz/32-bit 出线，中间那一跳在厂商图里由 0x40bf/0x40c0/0x40c8 这类转换实例做，而我们的图里一个都没有。**
+这是本轮唯一还能同时解释"所有命令被接受、缓冲被消费、满幅仍无声"的结构性缺口。
+诚实标注：**它目前是"未被任何开机否证"，不是"已被证实"**——下一步先零开机把厂商图的 module/port/connection 表解出来，
+指名哪个实例是 SRC/MFC、端口怎么接；再用**现成开关**（`sweetvgraph/sweetvgoff/sweetvglen`，不用编译）开真图试响。
+次疑点同时记下：`0171` 对 GPIO121-124 写的是**同一个** mux 值 4，而 DT `tert_tdm_*_active` 是四个不同函数名
+（`mi2s2_sck`/`mi2s2_data0`/`mi2s2_ws`/`mi2s2_data1`，drive-strength 8、bias-disable）——对不对得看每脚函数表，我们手上没有。
+
+**响度规矩更新（用户 06 日）**：以后**用耳朵当判据的轮次一律 `sweetvol=6`（峰 6144 = −14.5 dBFS）**；
+只读寄存器的轮次压回默认 `g=1`（−30 dBFS）。已写进本文件与 `START-HERE.md`。
