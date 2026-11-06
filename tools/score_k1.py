@@ -65,11 +65,20 @@ def parse(ring):
             continue
         phase, kind = m.group(1), m.group(2)
         f = {"kind": kind, "line": line.strip()}
+        # st= is printed with %#x (so 0x1), err=/size=/len= with %u (decimal).
+        # Parsing st with (\d+) silently read "st=0x1" as 0, which is exactly how
+        # a refused GET would have been scored as a clean one - fixed here, after
+        # the fact, and the fixture now covers both spellings.
         for name in ("iid", "param", "rsp", "echoed_op", "status"):
             mm = re.search(rf"\b{name}=(0x[0-9a-f]+)", line)
             if mm:
                 f[name] = int(mm.group(1), 16)
-        for name in ("len", "size", "st", "err"):
+        for name in ("st", "cmap"):
+            mm = re.search(rf"\b{name}=(0x[0-9a-f]+|\d+)", line)
+            if mm:
+                f[name] = int(mm.group(1), 16) if mm.group(1).startswith("0x") \
+                    else int(mm.group(1))
+        for name in ("len", "size", "err"):
             mm = re.search(rf"\b{name}=(\d+)", line)
             if mm:
                 f[name] = int(mm.group(1))
@@ -91,6 +100,17 @@ def parse(ring):
     return got, problems
 
 
+def refused(f):
+    """A structured reply that carries a non-zero overall status or error_code and
+    leaves param_size at the capacity we offered is the module answering 'I will not
+    give you this param' - it is NOT a body, and it is NOT a negative about what the
+    module stores.  K1 (boot 38) hit exactly this on the WR: 0x40bd/0x0800100c came
+    back st=0x1 err=1 size=72 with all data zero, while the SET_CFG to the same
+    iid+param in the same boot was answered status=0.  Added after the boot, and
+    labelled E2 so it can never be mistaken for a pre-registered row."""
+    return f.get("st", 0) != 0 or f.get("err", 0) != 0
+
+
 def wr_state(f):
     if f is None:
         return "missing"
@@ -98,6 +118,8 @@ def wr_state(f):
         return "basic(E)"
     if f["kind"] == "no":
         return "no response(F)"
+    if refused(f) and f.get("size") == 72:
+        return f"refused GET st={f.get('st'):#x} err={f.get('err'):#x}(E2)"
     d3 = f.get("d3")
     size = f.get("size")
     if d3 in RATE_WORDS and size in (24, 28, 30, 32):
@@ -114,6 +136,8 @@ def tdm_state(f):
         return "basic(E)"
     if f["kind"] == "no":
         return "no response(F)"
+    if refused(f) and f.get("size") == 72:
+        return f"refused GET st={f.get('st'):#x} err={f.get('err'):#x}(E2)"
     if f.get("d0") == 0x17700 and f.get("d1") == 0x30020:
         return "stored(96000)"
     if f.get("d0") == 0xbb80:
@@ -130,6 +154,8 @@ def mfc_state(f):
         return "basic(E)"
     if f["kind"] == "no":
         return "no response(F)"
+    if refused(f) and f.get("size") == 72:
+        return f"refused GET st={f.get('st'):#x} err={f.get('err'):#x}(E2)"
     if "rate" not in f:
         return "no rate field"
     if f["rate"] in (-1, 0) or f.get("nch", 0) in (0, 65535):
@@ -155,7 +181,8 @@ def main():
             want = 5 if pat.endswith("v4 ") else 0
             print(f"  image '{pat}' x {hits} (want {want}) "
                   f"{'OK' if hits == want else '<< IDENTITY FAIL'}")
-    print(sh(f"python3 tools/ring_window.py {ring} 2>&1 | tail -8"))
+    label = re.sub(r"^.*?ring-", "", ring).replace(".txt", "")
+    print(sh(f"python3 tools/ring_window.py {label} 2>&1 | tail -8"))
 
     got, problems = parse(ring)
     print("=== K1-1 the eight read lines, verbatim ===")
@@ -188,8 +215,8 @@ def main():
     # three-way state per slot: True / False / None (unknown = basic or unanswered)
     def tri(state):
         return True if state.startswith("stored") or state.startswith("VALID") else \
-            (None if ("(E)" in state or "(F)" in state or state in ("missing",
-             "no rate field")) else False)
+            (None if ("(E)" in state or "(E2)" in state or "(F)" in state
+                      or state in ("missing", "no rate field")) else False)
     wr_s_t, tdm_s_t = tri(wr_state(wr_s)), tri(tdm_state(tdm_s))
     mfc_s_t, mfc_t_t = tri(mfc_state(mfc_s)), tri(mfc_state(mfc_t))
     sig = f"WR-start={wr_s_t} TDM-start={tdm_s_t} MFC-start={mfc_s_t} MFC-tone={mfc_t_t}"
@@ -218,10 +245,30 @@ def main():
               "the module/param refuses GET.  Same builder, structured answer proven on "
               "0x48ba, so this is NOT a transport failure and NOT a negative about formats; "
               "those slots are 'not decidable'.")
+    e2 = [f"{f['phase']}/{f['iid']:#x} st={f.get('st', 0):#x} "
+          f"err={f.get('err', 0):#x} size={f.get('size')}"
+          for d in got.values() for f in d.values()
+          if refused(f) and f.get("size") == 72]
+    if e2:
+        print(f"  ROW E2 (added after this boot, NOT pre-registered): {', '.join(e2)} - "
+              "a structured reply with non-zero st/err and size left at the 72 offered. "
+              "That is the module declining to answer the param, not a body and not a "
+              "negative about what it stores; the same iid+param SET in the same boot "
+              "was answered status=0.")
+    else:
+        print("  (E2 not needed: every structured reply carried st=0/err=0.)")
 
     print("=== K1-4 regression gates (all must hold or the round is not scored) ===")
-    gates = [("graph_start status=0", 1), ("tone gain g=6", 1),
-             ("pcm tone done", 1), ("graph_prepare status=0", 1)]
+    # The strings below are the ones the driver actually prints (checked against
+    # both the J1 and the K1 ring): 'graph_start rsp op=0x1001002 status=0', not
+    # the shorthand my first version grepped for, and cba2r is printed as
+    # 'cb5 cba2r@<addr> = 0x1' with a per-boot address in the middle.
+    gates = [("graph_start rsp op=0x1001002 status=0", 1),
+             ("graph_prepare rsp op=0x1001001 status=0", 1),
+             ("graph_open/vp-wr rsp op=0x1001000 status=0", 1),
+             ("tone gain g=6 peak=6144", 1), ("pcm tone done (120 buffers)", 1),
+             ("cba2r@", 1), ("ats1pr iova=0x1ffe8000 -> par=0 OK", 1),
+             ("geni amp 0x34", 1)]
     for pat, want_n in gates:
         c = count(ring, pat)
         print(f"  {'OK ' if c >= want_n else 'MISS'} ({c}) {pat}")

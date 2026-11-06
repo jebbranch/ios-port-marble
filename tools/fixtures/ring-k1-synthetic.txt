@@ -18,3 +18,10 @@ SWEET MARK: tdmcfg v1 sup=7 tdpwr=1
 113c not sent
 ===== done =====
 PSCI SYSTEM_RESET
+SWEET GLINK: graph_open/vp-wr rsp op=0x1001000 status=0 hop=0x2001005 len=32
+SWEET GLINK: graph_prepare rsp op=0x1001001 status=0 hop=0x2001005 len=32
+SWEET GLINK: graph_start rsp op=0x1001002 status=0 hop=0x2001005 len=32
+SWEET SMMU: cb5 cba2r@0x1b859814 = 0x1 (want 1)
+SWEET SMMU: ats1pr iova=0x1ffe8000 -> par=0 OK | +2M -> par=0 OK  mair=0xff cba2r=0x1 idr2=0x5111 tcr2=0x60
+SWEET I2C: geni amp 0x34 r=0 id=0x2032
+SWEET I2C: geni amp 0x34 profile 44/44
