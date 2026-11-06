@@ -1,0 +1,26 @@
+SWEET GLINK: boot args sweettime=1700000002
+SWEET MARK: mfcget v4 pre-set get_cfg len=116 st=0 iid=0x48ba param=0x8001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+SWEET MARK: mfcget v4 post-set get_cfg len=116 st=0 iid=0x48ba param=0x8001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+SWEET MARK: mfcget v4 post-prepare get_cfg len=116 st=0 iid=0x48ba param=0x8001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+SWEET MARK: mfcget v4 post-start raw len=116 st=0x1 iid=0x40bd param=0x800100c size=72 err=1 d0=0 d1=0 d2=0 d3=0 d4=0 d5=0
+SWEET MARK: mfcget v4 post-start raw len=56 st=0 iid=0x428f param=0x08001017 size=12 err=0 d0=0x17700 d1=0x30020 d2=0x1 d3=0 d4=0 d5=0
+SWEET MARK: mfcget v4 post-start get_cfg len=116 st=0 iid=0x48ba param=0x8001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+SWEET MARK: mfcget v4 post-tone raw len=116 st=0x1 iid=0x40bd param=0x800100c size=72 err=1 d0=0 d1=0 d2=0 d3=0 d4=0 d5=0
+SWEET MARK: mfcget v4 post-tone raw len=56 st=0 iid=0x428f param=0x08001017 size=12 err=0 d0=0x17700 d1=0x30020 d2=0x1 d3=0 d4=0 d5=0
+SWEET MARK: mfcget v4 post-tone get_cfg len=116 st=0 iid=0x48ba param=0x8001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+SWEET GLINK: graph_open/vp-wr rsp op=0x1001000 status=0 hop=0x2001005 len=32
+SWEET GLINK: graph_prepare rsp op=0x1001001 status=0 hop=0x2001005 len=32
+SWEET GLINK: graph_start rsp op=0x1001002 status=0 hop=0x2001005 len=32
+SWEET SMMU: cb5 cba2r@0x1b859814 = 0x1 (want 1)
+SWEET SMMU: ats1pr iova=0x1ffe8000 -> par=0 OK | +2M -> par=0 OK  mair=0xff
+SWEET I2C: geni amp 0x34 r=0 id=0x2032
+SWEET MARK: mfc v1 sel=1 iid=0x48ba param=0x8001024 rc=0
+SWEET MARK: tone gain g=6 peak=6144
+SWEET GLINK: pcm tone done (120 buffers)
+SWEET GLINK: shm mapped pa=0xa2fe8000 mode=offset va=0x1
+SWEET MARK: 1018 not sent
+SWEET MARK: 1176 not sent (tp=1 sup=7)
+SWEET MARK: 113c not sent
+data_buffer send src=0x2010 dst=0x40bd
+===== done =====
+PSCI SYSTEM_RESET

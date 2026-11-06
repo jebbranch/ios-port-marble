@@ -36,12 +36,22 @@ def count(ring, pat):
     return int(sh(f"LC_ALL=C grep -ac -F '{pat}' {ring} || true").strip() or 0)
 
 
+def lines(ring, pat):
+    return sh(f"LC_ALL=C grep -a -F '{pat}' {ring} || true").splitlines()
+
+
 ORDER = [("pre-set", 0x48ba), ("post-prepare", 0x48ba),
          ("post-start", 0x40bd), ("post-start", 0x428f), ("post-start", 0x48ba),
          ("post-tone", 0x40bd), ("post-tone", 0x428f), ("post-tone", 0x48ba)]
 
+# K2 adds the post-set read between pre-set and post-prepare (sweetmfc=1 sends
+# the set, so 0272's pre-set/post-set pair finally both fire).
+ORDER_K2 = [("pre-set", 0x48ba), ("post-set", 0x48ba), ("post-prepare", 0x48ba),
+            ("post-start", 0x40bd), ("post-start", 0x428f), ("post-start", 0x48ba),
+            ("post-tone", 0x40bd), ("post-tone", 0x428f), ("post-tone", 0x48ba)]
 
-def parse(ring):
+
+def parse(ring, order=None):
     """Return ({phase: {iid: fields}}, problems).
 
     Identity is by POSITION first, then checked against the line itself: the
@@ -53,10 +63,11 @@ def parse(ring):
     the score is refused rather than quietly re-keyed.
     """
     got, problems = {}, []
+    order = order or ORDER
     lines = [l for l in sh(f"LC_ALL=C grep -a -F 'mfcget v4 ' {ring} || true").splitlines()
              if re.search(r"mfcget v4 \S+", l)]
-    if len(lines) != len(ORDER):
-        problems.append(f"{len(lines)} mfcget lines, not {len(ORDER)} - "
+    if len(lines) != len(order):
+        problems.append(f"{len(lines)} mfcget lines, not {len(order)} - "
                         "extra/lost GETs mean the order mapping is unsafe")
     for i, line in enumerate(lines):
         m = re.search(r"mfcget v4 (\S+) (\w+)", line)
@@ -90,7 +101,7 @@ def parse(ring):
             mm = re.search(rf"\bd{k}=(0x[0-9a-f]+)", line)
             if mm:
                 f[f"d{k}"] = int(mm.group(1), 16)
-        want_phase, want_iid = (ORDER[i] if i < len(ORDER) else ("?", 0))
+        want_phase, want_iid = (order[i] if i < len(order) else ("?", 0))
         if phase != want_phase:
             problems.append(f"line {i} says phase '{phase}', slot says '{want_phase}'")
         if "iid" in f and f["iid"] != want_iid:
@@ -281,4 +292,5 @@ def main():
     print(f"  'mfc v1 sel=' at runtime: {count(ring, 'mfc v1 sel=')} (want 0 = read-only)")
 
 
-main()
+if __name__ == "__main__":
+    main()
