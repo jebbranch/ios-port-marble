@@ -44,7 +44,9 @@ def main():
     label = re.sub(r"^.*?ring-", "", ring).replace(".txt", "")
     print(K.sh(f"python3 tools/ring_window.py {label} 2>&1 | tail -6"))
 
-    got, problems = K.parse(ring)
+    # K7 writes the MFC (sweetmfc=4), so its read set is K2/K4/K5's nine-line
+    # ORDER_K2; K6a must not, or the round has no answer about its own graph.
+    got, problems = K.parse(ring, K.ORDER_K2 if mode == "k7" else K.ORDER)
     print(f"=== {mode}-1 witnesses and the 8 read lines ===")
     for pat in ("vginl v1 ", "dbb v1 ", "tdmmf v1 ", "mfc v1 sel="):
         for l in K.lines(ring, pat):
@@ -56,7 +58,8 @@ def main():
         for iid, f in sorted(got.get(phase, {}).items()):
             n += 1
             print(f"  {phase:13s} {f['line'][:188]}")
-    print(f"  GET lines: {n} (8 expected with sweetmfcget=3 and no sweetmfc)")
+    print(f"  GET lines: {n} ({8 if mode == chr(107)+chr(54)+chr(97) else 9} expected; "
+          "9 only when sweetmfc is present, which K6a must not have)")
 
     def slot(phase, iid):
         return got.get(phase, {}).get(iid)

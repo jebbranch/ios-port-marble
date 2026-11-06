@@ -5910,3 +5910,48 @@ cmdline = 579 − 15（同样腾掉 nolpass）+ 14（` sweetdbb=4096`）+ 1（`s
 
 已声明风险：更大的缓冲区会拉长会话，可能顶到 watchdog（120 是学到的上限，200 曾在 135 发被切）；
 若被切，本轮作废重放 1152，不把它算作"无声"。
+
+---
+
+## 第 43 枪 K6a 判决（`logs/ring-k6a-inband.txt`，`sweettime=1793970117`）
+## **不是 DSP 拒了厂商容器——是我们的发送函数根本没把它装出去**
+
+证人 `SWEET MARK: vginl v1 vg=4 off=16 len=2944 form=inband` 在（1600 行前），
+紧接着 `SWEET GLINK: vgraph 4 (in band) open refused rc=-1`，
+**但它上面没有任何 `APM graph_open/ukee2960-inband` 发送行**——一条都没有。
+原因在代码里，可查：`g_apm_cmd()` 的包是 **栈上 1064 字节**
+（`bsd/dev/sweet_glink.c:2687 uint8_t pkt[24 + 16 + 1024]`），
+守卫 `:2690 if (plen > sizeof(pkt) - 40) return -1;` **在自己的 printf 之前就返回**，
+所以 2944 字节的容器不是"被拒"，是**从未上路**。
+
+更要紧的是**判决本身**：`vg` 分支拒绝后没有 `return`，代码顺势落回我们自己的 800 字节容器
+（`:1601 APM graph_open/vp-wr … (800 bytes)`），于是这一轮后半程的全部读数——
+`pre-set rate=-1`、`post-prepare/post-start/post-tone` 全无效、TDM 原样、120 帧走完、
+控制面全绿——**是 K4/K5 已知对照的一次重放，不是"厂商图喂不喂转换级"的答案**。
+我第一版打分器把 `rc=-1` 读成 DSP 决定并打出了表里的 "STILL UNFED"，那是错的判词，
+已改成 NOT SENT 直接短路（`tools/score_k6.py`），并保留"没有 inband 证人就拒绝判"那道门。
+
+顺带一条同源事实（只陈述代码，不改写历史）：`g_apm_set_cfg()` 把包交给同一个
+`g_apm_cmd()`（`:5535`），所以**任何超过 1024 字节的带内 SET_CFG 也都是这个静默上限**——
+这正是 18 KB 厂商自定义配置此前只能走 OOB（带外/共享内存）形式的原因。
+至于历史上哪一轮曾经把它误读成 DSP 拒绝，文档里并没有记录，我不在这里替它编。
+
+⇒ **修复 = 0275**：`g_apm_cmd_big()` 用 4136 字节 **static** 缓冲（不是栈），
+超限分支**会打印** `%u bytes exceeds the inline buffer (%u) - NOT SENT`。
+K6b = 用 0275 内核重放 `sweetvgraph=4`，这一回才是那一格真正的答案。
+
+## 第 44 枪 K7 判决（`logs/ring-k7-long-loud.txt`，`sweettime=1793971127`）——寄存器侧
+
+cmdline 实测 **578 B**（我表里预测 579，错因与 K6a 同一类：预测基线取的是 K5 那一行，
+而这一轮 `sweettdmvendor` 也从 `15` 回落到 `7`，少 1 字节）。
+
+| 门 | 结果 |
+|---|---|
+| 身份 | 产物 `vginl/dbb/tdmmf ×1`、`mfcget v4 ×5`、`v3 ×0`；`window-match True`（`total=0x16275`，`seq=243`）|
+| K7-1 几何证人 | **`dbb v1 bytes=4096 ms=21`** ✓、**`tone gain g=16 peak=16384`** ✓ ⇒ 缓冲区与响度都真的换了，不是我只改了字符串 |
+| K7-2 寄存器与 K4 等值 | `pre-set` 仍无效（`rate=-1`）；`post-set / post-prepare / post-start / post-tone` 四处 `size=14 rate=96000 bw=24 nch=3`；TDM `d1=0x30020`；WR 仍 E2 ⇒ **更长的帧没有改变任何一条读数** |
+| 消费与收尾 | `not consumed` 0、`data_buffer send` 121、`no rsp` 0、panic 0、`pcm tone done (120 buffers)`、`===== done =====` / `PSCI SYSTEM_RESET` **都在窗口内** ⇒ 表里"尾部必须活着"的硬条件满足，这发的耳朵**是有效测量** |
+| 实际音频量 | 120 × 4096 B = 491,520 B；按 48 kHz/16-bit/stereo = **2.56 秒**；峰值 16384/32767 = **−6.0 dBFS**（比 K2–K6a 响 8.5 dB）|
+
+⇒ 这一枪的**唯一产物是耳朵**，寄存器部分已经证明：换了帧长与响度以后，DSP 侧的状态与我们
+已经判定过的 K4 完全一致。**听感读数见下一节（用户回报后填写）。**
