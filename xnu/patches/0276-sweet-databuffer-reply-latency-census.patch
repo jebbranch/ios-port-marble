@@ -1,0 +1,133 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 3587c77..26dc3f2 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -6082,6 +6082,52 @@ g_smmu_faults(const char *tag)
+ 	sweet_log_sync();
+ }
+ 
++/*
++ * 0276: DATA_BUFFER reply-latency census.  Units are milliseconds, and they are
++ * the sleep loop's own units - not a timer we hope is running.
++ */
++static uint32_t g_db_wait_n;
++static uint32_t g_db_wait_min;
++static uint32_t g_db_wait_max;
++static uint64_t g_db_wait_sum;
++static uint32_t g_db_wait_timeout;
++
++static void
++g_db_wait_sample(unsigned waited, unsigned limit, int answered)
++{
++	if (!answered) {
++		g_db_wait_timeout++;
++		waited = limit;	/* the sample is "we waited the whole window" */
++	}
++	if (g_db_wait_n == 0u || waited < g_db_wait_min) {
++		g_db_wait_min = (uint32_t)waited;
++	}
++	if (waited > g_db_wait_max) {
++		g_db_wait_max = (uint32_t)waited;
++	}
++	g_db_wait_sum += waited;
++	g_db_wait_n++;
++}
++
++static void
++g_db_wait_report(const char *where)
++{
++	uint32_t avg = g_db_wait_n != 0u ?
++	    (uint32_t)(g_db_wait_sum / g_db_wait_n) : 0u;
++
++	printf("SWEET MARK: dblat v1 %s n=%u min=%u avg=%u max=%u ms "
++	    "timeout=%u\n", where, g_db_wait_n, g_db_wait_min, avg,
++	    g_db_wait_max, g_db_wait_timeout);
++	sweet_log_sync();
++	/* Reset so a later report in the same session is about the later window,
++	 * not a mixture of two. */
++	g_db_wait_n = 0;
++	g_db_wait_min = 0;
++	g_db_wait_max = 0;
++	g_db_wait_sum = 0;
++	g_db_wait_timeout = 0;
++}
++
+ static int
+ g_apm_data_buffer(uint32_t src_port, uint32_t dst_port, uint32_t off,
+     uint32_t len, uint32_t token)
+@@ -6405,12 +6451,41 @@ g_apm_data_buffer(uint32_t src_port, uint32_t dst_port, uint32_t off,
+ 			}
+ 		}
+ 		limit = (unsigned)rspwait;
+-		for (unsigned i = 0; i < limit; i += 5) {
+-			g_drain(0);
+-			if (g_rsp_ready) {
+-				break;
++		{
++			/*
++			 * 0276: measure what we have been asserting about.  Every
++			 * round so far proved only that `not consumed` stayed 0, i.e.
++			 * that a DATA_BUFFER_DONE arrived inside this window - never
++			 * WHEN.  That distinction is the whole content of the user's
++			 * question "is the DSP even receiving it the way we think":
++			 * the vendor's accepted playback spaces its buffers 20.5 ms
++			 * apart at 4096 bytes (~200 KB/s = 48 kHz x 2 x 16-bit, the
++			 * WR's own format), which is real time; if our replies come
++			 * back after 0 waited ms, we are pushing the entire clip into
++			 * a queue that answers DONE and drops whatever exceeds its
++			 * depth, and every green line we have ever read would coexist
++			 * with total silence.
++			 *
++			 * No new clock source is used, deliberately: g_wait() already
++			 * sleeps in whole milliseconds (clock_interval_to_deadline with
++			 * NSEC_PER_MSEC), so the loop counter IS the measurement, in
++			 * 5 ms units, with no machine_absolute_time (never used in this
++			 * port) and no CNTVCT spin (the GPU PR's unbounded version of
++			 * that is a known hazard).  min/max/sum/count, plus the timeout
++			 * count so a window that never answers cannot hide inside the
++			 * averages.
++			 */
++			unsigned waited = 0;
++
++			while (waited < limit) {
++				g_drain(0);
++				if (g_rsp_ready) {
++					break;
++				}
++				g_wait(5);
++				waited += 5;
+ 			}
+-			g_wait(5);
++			g_db_wait_sample(waited, limit, g_rsp_ready != 0);
+ 		}
+ 	}
+ 	static int dbg;
+@@ -6762,6 +6837,10 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
+ 		tone_buffers = 1200;
+ 	}
+ 
++	/* 0276: clear the census here so the tone's numbers are the tone's; the
++	 * single-buffer probes above have their own samples and are reported too,
++	 * separately, instead of being averaged into the loop we care about. */
++	g_db_wait_report("pre");
+ 	for (int n = 0; n < tone_buffers; n++) {
+ 		/* 0243: sampled once, at the middle of the feed loop, so the burst
+ 		 * overlaps the tone; this is not a per-buffer probe. */
+@@ -6803,10 +6882,17 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
+ 		if (g_apm_data_buffer(g_stream_port, dst_port, off, g_pcm_bytes,
+ 		    (uint32_t)(n & 1)) != 0 && !nw) {
+ 			printf("SWEET GLINK: pcm buffer %d not consumed\n", n);
++			g_db_wait_report("aborted");
+ 			return;
+ 		}
+ 	}
+ 	printf("SWEET GLINK: pcm tone done (%d buffers)\n", tone_buffers);
++	/* 0276: the number this whole round exists to get - how long each
++	 * DATA_BUFFER_DONE actually took.  min=avg=max=0 with n=120 would mean
++	 * the module answers the queue instantly (flood model); max around 20
++	 * with n=120 would mean it pulls at real time like the vendor capture;
++	 * timeout>0 says the window was too short to be evidence at all. */
++	g_db_wait_report("tone");
+ 	g_ibat_burst("post");
+ }
+ 

@@ -211,6 +211,7 @@ jobs:
                    "SWEET MARK: vginl v1 " \
                    "NOT SENT" \
                    "SWEET MARK: dbb v1 " \
+                   "SWEET MARK: dblat v1 " \
                    "SWEET MARK: tdmcfg v1 sup=" \
                    "SWEET MARK: tdmclk v2 late " \
                    "SWEET MARK: oobcfg v11 try " \
