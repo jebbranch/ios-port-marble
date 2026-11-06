@@ -72,6 +72,15 @@ def main():
             print(f"  ({K.count(ring, pat)}) {pat}")
         sent = K.count(ring, "APM graph_open/ukee2960-inband")
         refused = K.count(ring, "vgraph 4 (in band) open refused")
+        started = K.count(ring, "vgraph 4 (in band) started")
+        if started == 0:
+            print("  K6a-4 IS NOT ANSWERABLE: the in-band container never ran "
+                  "(it was never sent, or it was answered and refused), so the "
+                  "code fell through to our own 800-byte graph and every GET "
+                  "line above describes OUR graph, not the vendor-shaped one. "
+                  "Reading the status line is the product of this round; reading "
+                  "the MFC here would be a control replay dressed as a verdict.")
+            return
         if sent == 0 and refused >= 1:
             print("  NOT SENT - the packet never reached the wire (our own builder "
                   "refused it locally; g_apm_cmd's inline cap is 1024 bytes and its "
