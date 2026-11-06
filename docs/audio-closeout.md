@@ -6090,3 +6090,37 @@ K6b（0275 内核 + `sweetvgraph=4`）正是同时压 1 与 2 的那一发：容
 寄存器门 = 与 K4/K8 等值（`pre-set` 无效、四处 `size=14 bw=24`、`not consumed` 0），
 新增唯一读数 = `dblat v1 pre …` 与 `dblat v1 tone n=120 min/avg/max timeout`。
 不需要耳朵，不需要新变量。
+
+---
+
+## 第 48 枪 K9 判决（`logs/ring-k9-latency.txt`，`sweettime=1793974906`，cmdline 实测 **564 B**）
+## **第一个延迟读数：`dblat v1 tone n=120 min=5 avg=5 max=5 timeout=0`——以及它为什么还不算答案**
+
+```
+SWEET MARK: dblat v1 pre  n=1   min=0 avg=0 max=0 ms timeout=0
+SWEET MARK: dblat v1 tone n=120 min=5 avg=5 max=5 ms timeout=0
+```
+其余门与 K4/K8 等值：`dbb v1 bytes=1152 ms=6`、`tone gain g=16 peak=16384`、
+`pcm tone done (120 buffers)`、`not consumed` 0、窗口吻合（`total=0x16aec`）。
+
+**读法（严格）**：采样循环是"先 `g_drain`，没到就睡 `step=5` ms 再看"，
+所以 `5` 的意思是 **第一次 drain 没有、第二次有了**，即真实延迟落在 **(0, 10] ms**，
+下界由我们自己的步长决定。`min=max=5` 对 120 发全都一样，这个均匀性
+**是仪器的量子化特征，不是接收端的特征**。
+
+⇒ **这一读数没有裁决任何分歧**：它既与" sink 按实时拉一个 6 ms 的 1152 B 帧"相容，
+也与"队列立刻回执、只是我们的第一次 poll 早于回执到达"相容。
+把它当成"洪水模型成立"或"洪水模型出局"都是过度解读，我不这么写。
+
+**所以 0277 不是新实验，是把这把尺子的刻度做细**：`sweetdbstep=1..50`（默认 5 = K9 行为不变），
+读数行里带 `step=`，marker 升为 `dblat v2`——**一个不带自身分辨率的延迟数字不该和带分辨率的长一样**。
+
+**K10（第 49 枪）在 `step=1` 下的判读，开机前写死**：
+| `dblat v2 tone … step=1` 的读数 | 结论 |
+|---|---|
+| `avg ≈ 0-1`（第一次 drain 就有） | **DONE 是入队回执**，不代表消费 ⇒ "音频曾被送出"从未被证明，下一枪改数据通路形式 |
+| `avg ≈ 6`（±2） | 与 1152 B = 6 ms 音频**吻合的实时消费** ⇒ 洪水模型出局，无声的机制在端点之后 |
+| `avg ≈ 20` | 与厂商 4096 B/20.5 ms 的节律同源 ⇒ 也在实时侧，但节奏更粗 |
+| `timeout > 0` | 100 ms 窗口不够 ⇒ 先调 `sweetrspwait`，**这不算模块结论** |
+
+预算 48/120。K10 只是同一颗内核换 `sweetdbstep=1`（+15 B ⇒ 579 B）+ 新内核 0277。

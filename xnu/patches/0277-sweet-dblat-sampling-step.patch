@@ -1,0 +1,58 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 26dc3f2..7aaf815 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -6091,6 +6091,7 @@ static uint32_t g_db_wait_min;
+ static uint32_t g_db_wait_max;
+ static uint64_t g_db_wait_sum;
+ static uint32_t g_db_wait_timeout;
++static uint32_t g_db_wait_step = 5;	/* what the sampling step actually was */
+ 
+ static void
+ g_db_wait_sample(unsigned waited, unsigned limit, int answered)
+@@ -6115,9 +6116,14 @@ g_db_wait_report(const char *where)
+ 	uint32_t avg = g_db_wait_n != 0u ?
+ 	    (uint32_t)(g_db_wait_sum / g_db_wait_n) : 0u;
+ 
+-	printf("SWEET MARK: dblat v1 %s n=%u min=%u avg=%u max=%u ms "
+-	    "timeout=%u\n", where, g_db_wait_n, g_db_wait_min, avg,
+-	    g_db_wait_max, g_db_wait_timeout);
++	/* v2 because a latency number without its own resolution is not a
++	 * number: boot 48 came back min=avg=max=5 at a 5 ms step, which says
++	 * "between one and two sleeps" for 120/120 buffers and decides nothing -
++	 * the floor is the instrument, not the DSP.  step= makes that visible in
++	 * the line itself. */
++	printf("SWEET MARK: dblat v2 %s n=%u min=%u avg=%u max=%u ms "
++	    "timeout=%u step=%u\n", where, g_db_wait_n, g_db_wait_min, avg,
++	    g_db_wait_max, g_db_wait_timeout, (unsigned)(g_db_wait_step));
+ 	sweet_log_sync();
+ 	/* Reset so a later report in the same session is about the later window,
+ 	 * not a mixture of two. */
+@@ -6476,14 +6482,24 @@ g_apm_data_buffer(uint32_t src_port, uint32_t dst_port, uint32_t off,
+ 			 * averages.
+ 			 */
+ 			unsigned waited = 0;
+-
++			static int step = -1;
++
++			if (step < 0) {
++				step = 5;
++				(void)PE_parse_boot_argn("sweetdbstep", &step,
++				    sizeof(step));
++				if (step < 1 || step > 50) {
++					step = 5;
++				}
++				g_db_wait_step = (uint32_t)step;
++			}
+ 			while (waited < limit) {
+ 				g_drain(0);
+ 				if (g_rsp_ready) {
+ 					break;
+ 				}
+-				g_wait(5);
+-				waited += 5;
++				g_wait((unsigned)step);
++				waited += (unsigned)step;
+ 			}
+ 			g_db_wait_sample(waited, limit, g_rsp_ready != 0);
+ 		}
