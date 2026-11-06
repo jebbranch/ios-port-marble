@@ -5049,3 +5049,20 @@ compile clean: -std=gnu11 -Wall -Wextra -Wformat=2 -Werror
 | F1-3 若 `status=0x1` 再次出现（第三次异常） | 与 C1 只差"晚票 + 120 buf" | — | 先按"0266 引入的新异常"处理，重放 C1 同参（`=2` 换成空）一次再说 |
 
 打包预算（本轮重测，不继承）：C1 实测 552 B + ` sweettdmclk=2` 14 B = **566 B**（`sweetbufs=120` 与 `=200` 等长）。
+
+## F1 开机前修订（不是事后改表：镜像已核、尚未上电）
+
+用户 06 日 09:19 说"继续就行，现在已经是白天了" ⇒ 宿舍安静档解除。被试变量不变（`sweettdmclk=2`），
+**只把测量条件从 −6.0 dBFS 抬到代码允许的最大档 `sweetvol=31` ⇒ 峰 31744 = −0.27 dBFS**，
+时长仍是 `sweetbufs=120` ≈0.72 s（看门狗事实：等待路径 >120 帧会被咬、丢整条尾巴）。
+这样一枪就把"太轻"这条解释**一次封死**：满幅 0.72 s 单音仍听不见，就不是响度问题。
+F1-1 的三种读数与响度无关，表格其余部分逐字沿用上一节。
+
+**顺手记一个坑（`sweet_glink.c:5750`）**：`if (g < 1 || g > 31) g = 1;` ——
+**`sweetvol=32` 不是更响，而是回到最轻的 −30 dBFS**。想超出 31 必须先改代码；
+读 `tone gain g=` 时如果发现 `g=1` 而 cmdline 写的是 `32+`，那是钳位不是失效。
+
+打包实测（本轮重测，不继承）：cmdline **566 B**（预测 566，命中），`sweettime=1793927938`，
+尾部 `sweetvol=31 sweettdmclk=2 sweettime=…` 连续，产物内
+`tdmclk v2 late `×1 / `tdmclk v1 `×1 / `cccfg v3 `×6 / `oobcfg v11 try `×1 / `sweetvol=16`×0（旧值不在镜像里）。
+内核 `out/kernel.adsp` sha256 `4e5bc152b5e341bb…`（CI 摘要一致，`EXPECT_MARKER="SWEET MARK: tdmclk v2 late "` 过门）。
