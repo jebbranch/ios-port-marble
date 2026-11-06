@@ -5346,3 +5346,28 @@ J1 其余条件沿用 H1 的绿基线：`sweettdmvendor=7 sweetvol=6 sweetbufs=1
 cmdline 里 `sweetmfc=` ×0（⇒ 只读不写，J1 的单变量成立）、`sweetvol=6` ×1、`sweetvol=31` ×0、
 `sweettdmvendor=7` ×1，尾部 `… sweetvol=6 sweettdmvendor=7 sweetmfcget=2 sweettime=1793942777` 连续。
 `sweettdmclk` ×1 是内核里的**参数名字符串**，不在 cmdline（尾巴已核），别把它当成参数还在。
+
+### J1 开机前快照（0271 内核，真实产物；设备已连）
+内核 `out/kernel.adsp` sha256 `3fac17f0c29d5830…`（17:26 取回，`EXPECT_MARKER="SWEET MARK: mfcget v3 "` 过门，
+CI `6daab4e` 的 build = completed/success）。
+**身份三查**：镜像内 `mfcget v3 `×**4**、`mfcget v2 `×**0**、`mfcget v1 `×**0**
+⇒ 这是 0271，不是 0270/0269（上一条失误的教训就落在这三行上）。
+产物 `images/j1-get-mfc-rate.img`：`sweettime=1793957309` 命中 1，cmdline 实测 **582 B**
+（与同参数上一轮实测一致）；cmdline 内 `sweetmfc=` ×**0**（⇒ 真的只读不写）、
+`sweetmfcget=2` ×1、`sweettdmvendor=7` ×1、`sweetvol=6` ×1、`sweetbufs=120` ×1，
+尾部 `… sweettdmvendor=7 sweetmfcget=2 sweettime=1793957309` 连续。
+其余标记齐全：`mfc v1 sel=`×2、`tdmcfg v1 sup=`×1、`tdmclk v2 late `×1、`cccfg v3 `×6、`tone gain g=`×1。
+
+**本轮要读的三行（`SWEET MARK: mfcget v3 <相位> …`）与预设分支**：
+
+| 相位 | 主预测 | 偏离时的读法 |
+|---|---|---|
+| `pre-set` | 无效：`rate=-1 nch=-1 bw=32`（MFC 初始化即 invalid，且 bw 走 helper 默认分支） | 若这里就有效 ⇒ 有别的来源在 OPEN 阶段就写了格式，改查来源 |
+| **`post-prepare`** | **`{48000, 16, 2}`**（WR 声明的就是 16/Q15，见 §15） | `{96000,32,2}` ⇒ 有东西反向覆写；无效 ⇒ 传播断在 WR→SAL（位宽那一维优先） |
+| `post-start` | 同 `post-prepare` | prepare 有效而这里无效 ⇒ 断在 START/数据路径 |
+
+**仪器故障类（不算模块结论，先修仪器再判）**：`basic … echoed_op=0x1001007 status=0xN`、
+`get_cfg … size=72 rate=0`（没人写回）、`no response`、`len=` 异常（GPR 头长度假设 24）。
+**回归门**（不齐则不判）：`graph_start status=0`、`tone gain g=6`、`pcm tone done (120 buffers)`、
+`data_buffer send`≈121、`no rsp` 0、panic 0、`===== done =====`/`PSCI SYSTEM_RESET` 在窗口内、
+控制面四绿行、`tdmcfg v1 sup=7` 的三条 not sent 仍在。
