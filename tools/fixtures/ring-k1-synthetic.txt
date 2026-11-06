@@ -1,0 +1,20 @@
+SWEET GLINK: boot args sweettime=1700000000
+SWEET MARK: mfcget v4 pre-set get_cfg len=116 st=0 iid=0x48ba param=0x8001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+SWEET MARK: mfcget v4 post-prepare get_cfg len=116 st=0 iid=0x48ba param=0x08001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+SWEET MARK: mfcget v4 post-start raw len=74 st=0 iid=0x40bd param=0x0800100c size=30 err=0 d0=0x1 d1=0x9001000 d2=0x12 d3=0xbb80 d4=0x10010 d5=0xf0010
+SWEET MARK: mfcget v4 post-start raw len=56 st=0 iid=0x428f param=0x08001017 size=12 err=0 d0=0x17700 d1=0x30020 d2=0x1 d3=0 d4=0 d5=0
+SWEET MARK: mfcget v4 post-start get_cfg len=116 st=0 iid=0x48ba param=0x08001024 size=8 err=0 rate=-1 bw=32 nch=65535 cmap=0
+SWEET MARK: mfcget v4 post-tone no response pkt=124
+SWEET MARK: mfcget v4 post-tone basic len=32 echoed_op=0x1001007 status=0x3
+SWEET MARK: mfcget v4 post-tone get_cfg len=116 st=0 iid=0x48ba param=0x08001024 size=8 err=0 rate=48000 bw=16 nch=2 cmap=0x20001
+SWEET GLINK: graph_prepare status=0
+SWEET GLINK: graph_start status=0
+SWEET MARK: tone gain g=6 peak=6144
+SWEET AUDIO: pcm tone done (120 buffers)
+data_buffer send src=0x2010 dst=0x40bd
+SWEET MARK: tdmcfg v1 sup=7 tdpwr=1
+1018 not sent
+1176 not sent (tp=1 sup=7)
+113c not sent
+===== done =====
+PSCI SYSTEM_RESET

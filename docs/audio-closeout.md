@@ -5481,3 +5481,25 @@ panic 0、`===== done =====` / `PSCI SYSTEM_RESET` 在窗口内、控制面四�
    但"参数不支持 GET"会走 E 行，不产生模块状态改变。
 3. RAW 分支的 `d*` 若某模块把 body 放在与 `param_size` 不一致的位置，会显示成 `size` 小而 `d*` 有值——
    这一形状已在 stub 里被 `len` 界住，真机上出现即按仪器读数处理。
+
+### K1 的执行副本 `tools/score_k1.py`（开机前写好，判决表和打分器必须同一份）
+
+`./tools/score_k1.py logs/ring-k1-3module.txt <本轮 sweettime> images/k1-*.img`
+把上面 A-F 六行做成可执行版本，并额外做三件事：
+
+1. **身份用位置 + 行内 iid 双重判定**。 0272 的 `no response` / `basic` 两条 printf
+   **不带 `iid=`**（这是仪器自己的缺口，见下），但 `g_apm_get_cfg_readset()` 的发出顺序
+   固定是 WR→TDM→MFC，每个 GET 恰好打一行，所以 8 次读 ↔ 8 行是一一对应的；
+   行内出现 `iid=` 时**必须**与它的槽位一致，不一致就报 "not this round's ring" 并拒绝打分，
+   而不是悄悄换键。
+2. **表外的形状不许改名塞进 A-F**：命中不了任何一行时打印
+   `NO ROW OF THE COMMITTED TABLE MATCHES (<签名>)`。自检用的四个合成环
+   （`tools/fixtures/ring-k1-synthetic.txt` + 三行改写）分别命中 A/B/C/D，
+   而"端点有效 + 只有 post-tone 的 MFC 有效"这种表外形状确实走了 fallback。
+3. **E 行是正交的**：任何槽位答 `basic` 都单列出来，标成"该模块不支持这样 GET ⇒ 不可判"，
+   既不算传输故障（同一个构造器在 0x48ba 上拿到过结构化应答），也不算格式的负结果。
+
+**已知仪器缺口（记下来，值得在下一个真需要它的数据轮里一起修，不值得单独一次 CI）**：
+`no response` 与 `basic` 两条 print 没带 `iid=/param=`，真机上如果同一相位里连续两发失败，
+只能靠顺序恢复身份。修法就是给这三条非结构化 printf 补上 `iid=%#x param=%#x`，
+marker 再 bump 一次；本轮不这么做，因为顺序是硬编码的、且 8↔8 的对应已在 fixture 上验过。
