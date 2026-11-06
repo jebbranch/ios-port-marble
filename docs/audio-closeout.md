@@ -5503,3 +5503,27 @@ panic 0、`===== done =====` / `PSCI SYSTEM_RESET` 在窗口内、控制面四�
 `no response` 与 `basic` 两条 print 没带 `iid=/param=`，真机上如果同一相位里连续两发失败，
 只能靠顺序恢复身份。修法就是给这三条非结构化 printf 补上 `iid=%#x param=%#x`，
 marker 再 bump 一次；本轮不这么做，因为顺序是硬编码的、且 8↔8 的对应已在 fixture 上验过。
+
+### K1/K2 字节预算（离线算死，免得下一枪死在 590 守卫上）
+
+582 B 是 J1 产物实测（本轮 K1 只把末位 `2` 换成 `3`，同一长度）；`mkimage.sh` 的守卫在 590。
+逐参数占用（从产物里量出来的，含前导空格）：
+
+```
+sweetbufs=120 14  sweetpcm=1 11  sweets1=1 10  sweetiova=1 12
+sweets1va=0x1FFE8000 21  sweetnolpass=1 15  sweetshmhi=1 13
+sweetshmflag=4 15  sweets1ap=3 12  sweetampfirst=1 16  sweetvol=6 11
+sweettdmvendor=7 17  sweetmfcget=2 14  sweettime=xxxxxxxxxx 21
+```
+
+**判决表 A 行的后续（`sweetmfc=1`，+11）如果直接叠在 582 上是 593 > 590**，
+所以必须先腾字节。腾哪一个要用代码证明，不能挑顺眼的：
+
+| 候选 | 判定 | 依据 |
+|---|---|---|
+| `sweetshmflag=4` (15) | **可去**：与默认值逐字相同 | `bsd/dev/sweet_glink.c:5139` 的 `static uint32_t flags[] = { 4u, 0u };` 就是默认，`:5144` 的 `f==4` 分支算出的也是 `{4,0}`；参数只多打一行 `shm flag order 4,0` 证人 |
+| `sweets1va=0x1FFE8000` (21) | **不可去** | `:4397` 默认 `s1_va=0`，`:4579` 取 `s1_va ? s1_va : G_VENDOR_IOVA(0x11ffe8000)`，而 `:4581` 用 `wide = (va>>32)!=0` —— 传参选的是**窄地址形式**，删了会把 wide 翻成 1，是行为改变 |
+| `sweets1=1` / `sweetshmhi=1` / `sweetampfirst=1` / `sweetnolpass=1` / `sweetiova=1` | **不可去** | 默认全为 0/关（`:4389`、`:8163`、`:6216` 的 `nolpass=0` 预置），删任何一个都是把一条正在生效的路径关掉 |
+
+⇒ 腾出 `sweetshmflag=4` 之后：582 − 15 = 567，A 行的 `sweetmfc=1` = **578 ✓**，
+将来 `sweetwrmf=2`（+11）同一算法也放得下。K1 本身不动预算。
