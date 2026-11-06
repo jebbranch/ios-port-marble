@@ -1,0 +1,58 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index e1222a2..59e5d13 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5532,7 +5532,7 @@ g_apm_get_cfg_dump(uint32_t src_port, uint32_t iid, uint32_t pid,
+ 		g_wait(5);
+ 	}
+ 	if (!g_rsp_ready) {
+-		printf("SWEET MARK: mfcget v2 %s no response pkt=%u\n", phase,
++		printf("SWEET MARK: mfcget v3 %s no response pkt=%u\n", phase,
+ 		    pkt_size);
+ 		sweet_log_sync();
+ 		return;
+@@ -5560,15 +5560,15 @@ g_apm_get_cfg_dump(uint32_t src_port, uint32_t iid, uint32_t pid,
+ 		if (rsz >= 12 && 56 <= g_rsp_len) {
+ 			cmap = g_le32(g_rsp + 52);
+ 		}
+-		printf("SWEET MARK: mfcget v2 %s get_cfg len=%u st=%#x iid=%#x "
++		printf("SWEET MARK: mfcget v3 %s get_cfg len=%u st=%#x iid=%#x "
+ 		    "param=%#x size=%u err=%u rate=%d bw=%u nch=%u cmap=%#x\n",
+ 		    phase, g_rsp_len, st, riid, rpid, rsz, rerr, rate,
+ 		    (unsigned)(bwnch & 0xffffu), (unsigned)(bwnch >> 16), cmap);
+ 	} else if (rsp == 0x02001005u) {
+-		printf("SWEET MARK: mfcget v2 %s basic len=%u echoed_op=%#x status=%#x\n",
++		printf("SWEET MARK: mfcget v3 %s basic len=%u echoed_op=%#x status=%#x\n",
+ 		    phase, g_rsp_len, g_le32(g_rsp + 24), g_le32(g_rsp + 28));
+ 	} else {
+-		printf("SWEET MARK: mfcget v2 %s unexpected rsp=%#x len=%u w6=%#x w7=%#x\n",
++		printf("SWEET MARK: mfcget v3 %s unexpected rsp=%#x len=%u w6=%#x w7=%#x\n",
+ 		    phase, rsp, g_rsp_len, g_le32(g_rsp + 24),
+ 		    g_le32(g_rsp + 28));
+ 	}
+@@ -7375,6 +7375,25 @@ g_apm_graph_start(uint32_t src_port, uint32_t sg_id)
+ 	    "graph_prepare") != 0) {
+ 		return -1;
+ 	}
++	/*
++	 * 0271: the second point on the timeline.  The container's own
++	 * cu_handle_prepare() runs the CONTROL-path media-format propagation, so
++	 * once PREPARE has returned the MFC already had its chance to be handed a
++	 * format - without a single frame of PCM in the way.  Reading here and again
++	 * after START splits two explanations that every round so far has lumped
++	 * together: "the WR's format never reached the MFC" (invalid at both points)
++	 * versus "the MFC was configured but something at START drops it"
++	 * (valid here, gone later).  sweetmfcget=2 only; =1 stays read-around-the-set.
++	 */
++	{
++		int mfc_get = 0;
++
++		(void)PE_parse_boot_argn("sweetmfcget", &mfc_get, sizeof(mfc_get));
++		if (mfc_get == 2) {
++			g_apm_get_cfg_dump(src_port, G_VP_MFC_IID, 0x08001024u,
++			    72, "post-prepare");
++		}
++	}
+ 	if (g_apm_graph_ctrl(src_port, sg_id, APM_CMD_GRAPH_START,
+ 	    "graph_start") != 0) {
+ 		return -1;

@@ -366,3 +366,21 @@ J2 设 96k 后仍无声，`sweetwrmf` 就多一个取值 **2 = 按厂商逐字�
 **否证性读数**：两个窗口里 `0x10013D11`（AFE RX 模块 enable）出现 **0 次**
 （同窗 `0x10013D2A`×6、`RE_L`×3、`RE_R`×3）⇒ "厂商先开了 RX enable 因此我们缺这一步"**没有证据**；
 未观测 ≠ 不需要，但不许据此开花。
+
+## 17. 过程失误记录（用户指出"0271 没 push"，核实属实）
+
+0271 的**代码**在链树里（`7a5333a`）、补丁文件也生成了（`0271-sweet-mfc-format-timeline-prepare-point.patch`，
+`ci_replay` 两次都报 `applied=212 / post-image == chain-tree HEAD`），
+但**补丁文件一直是未跟踪状态、workflow 的 marker 行也没提交**，
+而我在文档和回复里已经写了"0271 已落库"、还把 J1 判据改成依赖 `mfcget v3 ` ⇒
+**CI 从没构建过 0271**，`kernel-latest` 至今还是 0270（`mfcget v3 `×0 / `v2 `×4）。
+
+两条规矩在这里再钉一次：
+1. **"落库"的判定物是 `git push` 成功的 commit，不是链树 commit，也不是本地补丁文件**。
+   链树有 commit + 补丁在磁盘 ≠ 仓库里有这个补丁。
+2. **判据里引用某个 marker 之前，必须先确认它已经在远端构建里**（`grep` 产物即可），
+   否则判据依赖一个不存在的字符串——这正是 marker 门本该在 CI 阶段拦住的东西。
+
+修完的样子：补丁 + marker（`mfcget v2 ` → `v3 `）一并提交推送，CI 重新构建；
+取回内核前照旧用 `EXPECT_MARKER="SWEET MARK: mfcget v3 "` 做身份硬门，
+并额外验 `mfcget v2 `/`v1 ` 必须为 0。

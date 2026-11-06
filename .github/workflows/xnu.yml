@@ -206,7 +206,7 @@ jobs:
                    "SWEET MARK: cccfg v3 sel=" \
                    "SWEET MARK: tdmclk v1 " \
                    "SWEET MARK: mfc v1 sel=" \
-                   "SWEET MARK: mfcget v2 " \
+                   "SWEET MARK: mfcget v3 " \
                    "SWEET MARK: tdmcfg v1 sup=" \
                    "SWEET MARK: tdmclk v2 late " \
                    "SWEET MARK: oobcfg v11 try " \
