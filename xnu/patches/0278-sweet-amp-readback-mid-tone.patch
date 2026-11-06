@@ -1,0 +1,44 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 7aaf815..4dcb090 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -6861,7 +6861,39 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
+ 		/* 0243: sampled once, at the middle of the feed loop, so the burst
+ 		 * overlaps the tone; this is not a per-buffer probe. */
+ 		if (n == tone_buffers / 2) {
++			/*
++			 * 0278: the amplifier register state DURING the stream has never
++			 * been read.  The existing snapshots are 'pre-bitbang',
++			 * 'pre-stream' and 'post-stream' - the last of which only runs
++			 * after `pcm tone done` - so every conclusion about the PA being
++			 * mute, unpowered or never told to play has been drawn from a
++			 * moment that is strictly outside the thing being measured.
++			 * This sits at the same midpoint as the IBAT burst, so the read
++			 * overlaps live audio.
++			 *
++			 * Two honest costs.  (1) It is an I2C transaction in the middle
++			 * of the feed loop, so it can perturb the very reply-latency
++			 * census K10/K11 established; the census is still printed after
++			 * the loop and 'dblat ... avg' moving in this round is a note
++			 * about the instrument, not about the DSP.  (2) It reuses
++			 * sweetampverify rather than inventing an eighth knob, because
++			 * the boot-args field is at 578/590 and a new name would not fit;
++			 * the witness line prints the state it actually read.
++			 */
++			static int amptone = -1;
++
+ 			g_ibat_burst("tone");
++			if (amptone < 0) {
++				amptone = 0;
++				(void)PE_parse_boot_argn("sweetampverify",
++				    &amptone, sizeof(amptone));
++				printf("SWEET MARK: amptone v1 on=%d at=%d/%d\n",
++				    amptone, n, tone_buffers);
++				sweet_log_sync();
++			}
++			if (amptone) {
++				sweet_i2c_amp_readback("mid-tone");
++			}
+ 		}
+ 		uint32_t off = nw ?
+ 		    ((uint32_t)((unsigned)n % blocks) * g_pcm_bytes) :
