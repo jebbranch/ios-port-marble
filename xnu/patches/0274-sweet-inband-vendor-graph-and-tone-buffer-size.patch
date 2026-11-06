@@ -1,0 +1,188 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 1773aec..589a83e 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5916,6 +5916,39 @@ g_apm_set_cfg_batch(uint32_t src_port, uint8_t *body, uint32_t blen,
+ #define G_PCM_OFF_B                 0x0800u
+ #define G_PCM_BYTES                 1152u
+ 
++/*
++ * 0275: the per-buffer payload size, so "make it longer" is a boot argument and
++ * not a build.  G_PCM_BYTES stays the shipped default and sweetdbb only ever
++ * moves UP from it (validated in g_pcm_bytes_init).  The fill window moves with
++ * it on purpose: g_fill_tone writes exactly this many bytes per offset, so a
++ * bigger send over an un-filled window would stream whatever the shim left
++ * past our tone and a later "silent at the end" would be read as a statement
++ * about the DSP when it is a statement about our own buffer.  1152 B is 6 ms at
++ * 48 kHz/16-bit/stereo; the vendor-scale 4096 B is ~21 ms per buffer, so a
++ * 120-buffer tone becomes ~2.5 s of audio instead of ~0.7 s.
++ */
++static uint32_t g_pcm_bytes = G_PCM_BYTES;
++
++static void
++g_pcm_bytes_init(void)
++{
++	static int done = 0;
++	uint32_t bb = 0;
++
++	if (done) {
++		return;
++	}
++	done = 1;
++	(void)PE_parse_boot_argn("sweetdbb", &bb, sizeof(bb));
++	if (bb >= G_PCM_BYTES && bb <= 0x4000u && (bb % 64u) == 0 &&
++	    bb > g_pcm_bytes) {
++		g_pcm_bytes = bb;
++	}
++	printf("SWEET MARK: dbb v1 bytes=%u ms=%u\n", g_pcm_bytes,
++	    (unsigned)(g_pcm_bytes / 192u));
++	sweet_log_sync();
++}
++
+ static const int16_t g_sine_48[48] = {
+ 	0, 1069, 2120, 3135, 4096, 4987, 5793, 6499,
+ 	7094, 7568, 7913, 8122, 8192, 8122, 7913, 7568,
+@@ -5932,6 +5965,8 @@ g_fill_tone(uint32_t off)
+ {
+ 	int16_t *p = (int16_t *)(g_shm_va + off);
+ 
++	g_pcm_bytes_init();
++
+ 	/* The WR endpoint is 48 kHz / 16-bit / stereo (vendor SET_CFG), so
+ 	 * 1152 bytes is 288 frames (6 ms).  The 48-entry table is one
+ 	 * period: a 1 kHz tone.  Amplitude is deliberately low - the tone
+@@ -5947,7 +5982,7 @@ g_fill_tone(uint32_t off)
+ 		printf("SWEET MARK: tone gain g=%d peak=%d\n", g, 1024 * g);
+ 		sweet_log_sync();
+ 	}
+-	for (uint32_t i = 0; i < G_PCM_BYTES / 4; i++) {
++	for (uint32_t i = 0; i < g_pcm_bytes / 4; i++) {
+ 		int16_t v = (int16_t)((g_sine_48[i % 48] * g) >> 3);
+ 
+ 		p[2 * i] = v;
+@@ -6397,7 +6432,7 @@ g_pcm_prepare(void)
+ 	}
+ 	if (g_shm_va && !g_tone_filled) {
+ 		g_fill_tone(G_PCM_OFF_A);
+-		g_fill_tone(G_PCM_OFF_B);
++		g_fill_tone(g_pcm_bytes);
+ 		__asm__ volatile("dsb sy" ::: "memory");
+ 		g_tone_filled = 1;
+ 		printf("SWEET GLINK: pcm: tone filled before start\n");
+@@ -6551,6 +6586,8 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
+ {
+ 	int pcm = 0;
+ 
++	g_pcm_bytes_init();
++
+ 	/* The non-secure world cannot set S2CR.BYPASS (run71 read back
+ 	 * TYPE=FAULT), so the DSP's first buffer access needs a real stage-2
+ 	 * context.  g_smmu_probe() builds one under the same sweetpcm flag.
+@@ -6652,8 +6689,8 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
+ 	 * past what SHM_MAP declared - the DSP validates the range.
+ 	 */
+ 	const uint32_t region = (uint32_t)g_shm_region_size();
+-	const uint32_t blocks = (region > G_PCM_BYTES) ?
+-	    ((region - G_PCM_BYTES) / G_PCM_BYTES + 1u) : 1u;
++	const uint32_t blocks = (region > g_pcm_bytes) ?
++	    ((region - g_pcm_bytes) / g_pcm_bytes + 1u) : 1u;
+ 	/* Fire-and-forget walks the whole region once, i.e. plays the entire
+ 	 * clip; the reply-waiting path keeps the vendor's 2000 ping-pongs. */
+ 	int tone_buffers = nw ? (int)blocks : 2000;
+@@ -6679,8 +6716,8 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
+ 			g_ibat_burst("tone");
+ 		}
+ 		uint32_t off = nw ?
+-		    ((uint32_t)((unsigned)n % blocks) * G_PCM_BYTES) :
+-		    ((n & 1) ? G_PCM_OFF_B : G_PCM_OFF_A);
++		    ((uint32_t)((unsigned)n % blocks) * g_pcm_bytes) :
++		    ((n & 1) ? g_pcm_bytes : G_PCM_OFF_A);
+ 
+ 		{
+ 			/* sweetbufgap=<ms> paces the fire-and-forget stream.  Sending
+@@ -6710,7 +6747,7 @@ g_audio_tone(uint32_t src_port, uint32_t dst_port)
+ 			    tone_buffers, off);
+ 			sweet_log_sync();
+ 		}
+-		if (g_apm_data_buffer(g_stream_port, dst_port, off, G_PCM_BYTES,
++		if (g_apm_data_buffer(g_stream_port, dst_port, off, g_pcm_bytes,
+ 		    (uint32_t)(n & 1)) != 0 && !nw) {
+ 			printf("SWEET GLINK: pcm buffer %d not consumed\n", n);
+ 			return;
+@@ -7584,27 +7621,67 @@ g_apm_graph_bringup(void)
+ 			/* sweetvgraph=1 replays g_graph_vendor4 (the October heap copy:
+ 			 * 4 bytes short of its own last record, framed with a 12-byte host
+ 			 * header).  =2 sends this generation's container, self-consistent
+-			 * and framed with the 16-byte header the vendor's 2712 implies. */
+-			const uint8_t *body = vg == 2 ? g_graph_ukee_current :
+-			    g_graph_vendor4;
+-			const uint32_t *sgs = vg == 2 ? g_ukee_current_sgs :
+-			    g_vendor4_sgs;
++			 * and framed with the 16-byte header the vendor's 2712 implies.
++			 * Both of those go through the SHM form of GRAPH_OPEN.
++			 *
++			 * 0274 adds the IN-BAND transport, which is the form the vendor's
++			 * own accepted playback actually uses - the whole-timeline walk
++			 * shows row 1 as GRAPH_OPEN src=0x2010 dst=1 payload_size=2712,
++			 * i.e. the container sits in the command, not in mapped memory:
++			 *   3 = g_graph_vendor4   in band, off 12 len 2712
++			 *   4 = g_graph_ukee_current in band, off 16 len 2944
++			 * K6a boots =4 first on purpose: =3's body is known to be four
++			 * bytes short of its own last record, and a refusal there would be
++			 * uninterpretable - a truncated container and a container the DSP
++			 * rejects for content would print the same status. */
++			const uint8_t *body = (vg == 2 || vg == 4) ?
++			    g_graph_ukee_current : g_graph_vendor4;
++			const uint32_t *sgs = (vg == 2 || vg == 4) ?
++			    g_ukee_current_sgs : g_vendor4_sgs;
+ 			const char *tag = vg == 2 ? "graph_open/ukee2960" :
+-			    "graph_open/vendor4";
+-			uint32_t body_sz = vg == 2 ?
++			    (vg == 4 ? "graph_open/ukee2960-inband" :
++			     (vg == 3 ? "graph_open/vendor4-inband" :
++			      "graph_open/vendor4"));
++			uint32_t body_sz = (vg == 2 || vg == 4) ?
+ 			    (uint32_t)sizeof(g_graph_ukee_current) :
+ 			    (uint32_t)sizeof(g_graph_vendor4);
+-			int vgoff = vg == 2 ? 16 : 12;
+-			int vglen = vg == 2 ? 2944 : 2712;
++			int vgoff = (vg == 2 || vg == 4) ? 16 : 12;
++			int vglen = (vg == 2 || vg == 4) ? 2944 : 2712;
++			int inband = (vg == 3 || vg == 4);
+ 
+ 			(void)PE_parse_boot_argn("sweetvgoff", &vgoff,
+ 			    sizeof(vgoff));
+ 			(void)PE_parse_boot_argn("sweetvglen", &vglen,
+ 			    sizeof(vglen));
++			printf("SWEET MARK: vginl v1 vg=%d off=%d len=%u "
++			    "form=%s\n", vg, vgoff, (unsigned)vglen,
++			    inband ? "inband" : "shm");
++			sweet_log_sync();
+ 			if (vgoff < 0 || vgoff > 64 ||
+ 			    (uint32_t)(vgoff + vglen) > body_sz) {
+ 				printf("SWEET GLINK: vgraph off/len out of range\n");
+ 				sweet_log_sync();
++			} else if (inband) {
++				int irc = g_apm_cmd(port, 1, body + vgoff,
++				    (uint32_t)vglen, APM_CMD_GRAPH_OPEN, tag);
++
++				if (irc == 0) {
++					g_audio_graph_cfg_vp(port);
++					if (g_apm_graph_start_list(port, sgs, 4) == 0) {
++						printf("SWEET GLINK: vgraph %d "
++						    "(in band) started\n", vg);
++						sweet_log_sync();
++						g_audio_tone(port, G_VP_WR_IID);
++					} else {
++						printf("SWEET GLINK: vgraph %d "
++						    "(in band) did not start\n", vg);
++						sweet_log_sync();
++					}
++					return;
++				}
++				printf("SWEET GLINK: vgraph %d (in band) open "
++				    "refused rc=%d\n", vg, irc);
++				sweet_log_sync();
+ 			} else if (g_pcm_prepare() != 0) {
+ 				printf("SWEET GLINK: vgraph: no shared memory\n");
+ 				sweet_log_sync();
