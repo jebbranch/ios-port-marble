@@ -5335,3 +5335,14 @@ J1 其余条件沿用 H1 的绿基线：`sweettdmvendor=7 sweetvol=6 sweetbufs=1
   同样不算 MFC 的负结果；
   `no response` ⇒ 传输层无应答，按仪器故障处理。
 - 其余回归项不变。
+
+### J1 打包实测（开机前；设备仍不在，未上电）
+内核 `out/kernel.adsp` sha256 `92fa441944d76b68…`（`EXPECT_MARKER="SWEET MARK: mfcget v2 "` 过门，CI 摘要一致）。
+产物 `images/j1-get-mfc-rate.img`：`sweettime=1793942777` 命中 1，cmdline 实测 **582 B**
+——**预测 583 又差 1**（今年第四次；` sweetmfcget=2` 是 14 字节不是 15）。
+镜像内标记：`mfcget v2 `×**4**（四个分支各一条 printf，符合预期）、`mfcget v1 `×**0**
+⇒ **这不是 0269 的内核**（身份门要的正是这一条）；另有 `mfc v1 sel=`×2、`tdmcfg v1 sup=`×1、
+`tdmclk v2 late `×1、`cccfg v3 `×6。
+cmdline 里 `sweetmfc=` ×0（⇒ 只读不写，J1 的单变量成立）、`sweetvol=6` ×1、`sweetvol=31` ×0、
+`sweettdmvendor=7` ×1，尾部 `… sweetvol=6 sweettdmvendor=7 sweetmfcget=2 sweettime=1793942777` 连续。
+`sweettdmclk` ×1 是内核里的**参数名字符串**，不在 cmdline（尾巴已核），别把它当成参数还在。
