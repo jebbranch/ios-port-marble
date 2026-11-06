@@ -5746,3 +5746,26 @@ TDM 的读回在 K1 就被证明可用，所以这一枪同样是**寄存器自�
 
 预算：41/120 与 42/120。两枪都不写盘、不碰 GPU、不改图与时钟；最坏结局是各自读回一次"不接受改写"，
 而那本身就是能把嫌疑清单继续缩短的读数。
+
+### K4 开机前快照（真实产物；第 41 枪 / 预算 120）
+
+取回这条路上今天真正发生的事，记下来是因为它差点让我们开错内核：
+CI **已经成功**（release 资产摘要换成 `1806ad0e…`，且失败时才更新的 `build-error.txt` 里写的还是旧
+commit `11ac917…` ⇒ marker 门没报错），但 **objects CDN 连续给出两份互不相同的旧字节**
+（`5f52254b…`、`7128b108…`），`fetch_kernel.sh` 按"摘要 + 本轮 marker"双门连拒两次；
+第 3 次（19:15）拿到 `c321be4668b1…`，当场数标记：
+**`tdmmf v1 `×1、`mfcget v4 `×5、`mfcget v3 `×0**，体积 17563976（0272 是 17547528）⇒ 这才是 0273。
+两条被否掉的旁路也记一笔，免得下次又试：`fetch_kernel_api.sh` 的门更松（摘要不符时只要看到
+`SWEET AUDIO: build v` 就放行——那是每个 build 都有的串，不能当新鲜度），所以我把它指到 `/tmp/kdl`
+单独验；未带 token 的 api.github.com 在这个出口 IP 上是 **限流到 0**（reset 还要 ~1 小时），
+Keychain 里那条 github.com 只有账号没有 token；直连 github.com 超时（这台机器必须走代理）。
+0272 那颗内核留着备份 `out/kernel.adsp.0272.bak`（`a9445480…`）。
+
+产物 `images/k4-mfc24.img`：cmdline 实测 **578 B**（与预测一致），尾部
+`=3 sweetampfirst=1 sweetvol=6 sweettdmvendor=7 sweetmfc=4 sweetmfcget=3 sweettime=1793963894` 连续；
+`sweetmfc=4` ×1 / `sweetmfc=1` ×0 / `sweetshmflag` **不在 cmdline**；
+镜像内 `tdmmf v1 `×1、`mfcget v4 `×5、`v3 `×0、本轮 `sweettime` ×1。
+
+打分：`./tools/score_k45.py k4 logs/ring-k4-mfc24.txt 1793963894 images/k4-mfc24.img`
+（该工具的判决副本已在 `02c9e2b` 开机前提交，并用 boot 40 的 ring 做过反向对照：旧产物会被打成
+IDENTITY FAIL + 证人 MISS）。
