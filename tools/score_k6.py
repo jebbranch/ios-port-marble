@@ -64,8 +64,19 @@ def main():
     if mode == "k6a":
         print("=== K6a-2/3 does the vendor-shaped container open and start ===")
         for pat in ("graph_open/ukee2960-inband rsp", "vgraph 4 (in band) started",
-                    "vgraph 4 (in band) did not start", "vgraph 4 (in band) open refused"):
+                    "vgraph 4 (in band) did not start", "vgraph 4 (in band) open refused",
+                    "APM graph_open/ukee2960-inband"):
             print(f"  ({K.count(ring, pat)}) {pat}")
+        sent = K.count(ring, "APM graph_open/ukee2960-inband")
+        refused = K.count(ring, "vgraph 4 (in band) open refused")
+        if sent == 0 and refused >= 1:
+            print("  NOT SENT - the packet never reached the wire (our own builder "
+                  "refused it locally; g_apm_cmd's inline cap is 1024 bytes and its "
+                  "guard returns -1 BEFORE printing).  This is an instrument "
+                  "failure, NOT a DSP answer, and it makes K6a-4 unanswerable: the "
+                  "code then falls through to our own 800-byte container, so every "
+                  "line after it is a control replay, not a vendor-graph reading.")
+            return
         print("=== K6a-4 PRIMARY: the MFC before we write anything ===")
         if K.count(ring, "form=inband") == 0:
             print("  REFUSED: no 'vginl ... form=inband' witness in this ring, so the "

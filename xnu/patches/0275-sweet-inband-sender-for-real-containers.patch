@@ -1,0 +1,76 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 589a83e..3587c77 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -2721,6 +2721,59 @@ g_apm_cmd(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
+ 	return g_apm_xfer(pkt, pkt_size, what);
+ }
+ 
++/*
++ * 0275: an in-band command big enough for a REAL container.
++ *
++ * Why this exists rather than a raised limit in g_apm_cmd(): that function's
++ * packet is a 1064-byte STACK array (`uint8_t pkt[24 + 16 + 1024]` at :2687)
++ * and its guard at :2690 returns -1 BEFORE its own printf, so anything over
++ * 1024 bytes simply does not exist on the wire.  K6a (boot 43) is the proof:
++ * the ring carries 'vgraph 4 (in band) open refused rc=-1' at line 1600 with
++ * NO 'APM graph_open/ukee2960-inband' send line above it, and then falls
++ * through into our own 800-byte graph, which is why the rest of that ring is a
++ * control replay and not an answer to the question the round was built for.
++ * g_apm_set_cfg() delegates here (:5535 plen -> g_apm_cmd), so the same cap
++ * silently applies to any in-band SET_CFG over 1024 bytes - which is why the
++ * 18 KB vendor custom config can only ever have been tried through the OOB
++ * form.  Whether any PAST round misread that as a DSP refusal is not something
++ * the docs establish, so it is not claimed here.
++ *
++ * The buffer here is static, not stacked, and the guard now PRINTS, because a
++ * limit that fails quietly will be remembered as a refusal forever.
++ */
++static uint8_t g_inline_pkt[24 + 16 + 4096];
++
++static int
++g_apm_cmd_big(uint32_t src_port, uint32_t dst_port, const uint8_t *payload,
++    uint32_t plen, uint32_t opcode, const char *what)
++{
++	uint32_t max_plen = (uint32_t)sizeof(g_inline_pkt) - 40;
++	uint32_t pkt_size = 24 + 16 + plen;
++
++	if (plen > max_plen) {
++		printf("SWEET GLINK: APM %s %u bytes exceeds the inline buffer "
++		    "(%u) - NOT SENT\n", what, plen, max_plen);
++		sweet_log_sync();
++		return -1;
++	}
++	memset(g_inline_pkt, 0, sizeof(g_inline_pkt));
++	g_put32(g_inline_pkt + 0, (6u << 4) | (pkt_size << 8));
++	g_put32(g_inline_pkt + 4, GPR_DOMAIN_ADSP | (GPR_DOMAIN_APPS << 8));
++	g_put32(g_inline_pkt + 8, src_port);
++	g_put32(g_inline_pkt + 12, dst_port);
++	g_put32(g_inline_pkt + 16, 0x100u + opcode);
++	g_put32(g_inline_pkt + 20, opcode);
++	g_put32(g_inline_pkt + 24 + 0, 0);
++	g_put32(g_inline_pkt + 24 + 4, 0);
++	g_put32(g_inline_pkt + 24 + 8, 0);
++	g_put32(g_inline_pkt + 24 + 12, plen);
++	memcpy(g_inline_pkt + 40, payload, plen);
++	printf("SWEET GLINK: APM %s src=%#x dst=%#x (%u bytes) inline-big\n",
++	    what, src_port, dst_port, pkt_size);
++	sweet_log_sync();
++	return g_apm_xfer(g_inline_pkt, pkt_size, what);
++}
++
+ /* APM_CMD_SHARED_MEM_MAP_REGIONS is the exception: the vendor kprobe trace
+  * shows a 44-byte packet whose body starts at +24 (pool|count, flag, addr
+  * lsw/msw, size) with no payload descriptor, and bit 16 set in the domain
+@@ -7662,8 +7715,9 @@ g_apm_graph_bringup(void)
+ 				printf("SWEET GLINK: vgraph off/len out of range\n");
+ 				sweet_log_sync();
+ 			} else if (inband) {
+-				int irc = g_apm_cmd(port, 1, body + vgoff,
+-				    (uint32_t)vglen, APM_CMD_GRAPH_OPEN, tag);
++				int irc = g_apm_cmd_big(port, 1,
++				    body + vgoff, (uint32_t)vglen,
++				    APM_CMD_GRAPH_OPEN, tag);
+ 
+ 				if (irc == 0) {
+ 					g_audio_graph_cfg_vp(port);
