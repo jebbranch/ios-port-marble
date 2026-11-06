@@ -6168,3 +6168,39 @@ WR 端点在收到 DATA_BUFFER 通知后立刻回 DONE，说明它**没有把"�
    所以不能和 K11 同轮做（仪器不该扰动被测量）。
 3. **18128 正文**：这份 capture 拿不到（kprobe 只取前 96 词），
    所以它需要的是资产/协议工作而不是开机。
+
+---
+
+## 第 50 枪 K11 判决（`logs/ring-k11-tokencmp.txt`，`sweettime=1793979539`，589 B 与预测一致）
+## **`sweettok=1` 没有改变任何东西——但这一发的证据强度要如实打折**
+
+```
+dblat v2 tone n=120 min=1 avg=1 max=2 ms timeout=0 step=1     ← 与 K10 逐字相同
+dblat v2 pre  n=1   min=0 avg=0 max=0 ms timeout=0 step=1
+dbb v1 bytes=1152 ms=6 / tone gain g=16 peak=16384 / pcm tone done (120 buffers)
+```
+
+**判读**：如果模块对 token 的解释决定了它是否真的搬运数据，回执时间应当变化；它没有变化。
+
+**必须同时写下这条限制**：`sweettok` 的两种形式在代码里是
+`tok = up ? ((token & 0xffffu) | (len << 16)) : (token & 0xffffu);`
+——**这一行没有打印自己选了哪一支**。我能证明的只有"参数进了 cmdline"，
+不能证明"运行时用的是复合形式"。所以严格地说，K11 是
+**"无变化，且缺少生效证人"**，而不是"证明 token 无关"。
+这条正是 0267 已经立过的规矩（决定不打印自己的值就不能被打分）在这里复发了一次，
+所以 0278 从一开始就带了 `amptone v1 on=%d` 这样的证人。
+
+**因此 K11 的真实产出是排除了一个"便宜的下一步"**：不需要再做 token 实验；
+下一个能推进问题的仪器只剩 `0278 = tone 进行中读功放寄存器`（已推、CI 构建中，
+marker `SWEET MARK: amptone v1 `，ci_replay applied=219）。
+K12 = K10 那行去掉 `sweetdbstep=1`（节律已定为 1 ms）加上 `sweetampverify=1`，
+**预测 580 B**，判据是 `ampread mid-tone addr=… reg=…` 与 pre-stream/post-stream **是否不同**：
+
+| 观察 | 结论 |
+|---|---|
+| 三个时刻读数相同 | 功放侧在播放中**没有任何状态变化** ⇒ "端点之后没在跑"获得第一条正向证据（这是过去只能靠"读不到"来推断的一格）|
+| mid-tone 与 pre/post **不同** | 数据确实到达了 PA ⇒ 无声的问题在 PA 之后（供电/使能/mute），并且 K10 的"入队回执"解释继续成立但不解释全部 |
+| `not consumed` 出现或 dblat avg 明显移动 | 这一发的 I2C 读扰动了流 ⇒ **仪器读数**，按 K12-故障处理，不作模块结论 |
+| 读回本身 NACK（`r=-1/-2`）| 回到 0238/0241 那条已知线；**这不算对功放的否定**，是仪器 |
+
+预算 50/120。
