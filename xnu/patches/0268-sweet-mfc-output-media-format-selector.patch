@@ -1,0 +1,106 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 411d915..5ba50e4 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -2582,6 +2582,9 @@ static const uint32_t g_ukee_current_sgs[4] = {
+ #define G_VP_WR_IID                         0x40bdu
+ #define G_VP_TDM_IID                        0x428fu
+ #define G_VP_AW_IID                         0x42d3u
++/* MODULE_ID_MFC 0x07001015 at this iid in g_graph_vp_wr's own module table
++ * (byte offset 0x0100 of the blob) - the only converter instance we have. */
++#define G_VP_MFC_IID                        0x48bau
+ #define G_CDMA_MODULE_OFF                   224u
+ #define APM_VENDOR_SG_ID                    0xb00000d5u
+ #define APM_SHM_POOL                        3u   /* SHMEM8_4K */
+@@ -7002,6 +7005,91 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 	(void)g_apm_set_cfg(src_port, G_VP_AW_IID, 0x10013d2a, aw2,
+ 	    sizeof(aw2), "vp/aw_cfg2");
+ 
++	/*
++	 * 0268: the one module in OUR graph that sits on the rate boundary has
++	 * never been told what its output is.  The vendor's own accepted traffic
++	 * (logs/gpr-both-20261105-223253.txt, dst=1, payload 64, packet 104)
++	 * sends PARAM_ID_MFC_OUTPUT_MEDIA_FORMAT 0x08001024 as a PAIR, one MFC
++	 * instance per rate:
++	 *   {iid 0x40ca, 0x08001024, 12, {48000, 0x00020020, 0x00020001}}
++	 *   {iid 0x40c8, 0x08001024, 12, {96000, 0x00020020, 0x00020001}}
++	 * and a second batch {0x401d -> 48000, 0x40b6 -> 96000}.  Our graph has a
++	 * single MFC instance - MODULE_ID_MFC 0x07001015 at iid 0x48ba, byte-
++	 * verified in g_graph_vp_wr's module table - and grep says 0x48ba appears
++	 * in this file only inside comments.  sweetcccfg=3 aimed those two records
++	 * at 0x428f (the TDM module): right params, wrong module, refused 0x1.
++	 *
++	 * sweetmfc is a selector so one build covers the three shapes:
++	 *   1 = one record to OUR MFC at 96000 (the rate the TDM iface is set to)
++	 *   2 = one record to OUR MFC at 48000 (the rate the WR endpoint feeds)
++	 *   3 = the vendor's two-record batch, both records naming 0x48ba
++	 * Anything else sends nothing, so the shipped sequence is unchanged.
++	 */
++	{
++		int mfc_sel = 0;
++
++		(void)PE_parse_boot_argn("sweetmfc", &mfc_sel, sizeof(mfc_sel));
++		if (mfc_sel != 0) {
++			static const uint32_t mfc_out[3] = {
++				0x00017700u, 0x00020020u, 0x00020001u
++			};
++			static const uint32_t mfc_in[3] = {
++				0x0000bb80u, 0x00020020u, 0x00020001u
++			};
++			uint8_t body[64];
++			int mfc_rc = -1;
++			int mfc_sent = 0;
++
++			memset(body, 0, sizeof(body));
++			if (mfc_sel == 1) {
++				mfc_rc = g_apm_set_cfg(src_port, G_VP_MFC_IID,
++				    0x08001024u, mfc_out, sizeof(mfc_out),
++				    "vp/mfc_out96");
++				mfc_sent = 1;
++			} else if (mfc_sel == 2) {
++				mfc_rc = g_apm_set_cfg(src_port, G_VP_MFC_IID,
++				    0x08001024u, mfc_in, sizeof(mfc_in),
++				    "vp/mfc_out48");
++				mfc_sent = 1;
++			} else if (mfc_sel == 3) {
++				/* Two records, so dst = APM = 1, exactly how the
++				 * vendor frames the pair.  Each record is
++				 * 16 + align8(12) = 32 bytes, which is what makes
++				 * the vendor's payload_size 64 and its packet 104 -
++				 * striding by the raw 12 gives 56 and puts record
++				 * two eight bytes early. */
++				uint32_t off = 0;
++
++				g_put32(body + off + 0, G_VP_MFC_IID);
++				g_put32(body + off + 4, 0x08001024u);
++				g_put32(body + off + 8, 12);
++				g_put32(body + off + 16, 0x0000bb80u);
++				g_put32(body + off + 20, 0x00020020u);
++				g_put32(body + off + 24, 0x00020001u);
++				off += 16 + ((12u + 7u) & ~7u);
++				g_put32(body + off + 0, G_VP_MFC_IID);
++				g_put32(body + off + 4, 0x08001024u);
++				g_put32(body + off + 8, 12);
++				g_put32(body + off + 16, 0x00017700u);
++				g_put32(body + off + 20, 0x00020020u);
++				g_put32(body + off + 24, 0x00020001u);
++				off += 16 + ((12u + 7u) & ~7u);
++				mfc_rc = g_apm_set_cfg_batch(src_port, body, off,
++				    2, "vp/mfc_pair");
++				mfc_sent = 1;
++			} else {
++				printf("SWEET MARK: mfc v1 sel=%d out of range, "
++				    "nothing sent\n", mfc_sel);
++				sweet_log_sync();
++			}
++			if (mfc_sent) {
++				printf("SWEET MARK: mfc v1 sel=%d iid=%#x param=%#x rc=%d\n",
++				    mfc_sel, G_VP_MFC_IID, 0x08001024u, mfc_rc);
++				sweet_log_sync();
++			}
++		}
++	}
++
+ 	{
+ 		/*
+ 		 * sweetep4308=1 also configures the second endpoint instance the

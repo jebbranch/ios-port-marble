@@ -5247,3 +5247,58 @@ tdmcfg v1 113c not sent
 
 **响度规矩更新（用户 06 日）**：以后**用耳朵当判据的轮次一律 `sweetvol=6`（峰 6144 = −14.5 dBFS）**；
 只读寄存器的轮次压回默认 `g=1`（−30 dBFS）。已写进本文件与 `START-HERE.md`。
+
+## 0268 落库：把我们**真的有**的那个 MFC 配上输出格式（子智能体报告 + 我的两处更正）
+
+**更正 1（子智能体的措辞）**：它说厂商"对 MFC 0x40c8 发 0x08001024"——**不完整**。
+抓包解出来是**一个 dst=1 批量里的两条记录**（payload 64、整包 104）：
+
+```
+rec1 {iid=0x40ca, param=0x08001024, size=12, err=0, data={0x0000bb80(48000), 0x00020020, 0x00020001}}
+rec2 {iid=0x40c8, param=0x08001024, size=12, err=0, data={0x00017700(96000), 0x00020020, 0x00020001}}
+另一批同形状：{0x401d -> 48000, 0x40b6 -> 96000}
+```
+**更正 2（我自己的普查也错过）**：我第一次只取每条报文的**首记录**，于是断言"`0x40c8` 从没出现"——错，
+它是第二条。**多记录容器必须整条走链**（`tools/walk_param_records.py` 的存在理由），这条重新写进规矩。
+
+**新事实（两方独立扫描一致，我已复核）**：
+- 我们的 `g_graph_vp_wr` 模块表里**只有一个转换实例**：`MODULE_ID_MFC = 0x07001015`，iid `0x48ba`（blob 内偏移 0x0100）。
+  厂商的**设备子图那半张与我们逐字节相同**（它的 14 条 connection = 我们的 15 条减去 `0x40bd→0x4012`）；
+  厂商多出来的是**流子图**那一串 `0x40bd→0x40be→0x40bf(PCM_DEC 0x07001005)→0x40c0(PCM_CNV 0x07001003)→0x40c1→0x40c2→0x4008→0x40c4→0x40c6→0x4165`。
+- **`0x48ba` 在整个 driver 里只出现在两条注释里**（:6685、:6826）⇒ 我们图里唯一坐在 48k/96k 边界上的模块，
+  **从来没被告知任何输出格式**。而 `sweetcccfg=3` 把那两条 MFC 记录发给了 `0x428f`（TDM）——
+  按配对规则就是"对的参数配错的模块"，被拒是应该的。
+- `sweetvcfg2` 三枪（`ring-ab/i4/vcfg2`）已证：发给厂商那套 iid（`0x40bf/0x40c0/0x40c8`）**全部 `status=0x1`**
+  ⇒ 那些模块确实不在我们图里，**"多补配置"这条路已死**；剩下的是配置我们自己的 MFC，或改图。
+
+**0268 的做法**（链树 `3568269`，补丁 `0268-sweet-mfc-output-media-format-selector.patch`，标记 `SWEET MARK: mfc v1 sel=`）：
+`sweetmfc` 选择子 —— `1` 单条 dst=0x48ba @96000、`2` 单条 @48000、`3` 厂商形状的两条批量（两条都点名我们自己的 0x48ba），
+**其它值什么都不发并打印 out of range**。
+
+**宿主机 stub 抓到的两个真 bug（`tools/stub_mfc.py`，一次开机都没花）**：
+1. 我第一版按 `16 + 12` 跨记录 ⇒ 批量 body 只有 **56**，厂商是 **64**：第二条记录会**早 8 个字节**，
+   DSP 会把它的 `iid/param/size` 读歪。改成 `16 + align8(12) = 32` 后 body=64 ✓、整包 104 ✓。
+2. 我第一版的 `else` 让**越界值（如 9）掉进批量分支**——那会把"没这个档"变成"发了但读数无法解释"。
+   现在 `sel=9 -> NONE`，且打印独立的一行。
+```
+  sel  form     target   param       rec_size  rate/body
+    0  NONE                                          nrec=0 body=0
+    1  single   0x48ba   0x8001024  12        0x17700 nrec=1
+    2  single   0x48ba   0x8001024  12        0xbb80  nrec=1
+    3  batch    0x48ba   0x8001024  12        0xbb80  nrec=2 body=64
+    9  NONE                                          nrec=0 body=0
+```
+`tools/ci_replay.sh`：`applied=209 / skipped=49`，`OK: CI post-image == chain-tree HEAD`。
+
+## 下一枪 G1（第 37 枪）= 0268 + `sweetmfc=1`，其余与 H1 逐字相同
+
+对照 = **H1**（同一 0267/0268 家族、`sweettdmvendor=7`、控制面全绿、满幅仍无声）。
+**唯一变量 = 多发的这一封 MFC 输出格式**。响度改用你定的天花板 **`sweetvol=6` = 峰 6144 = −14.5 dBFS**，
+`sweetbufs=120` 不变。
+
+| 编号 | 判据 | 取值 | 含义 |
+|---|---|---|---|
+| G1-0 身份 | 镜像内 `mfc v1 sel=`×**2**（summary + out-of-range 两条 printf 都含该前缀，这是**镜像里的静态串**，不是运行期次数）；ring 内 `sweettime=<本轮>` 命中 + 窗口吻合；运行期 `mfc v1 sel=1 iid=0x48ba param=0x8001024 rc=?` **恰 1 行**，且 `sel=9 out of range` **0 行** | 全成立 | 这一封真发了，且发到的是我们自己的 MFC |
+| **G1-1 主判据（三读）** | ① `rc=0` 且**听到** ⇒ MFC 输出格式就是缺失的那一环，下一步把厂商的 48k/96k 成对结构补全（`sel=3`）并讨论音质；② `rc=0` 且**仍无声** ⇒ "配置我们自己的 MFC"这一格关闭，**只剩改图**（加 PCM_CNV/PCM_DEC 实例或补流子图）；③ **`rc!=0`** ⇒ 这个 iid 不吃这个 param（配对规则在我们自己模块上也成立），同样是实质读数 | 见左 | 三种都有信息，不依赖成功 |
+| G1-2 回归 | `tone gain g=6`、`graph_start status=0`、`pcm tone done (120 buffers)`、`data_buffer send`≈121、`no rsp` 0、panic 0、`===== done =====`/`PSCI SYSTEM_RESET` 在窗口内、`tdmcfg v1 sup=7` 三行 not sent 仍在、控制面四绿行 | 等值 | 不齐 ⇒ 不判 |
+预算：H1 实测 569 − `sweetvol=31`+`sweetvol=6`（−1）+ ` sweetmfc=1`（+12）= **预测 580，本轮实测填死**。
