@@ -281,3 +281,42 @@ mfcget v2 no-reply no response pkt=128
 ⇒ 结论：**"SAL 不吃 `0x0800100C`" 在我们这里既没有被证实也没有被否证**，它不该出现在判据或推理链里。
 对 J1 没有影响（J1 读的是 MFC `0x48ba`，与 SAL 无关），但这条要立个规矩：
 **外部答案里的前提，凡我没在我们 ring/源码里核过的，一律先标"外部前提"再引用**（这次是核过之后发现自己转述成了"我们观察到"）。
+
+## 14. 第四轮外部答案 + 0271（把时间轴补成三个点）
+
+**收下并照做的两条：**
+1. `PARAM_ID_HW_EP_MF_CFG (0x08001017)` 对 **TDM_SINK** 描述的是**硬件端点接收的 PCM 格式**
+   （`sample_rate/bit_width/num_channels/data_format`），**不是**时钟/slot——时钟/slot 属 `0x0800101b`。
+   ⇒ 我们两封都发，分工与他说的**完全一致**，这一格没有缺口。
+2. "中间模块没被逐一发格式"**不等于**它们没有格式：框架沿连接把上游输出格式转成下游
+   `CAPI_INPUT_MEDIA_FORMAT_V2` 属性。⇒ **撤掉"要给每个中间模块补 PID"这条候选**，
+   要查的是**传播有没有走通**，而不是多发几封 SET_CFG。
+
+**他给的三个更值得查的点，我按可测性排序：**
+- **SAL 的输入格式约束**（公开声明支持 Fixed Point、16/32 bit、Q15/Q27/Q31，交错方式
+  `deinterleaved unpacked`）。若 WR 报出的格式与 SAL 接受的输入不符，**传播断在 SAL**——
+  这比"少发 PID"合理得多，且**J1 的三个读回点正好能量出断在哪一段**（见下）。
+- **MUX/DEMUX 的输出格式事件要求输出端口 STARTED** ⇒ 就算 MFC 在 PREPARE 后已有效，
+  **也不能据此推断最末端 TDM 收到了格式**。所以读回必须至少两点（PREPARE 后 + START 后）。
+- **`cu_handle_prepare()` 里就有 `propagate_media_fmt(base_ptr, FALSE /* is_data_path */)`**
+  ⇒ 控制路径传播发生在 **PREPARE**，不必等 START ⇒ **PREPARE 之后的读回是最干净的观察点**
+  （此时一帧 PCM 都还没进）。
+
+⇒ **0271 落库**（链树 `7a5333a`，补丁 `0271-sweet-mfc-format-timeline-prepare-point.patch`，
+marker `mfcget v3 `）：在 `g_apm_graph_start()` 里 **PREPARE 返回之后、START 之前**加一次读回，
+仍只在 `sweetmfcget=2` 触发。于是 J1（不发 set）实际打印**三行**：
+`pre-set`（cfg 阶段）→ `post-prepare` → `post-start`。
+`ci_replay`：`applied=212 / skipped=49`，`OK: post-image == chain-tree HEAD`。
+**编号提醒**：0271 已用于音频 ⇒ GPU PR 的重编号目标再顺延为 **0272/0273/0274**。
+
+**替他补上他要的那个数：AW 的真实 module id 我们手里有。**
+他列"最想补齐 AW 的 module ID"——我们第 11 节那次走链已经读出来了：
+`g_graph_vp_wr` 的模块表里 **iid 0x42d3 → module_id 0x10013D01**，
+正是他自己给的 `AFE_MODULE_ID_AWDSP_RX`（配对 TX `0x10013D00`），与其余 `0x070010xx` 前缀不同。
+⇒ 下一问应该问**这个 AFE 命名系的模块**要不要显式格式参数、以及它的
+`0x10013d2a` 是什么族的参数（我们照厂商发了两封，正文含 25387 / 28512）。
+
+**他两处我们仍标"外部前提、不当我们证据"的**：`SAL 支持 deinterleaved unpacked` 等能力清单、
+以及 `0x080011BE` 可省（"引擎会从连接推导"）——都来自公开源码版本，**UKEE 固件可能不同**；
+读回三行才是我们的读数。另外他提醒 GPR 头有 header-size 字段（我们用固定 24），
+若某次应答长度异常，`mfcget` 行的 `len=` 会先暴露它，这条已经写进判据。
