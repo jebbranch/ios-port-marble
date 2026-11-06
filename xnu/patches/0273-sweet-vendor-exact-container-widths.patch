@@ -1,0 +1,86 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 1ef08bc..1773aec 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -6963,9 +6963,32 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 	 * copied byte-for-byte from the vendor GPR trace. */
+ 	{
+ 		uint8_t tdm_rate[12] = { 0 };
++		/*
++		 * 0273: the vendor's OWN accepted playback (walked whole, all 112
++		 * rows, in tools/vendor_tx_timeline.py) says
++		 *   SET_CFG(0x428f, 0x08001017) psize=12 :: 0x00017700 0x00030018 0x1
++		 * while we send 0x00030020 in the second word.  Read as halfwords
++		 * that is bit width 24 vs our 32 (the channel half, 3, agrees).  The
++		 * same 0x00030018 also appears in the vendor's MFC output record, so
++		 * it is the vendor's consistent container width for this path, not a
++		 * one-off.  sweettdmvendor bit3 switches to the vendor's word; 7 (the
++		 * H1/J1/K1/K2 baseline) keeps 0x00030020 exactly as before, and this
++		 * is a separate read of the same knob because the parse below (which
++		 * masks the three invented params) happens after this send.
++		 */
++		int tdm_w24 = 0;
++		uint32_t tdm_mf_w1 = 0x00030020u;
++
++		(void)PE_parse_boot_argn("sweettdmvendor", &tdm_w24,
++		    sizeof(tdm_w24));
++		if (tdm_w24 & 8) {
++			tdm_mf_w1 = 0x00030018u;
++		}
++		printf("SWEET MARK: tdmmf v1 tv=%d w1=%#x\n", tdm_w24, tdm_mf_w1);
++		sweet_log_sync();
+ 
+ 		g_put32(tdm_rate + 0, 96000);
+-		g_put32(tdm_rate + 4, 0x30020);
++		g_put32(tdm_rate + 4, tdm_mf_w1);
+ 		g_put32(tdm_rate + 8, 1);
+ 		(void)g_apm_set_cfg(src_port, G_VP_TDM_IID, 0x08001017,
+ 		    tdm_rate, 12, "vp/tdm_rate");
+@@ -7213,6 +7236,8 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 	 *   1 = one record to OUR MFC at 96000 (the rate the TDM iface is set to)
+ 	 *   2 = one record to OUR MFC at 48000 (the rate the WR endpoint feeds)
+ 	 *   3 = the vendor's two-record batch, both records naming 0x48ba
++	 *   4 = 0273: the vendor's OWN 14-byte output record, byte-for-byte from
++	 *       the accepted playback timeline, to OUR 0x48ba
+ 	 * Anything else sends nothing, so the shipped sequence is unchanged.
+ 	 */
+ 	{
+@@ -7273,6 +7298,38 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 				mfc_rc = g_apm_set_cfg_batch(src_port, body, off,
+ 				    2, "vp/mfc_pair");
+ 				mfc_sent = 1;
++			} else if (mfc_sel == 4) {
++				/* 0273: the vendor's 14-byte MFC output record,
++				 * byte-for-byte from the accepted timeline walked by
++				 * tools/vendor_tx_timeline.py:
++				 *   SET_CFG(0x40c8, 0x08001024) psize=14 ::
++				 *   {0x00017700, 0x00030018, 0x00020001, 0x00000003}
++				 * (payload_size 32 = 16 + align8(14), which is what
++				 * the capture shows and what our builder produces).
++				 * Against our own sel=1 the deltas are the second
++				 * word 0x00020020 -> 0x00030018 (32-bit -> the
++				 * vendor's 24-bit container), psize 12 -> 14, and the
++				 * fourth word 3 we never sent.  It goes to OUR MFC
++				 * instance 0x48ba, and 0271/0272's GET reads it back,
++				 * so unlike every earlier write this one is scored by
++				 * what the module reports, not by our own rc. */
++				static const uint32_t mfc_vnd[4] = {
++					0x00017700u, 0x00030018u, 0x00020001u,
++					0x00000003u
++				};
++
++				/* 14, NOT sizeof(): the vendor's declared size is
++				 * 0x08001024 = 14 bytes, so the last word is only
++				 * half inside the record (the kprobe prints the
++				 * whole word, which is how 14 and four words sit
++				 * together in one row).  Sending 16 would make our
++				 * param_size disagree with the packet we are copying
++				 * even though payload_size still rounds to 32; the
++				 * host stub caught this. */
++				mfc_rc = g_apm_set_cfg(src_port, G_VP_MFC_IID,
++				    0x08001024u, mfc_vnd, 14,
++				    "vp/mfc_vendor14");
++				mfc_sent = 1;
+ 			} else {
+ 				printf("SWEET MARK: mfc v1 sel=%d out of range, "
+ 				    "nothing sent\n", mfc_sel);
