@@ -1,0 +1,135 @@
+# every gpr_tx row of this capture, decoded by FIELD NAME (TX rows use t0..tN,
+# not p0..pN - that mis-read cost the first pass of this check a false negative).
+# t0 = ver/hdrlen|size<<8, t1 = domain pair, t2 = src port, t3 = dst port,
+# t4 = token, t5 = opcode, t6..t9 = apm_cmd_header{addr_lsw,msw,handle,payload_size},
+# t10.. = the in-band body, when the command is small enough to be in-band.
+# source: logs/gpr-both-20261105-223253.txt
+PRM_REQ_HW_RSC          src=0x00007 dst=0x00002 tok=    0 addr=0x0 msw=0 handle=0x0 payload_size=36  body_words=7
+      body: t10=0x2 t11=0x800102c t12=0x14 t14=0x1 t15=0x204 t16=0xbb8000 t17=0x4
+GRAPH_OPEN              src=0x02010 dst=0x00001 tok=   86 addr=0x0 msw=0 handle=0xb0d89128 payload_size=496  body_words=0
+SET_CFG                 src=0x02010 dst=0x00001 tok=   87 addr=0x400 msw=0 handle=0xb0d89128 payload_size=264  body_words=0
+SET_CFG                 src=0x02010 dst=0x04308 tok=   88 addr=0x0 msw=0 handle=0x0 payload_size=32  body_words=6
+      body: t10=0x4308 t11=0x8001017 t12=0xc t14=0x17700 t15=0x20020 t16=0x1
+SET_CFG                 src=0x02010 dst=0x04308 tok=   89 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=8
+      body: t10=0x4308 t11=0x800101b t12=0x1c t15=0x2 t16=0x10001 t17=0x3 t18=0x200004 t20=0x1
+PREPARE                 src=0x02010 dst=0x00001 tok=   90 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=5
+      body: t10=0x1 t11=0x8001005 t12=0x8 t14=0x1 t15=0xb00000d5
+START                   src=0x02010 dst=0x00001 tok=   91 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=5
+      body: t10=0x1 t11=0x8001005 t12=0x8 t14=0x1 t15=0xb00000d5
+GRAPH_OPEN              src=0x02011 dst=0x00001 tok=   92 addr=0x0 msw=0 handle=0xb0d89128 payload_size=2872  body_words=0
+SHM_MAP                 src=0x02002 dst=0x00001 tok=   93 addr=0x10003 msw=4 handle=0x1ffe0000 payload_size=1  body_words=1
+      body: t10=0x5000
+SET_CFG                 src=0x02011 dst=0x00001 tok=   94 addr=0x0 msw=0 handle=0xb0d92ac8 payload_size=18504  body_words=0
+SHM_UNMAP               src=0x02002 dst=0x00001 tok=   95 addr=0xb0d92ac8 msw=0 handle=0x0 payload_size=0  body_words=0
+SET_CFG                 src=0x02011 dst=0x00001 tok=   96 addr=0x0 msw=0 handle=0xb0d89128 payload_size=112  body_words=0
+SET_CFG                 src=0x02011 dst=0x00001 tok=   97 addr=0x0 msw=0 handle=0x0 payload_size=64  body_words=12
+      body: t10=0x40ca t11=0x8001024 t12=0xc t14=0xbb80 t15=0x20020 t16=0x20001 t18=0x40c8 t19=0x8001024 t20=0xc t22=0x17700 t23=0x20020 t24=0x20001
+SET_CFG                 src=0x02011 dst=0x042d3 tok=   98 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=6
+      body: t10=0x42d3 t11=0x10013d2a t12=0x1c t15=0x10013d1b t16=0x1 t20=0x632b
+SET_CFG                 src=0x02011 dst=0x042d3 tok=   99 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=6
+      body: t10=0x42d3 t11=0x10013d2a t12=0x1c t15=0x10013d1c t16=0x1 t20=0x6f60
+SET_CFG                 src=0x02011 dst=0x040bd tok=  100 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=11
+      body: t10=0x40bd t11=0x800100c t12=0x1e t14=0x1 t15=0x9001000 t16=0x12 t17=0xbb80 t18=0x10018 t19=0x170018 t20=0x20001 t21=0x201
+SET_CFG                 src=0x02011 dst=0x0428f tok=  101 addr=0x0 msw=0 handle=0x0 payload_size=32  body_words=6
+      body: t10=0x428f t11=0x8001017 t12=0xc t14=0x17700 t15=0x30020 t16=0x1
+SET_CFG                 src=0x02011 dst=0x0428f tok=  102 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=8
+      body: t10=0x428f t11=0x800101b t12=0x1c t15=0x2 t16=0x10001 t17=0x7 t18=0x200004 t20=0x1
+SET_CFG                 src=0x02011 dst=0x040bf tok=  103 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=11
+      body: t10=0x40bf t11=0x8001008 t12=0x1e t14=0x1 t15=0x9001000 t16=0x12 t17=0x10018 t18=0x1b0020 t19=0x30001 t20=0x20000 t21=0x201
+SET_CFG                 src=0x02011 dst=0x040c0 tok=  104 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=11
+      body: t10=0x40c0 t11=0x8001008 t12=0x1e t14=0x1 t15=0x9001000 t16=0x12 t17=0x10018 t18=0x1b0020 t19=0x30001 t20=0x20000 t21=0x201
+SET_CFG                 src=0x02011 dst=0x04165 tok=  105 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=4
+      body: t10=0x4165 t11=0x80010c4 t12=0x4 t14=0x428f
+PREPARE                 src=0x02011 dst=0x00001 tok=  106 addr=0x0 msw=0 handle=0x0 payload_size=40  body_words=8
+      body: t10=0x1 t11=0x8001005 t12=0x14 t14=0x4 t15=0xb0000002 t16=0xb0000025 t17=0xb0000024 t18=0xb0000023
+START                   src=0x02011 dst=0x00001 tok=  107 addr=0x0 msw=0 handle=0x0 payload_size=40  body_words=8
+      body: t10=0x1 t11=0x8001005 t12=0x14 t14=0x4 t15=0xb0000002 t16=0xb0000025 t17=0xb0000024 t18=0xb0000023
+REGISTER_MODULE_EVENTS  src=0x02011 dst=0x040c4 tok=  108 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=3
+      body: t10=0x40c4 t11=0x800103f t12=0x1
+SET_CFG                 src=0x02011 dst=0x00001 tok=  109 addr=0x1000 msw=0 handle=0xb0d89128 payload_size=176  body_words=0
+DATA_BUFFER             src=0x02011 dst=0x040bd tok=    0 addr=0x0 msw=0 handle=0xb0d89128 payload_size=1152  body_words=0
+STOP                    src=0x02011 dst=0x00001 tok=  110 addr=0x0 msw=0 handle=0x0 payload_size=40  body_words=8
+      body: t10=0x1 t11=0x8001005 t12=0x14 t14=0x4 t15=0xb0000002 t16=0xb0000025 t17=0xb0000024 t18=0xb0000023
+REGISTER_MODULE_EVENTS  src=0x02011 dst=0x040c4 tok=  111 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=2
+      body: t10=0x40c4 t11=0x800103f
+STOP                    src=0x02010 dst=0x00001 tok=  112 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=5
+      body: t10=0x1 t11=0x8001005 t12=0x8 t14=0x1 t15=0xb00000d5
+CLOSE                   src=0x02010 dst=0x00001 tok=  113 addr=0x1000 msw=0 handle=0xb0d89128 payload_size=24  body_words=0
+CLOSE                   src=0x02011 dst=0x00001 tok=  114 addr=0x1000 msw=0 handle=0xb0d89128 payload_size=152  body_words=0
+PRM_RELEASE             src=0x00007 dst=0x00002 tok=    0 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=5
+      body: t10=0x2 t11=0x800102c t12=0x8 t14=0x1 t15=0x204
+CLOSE                   src=0x02011 dst=0x00001 tok=  115 addr=0x1000 msw=0 handle=0xb0d89128 payload_size=24  body_words=0
+PRM_REQ_HW_RSC          src=0x00007 dst=0x00002 tok=    0 addr=0x0 msw=0 handle=0x0 payload_size=36  body_words=7
+      body: t10=0x2 t11=0x800102c t12=0x14 t14=0x1 t15=0x204 t16=0xbb8000 t17=0x4
+GRAPH_OPEN              src=0x02010 dst=0x00001 tok=  116 addr=0x0 msw=0 handle=0xb0d89128 payload_size=496  body_words=0
+SET_CFG                 src=0x02010 dst=0x00001 tok=  117 addr=0x400 msw=0 handle=0xb0d89128 payload_size=264  body_words=0
+SET_CFG                 src=0x02010 dst=0x04308 tok=  118 addr=0x0 msw=0 handle=0x0 payload_size=32  body_words=6
+      body: t10=0x4308 t11=0x8001017 t12=0xc t14=0x17700 t15=0x20020 t16=0x1
+SET_CFG                 src=0x02010 dst=0x04308 tok=  119 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=8
+      body: t10=0x4308 t11=0x800101b t12=0x1c t15=0x2 t16=0x10001 t17=0x3 t18=0x200004 t20=0x1
+PREPARE                 src=0x02010 dst=0x00001 tok=  120 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=5
+      body: t10=0x1 t11=0x8001005 t12=0x8 t14=0x1 t15=0xb00000d5
+START                   src=0x02010 dst=0x00001 tok=  121 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=5
+      body: t10=0x1 t11=0x8001005 t12=0x8 t14=0x1 t15=0xb00000d5
+GRAPH_OPEN              src=0x02011 dst=0x00001 tok=  122 addr=0x0 msw=0 handle=0xb0d89128 payload_size=2904  body_words=0
+SHM_MAP                 src=0x02002 dst=0x00001 tok=  123 addr=0x10003 msw=4 handle=0x1ffd8000 payload_size=1  body_words=1
+      body: t10=0x6000
+SET_CFG                 src=0x02011 dst=0x00001 tok=  124 addr=0x0 msw=0 handle=0xb0d920f8 payload_size=22960  body_words=0
+SHM_UNMAP               src=0x02002 dst=0x00001 tok=  125 addr=0xb0d920f8 msw=0 handle=0x0 payload_size=0  body_words=0
+SET_CFG                 src=0x02011 dst=0x00001 tok=  126 addr=0x0 msw=0 handle=0xb0d89128 payload_size=112  body_words=0
+SET_CFG                 src=0x02011 dst=0x00001 tok=  127 addr=0x0 msw=0 handle=0x0 payload_size=64  body_words=12
+      body: t10=0x401d t11=0x8001024 t12=0xc t14=0xbb80 t15=0x20020 t16=0x20001 t18=0x40b6 t19=0x8001024 t20=0xc t22=0x17700 t23=0x20020 t24=0x20001
+SET_CFG                 src=0x02011 dst=0x042d3 tok=  128 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=6
+      body: t10=0x42d3 t11=0x10013d2a t12=0x1c t15=0x10013d1b t16=0x1 t20=0x632b
+SET_CFG                 src=0x02011 dst=0x042d3 tok=  129 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=6
+      body: t10=0x42d3 t11=0x10013d2a t12=0x1c t15=0x10013d1c t16=0x1 t20=0x6f60
+SET_CFG                 src=0x02011 dst=0x04001 tok=  130 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=11
+      body: t10=0x4001 t11=0x800100c t12=0x1e t14=0x1 t15=0x9001000 t16=0x12 t17=0xbb80 t18=0x10018 t19=0x170018 t20=0x20001 t21=0x201
+SET_CFG                 src=0x02011 dst=0x0428f tok=  131 addr=0x0 msw=0 handle=0x0 payload_size=32  body_words=6
+      body: t10=0x428f t11=0x8001017 t12=0xc t14=0x17700 t15=0x30020 t16=0x1
+SET_CFG                 src=0x02011 dst=0x0428f tok=  132 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=8
+      body: t10=0x428f t11=0x800101b t12=0x1c t15=0x2 t16=0x10001 t17=0x7 t18=0x200004 t20=0x1
+SET_CFG                 src=0x02011 dst=0x04003 tok=  133 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=11
+      body: t10=0x4003 t11=0x8001008 t12=0x1e t14=0x1 t15=0x9001000 t16=0x12 t17=0x10018 t18=0x1b0020 t19=0x30001 t20=0x20000 t21=0x201
+SET_CFG                 src=0x02011 dst=0x04004 tok=  134 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=11
+      body: t10=0x4004 t11=0x8001008 t12=0x1e t14=0x1 t15=0x9001000 t16=0x12 t17=0x10018 t18=0x1b0020 t19=0x30001 t20=0x20000 t21=0x201
+SET_CFG                 src=0x02011 dst=0x04163 tok=  135 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=4
+      body: t10=0x4163 t11=0x80010c4 t12=0x4 t14=0x428f
+PREPARE                 src=0x02011 dst=0x00001 tok=  136 addr=0x0 msw=0 handle=0x0 payload_size=40  body_words=8
+      body: t10=0x1 t11=0x8001005 t12=0x14 t14=0x4 t15=0xb0000002 t16=0xb0000008 t17=0xb000001c t18=0xb0000001
+START                   src=0x02011 dst=0x00001 tok=  137 addr=0x0 msw=0 handle=0x0 payload_size=40  body_words=8
+      body: t10=0x1 t11=0x8001005 t12=0x14 t14=0x4 t15=0xb0000002 t16=0xb0000008 t17=0xb000001c t18=0xb0000001
+REGISTER_MODULE_EVENTS  src=0x02011 dst=0x04019 tok=  138 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=3
+      body: t10=0x4019 t11=0x800103f t12=0x1
+SET_CFG                 src=0x02011 dst=0x00001 tok=  139 addr=0x6000 msw=0 handle=0xb0d89128 payload_size=176  body_words=0
+GRAPH_OPEN              src=0x02012 dst=0x00001 tok=  140 addr=0x6000 msw=0 handle=0xb0d89128 payload_size=2032  body_words=0
+SET_CFG                 src=0x02012 dst=0x00001 tok=  141 addr=0x6800 msw=0 handle=0xb0d89128 payload_size=1544  body_words=0
+SET_CFG                 src=0x02012 dst=0x00001 tok=  142 addr=0x6000 msw=0 handle=0xb0d89128 payload_size=112  body_words=0
+SET_CFG                 src=0x02012 dst=0x00001 tok=  143 addr=0x0 msw=0 handle=0x0 payload_size=64  body_words=12
+      body: t10=0x40ca t11=0x8001024 t12=0xc t14=0xbb80 t15=0x20020 t16=0x20001 t18=0x40c8 t19=0x8001024 t20=0xc t22=0x17700 t23=0x20020 t24=0x20001
+SET_CFG                 src=0x02012 dst=0x042d3 tok=  144 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=6
+      body: t10=0x42d3 t11=0x10013d2a t12=0x1c t15=0x10013d1b t16=0x1 t20=0x632b
+SET_CFG                 src=0x02012 dst=0x042d3 tok=  145 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=6
+      body: t10=0x42d3 t11=0x10013d2a t12=0x1c t15=0x10013d1c t16=0x1 t20=0x6f60
+SET_CFG                 src=0x02012 dst=0x040bd tok=  146 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=11
+      body: t10=0x40bd t11=0x800100c t12=0x1e t14=0x1 t15=0x9001000 t16=0x12 t17=0xbb80 t18=0x10018 t19=0x170018 t20=0x20001 t21=0x201
+SET_CFG                 src=0x02012 dst=0x040bf tok=  147 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=11
+      body: t10=0x40bf t11=0x8001008 t12=0x1e t14=0x1 t15=0x9001000 t16=0x12 t17=0x10018 t18=0x1b0020 t19=0x30001 t20=0x20000 t21=0x201
+SET_CFG                 src=0x02012 dst=0x040c0 tok=  148 addr=0x0 msw=0 handle=0x0 payload_size=48  body_words=11
+      body: t10=0x40c0 t11=0x8001008 t12=0x1e t14=0x1 t15=0x9001000 t16=0x12 t17=0x10018 t18=0x1b0020 t19=0x30001 t20=0x20000 t21=0x201
+SET_CFG                 src=0x02012 dst=0x04165 tok=  149 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=4
+      body: t10=0x4165 t11=0x80010c4 t12=0x4 t14=0x428f
+PREPARE                 src=0x02012 dst=0x00001 tok=  150 addr=0x0 msw=0 handle=0x0 payload_size=32  body_words=7
+      body: t10=0x1 t11=0x8001005 t12=0x10 t14=0x3 t15=0xb0000025 t16=0xb0000024 t17=0xb0000023
+START                   src=0x02012 dst=0x00001 tok=  151 addr=0x0 msw=0 handle=0x0 payload_size=32  body_words=7
+      body: t10=0x1 t11=0x8001005 t12=0x10 t14=0x3 t15=0xb0000025 t16=0xb0000024 t17=0xb0000023
+REGISTER_MODULE_EVENTS  src=0x02012 dst=0x040c4 tok=  152 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=3
+      body: t10=0x40c4 t11=0x800103f t12=0x1
+SET_CFG                 src=0x02012 dst=0x00001 tok=  153 addr=0x7000 msw=0 handle=0xb0d89128 payload_size=176  body_words=0
+STOP                    src=0x02012 dst=0x00001 tok=  154 addr=0x0 msw=0 handle=0x0 payload_size=32  body_words=7
+      body: t10=0x1 t11=0x8001005 t12=0x10 t14=0x3 t15=0xb0000025 t16=0xb0000024 t17=0xb0000023
+REGISTER_MODULE_EVENTS  src=0x02012 dst=0x040c4 tok=  155 addr=0x0 msw=0 handle=0x0 payload_size=24  body_words=2
+      body: t10=0x40c4 t11=0x800103f
+CLOSE                   src=0x02012 dst=0x00001 tok=  156 addr=0x7000 msw=0 handle=0xb0d89128 payload_size=152  body_words=0
+CLOSE                   src=0x02012 dst=0x00001 tok=  157 addr=0x7000 msw=0 handle=0xb0d89128 payload_size=24  body_words=0
+# rows matched: 2248
