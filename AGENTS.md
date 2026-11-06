@@ -304,6 +304,9 @@ work/xnu-gh/                     补丁、脚本、docs、logs（git 仓库）
   tools/acdb_size_scan.py        整文件 u32 尺寸扫描
   tools/ci_replay.sh             推送前的 CI 等价测试（base + 全链重放 vs 链树 HEAD）
   tools/walk_param_records.py    多记录 apm_module_param_data 容器逐字节走链
+  tools/decode_graph_blob.py     用 sheng 的词表走链厂商 GRAPH_OPEN 正文（只读，自证末尾对齐）
+  docs/unixnu-sheng-audio-2026-11-07.md  sheng 音频源码读到什么 / 已付过钱的是哪三样 / 新格 = 图里缺 DEC+CNV
+  docs/data/vendor4-graph-decode-2026-11-07.txt  上面那条的输出归档（4 子图 / 18 模块 / 30 连接）
   tools/ring_window.py           SWEETLOG 头部 total vs 解码字节；窗口后的收尾串判为陈旧字节
   tools/score_probe.py           按开机前判据打分（l1/l2/m1/m1c/n1），含上面两条自检
   work/archive/tmp-scratch-2026-11-05/  /tmp 里历次草稿收进来的存档（见其 MANIFEST.md）
