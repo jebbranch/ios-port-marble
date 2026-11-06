@@ -5553,3 +5553,86 @@ sweets1ap=3 sweetampfirst=1 sweetvol=6 sweettdmvendor=7 sweetmfcget=3`
 
 打分：`./tools/score_k1.py logs/ring-k1-3module.txt 1793959323 images/k1-3module.img`
 判读以本文件"K1 判决表"为准，表外形状照实报告，不改名。
+
+---
+
+## 第 38 枪 K1 判决（`logs/ring-k1-3module.txt`，`sweettime=1793959323`）
+
+**K1-0 身份：成立。** `sweettime` 命中 2；`ring_window`：`total=0x16536 == decoded`，
+**window-match True**，三条收尾各 in-window=1（past-window 的 `0x184a5/0x18917/0x1e965` 是上一轮的
+残留字节，已按老规矩标为"不是证据"）；产物内 `mfcget v4 `×5 / `v3`×0 / `v2`×0 / `v1`×0；
+运行期 `mfc v1 sel=` **0 行** ⇒ 这一枪确实只读。
+
+**8 行逐字（三模块 × 两相位 + 两个 MFC 控制点）：**
+
+```
+:pre-set       mfcget v4 pre-set       get_cfg len=116 st=0   iid=0x48ba param=0x8001024 size=8  err=0 d…  rate=-1 bw=32 nch=65535
+:post-prepare  mfcget v4 post-prepare  get_cfg len=116 st=0   iid=0x48ba param=0x8001024 size=8  err=0       rate=-1 bw=32 nch=65535
+:post-start    mfcget v4 post-start    raw   len=116 st=0x1   iid=0x40bd param=0x800100c size=72 err=1       d0..d5=0
+:post-start    mfcget v4 post-start    raw   len=116 st=0     iid=0x428f param=0x8001017 size=12 err=0       d0=0x17700 d1=0x30020 d2=0x1
+:post-start    mfcget v4 post-start    get_cfg len=116 st=0   iid=0x48ba param=0x8001024 size=8  err=0       rate=-1 bw=32 nch=65535
+:post-tone     mfcget v4 post-tone     raw   len=116 st=0x1   iid=0x40bd param=0x800100c size=72 err=1       d0..d5=0
+:post-tone     mfcget v4 post-tone     raw   len=116 st=0     iid=0x428f param=0x8001017 size=12 err=0       d0=0x17700 d1=0x30020 d2=0x1
+:post-tone     mfcget v4 post-tone     get_cfg len=116 st=0   iid=0x48ba param=0x8001024 size=8  err=0       rate=-1 bw=32 nch=65535
+```
+
+**三条结论（按证据强度排）**
+
+1. **TDM_SINK `0x428f/0x08001017` 读回来的是我们自己写进去的字节**：`size=12`、
+   `d0=0x17700`(96000)、`d1=0x30020`、`d2=1` —— 与 `g_audio_graph_cfg_vp()` 里
+   `tdm_rate[]` 那 12 个字节逐字相同，post-start 与 post-tone 一致。
+   ⇒ **GET 仪器本身被证明可用**（同一构造器、同一长度界），
+   并且"**SET_CFG 的 body 会被模块存下来、而且能读回**"至少在硬件 sink 上成立。
+   这是本项目第一次拿到"写进去的东西原样读回来"。
+2. **WR `0x40bd/0x0800100c` 不肯答**：走的是**结构化**分支（应答 opcode=`0x02001000`），
+   但 `st=0x1`、`err=1`、`size` 仍是我们提供的容量 72、`d0..d5` 全零 —— 即模块**明确回了 EFAILED 并且一个字节都没写**。
+   同一 boot 里对**同一 iid+param** 的 `SET_CFG(0x40bd, 0x0800100c)` 是 `status=0` 被接受的
+   （`vp/wr_mf rsp op=0x1001006 status=0`）。
+   ⇒ **WR 槽位本轮不可判**。特别强调：这**不等于**"我们的 SET 没被存下来"，
+   预登记的 B 行结论**不采用**（B 行写的时候没预料到"结构化应答 + st/err≠0 + size 原封不动"这一形状）。
+   记分器把它单列为 **E2**（`added after this boot, NOT pre-registered`），
+   并且分类器对整轮打印 `NO ROW MATCHES (WR-start=None TDM-start=True MFC-start=False MFC-tone=False)`。
+3. **MFC `0x48ba/0x08001024` 四个相位全部无效**（`rate=-1 nch=0xFFFF bw=32`），**包括 post-tone**
+   ⇒ 预登记的 **D 行当场关掉**："格式只在真实数据流过去之后才发布"这个解释死了。
+   120 帧 DATA_BUFFER 已经真的发到 `0x40bd` 并被消费，转换级的输出格式仍然是初始化默认值。
+
+**K1-4 回归：全绿**（`graph_open/prepare/start rsp … status=0`、`tone gain g=6 peak=6144`、
+`pcm tone done (120 buffers)`、`data_buffer send` 121、`no rsp` 0、panic 0、
+`cba2r@… = 0x1`、`ats1pr iova=0x1ffe8000 -> par=0 OK`、`geni amp 0x34 r=0 id=0x2032` + `profile 44/44`、
+三条 `not sent`、`===== done =====` / `PSCI SYSTEM_RESET` 在窗口内）。
+
+**打分器自己挨的两枪（都记下来，因为是同一类错误）**
+- `st=%#x` 被 `(\d+)` 解析 ⇒ `st=0x1` 读成 **0**：**一个拒绝应答的 GET 会被打成干净应答**。已改，
+  并且 fixture 里两种写法都覆盖。
+- 回归门里我用了从来没人打印过的简写（`graph_start status=0`、`cb5 cba2r=0x1`）⇒ 一个全绿的会话
+  被打出两条 MISS。真实串是 `graph_start rsp op=0x1001002 status=0` 与 `cb5 cba2r@<addr> = 0x1`。
+- 两条都是 post-hoc 修正，**表本身没动**；修完 A/B/C/D 四个改写仍然各自命中。
+
+## 下一枪 K2（**同一颗 0272 内核，只是 repack**）：`sweetmfc=1 sweetmfcget=3`
+
+为什么是它：K1 之后唯一还没试、又已经被仪器证明"能验证"的动作，就是**我们自己去写转换级的输出格式**
+（0268 早就建好了这条写路径，但从没有在有读回的情况下跑过）。
+TDM 的先例说明"写进去能原样读回来"在这套固件上是成立的；WR 的先例说明**读不到不等于没写进去**。
+所以 K2 的判据不再是"有没有声音"，而是**MFC 的 body 是否变成我们写的那 12 个字节**。
+
+参数与预算：`582 − sweetshmflag=4(15) + sweetmfc=1(11) = 578 ✓`。
+`sweetshmflag=4` 的删除已证明是**行为 no-op**（默认 `flags[]={4,0}`），
+证人也没丢：真正证明 offset 模式生效的是 `SWEET GLINK: shm mapped pa=… mode=offset`，那行仍在。
+
+**判决表（开机前写死）**
+
+| 门 | 期望 | 命中含义 |
+|---|---|---|
+| K2-0 身份 | 同一内核：产物内 `mfcget v4 `×5、`v3/v2/v1`×0；`sweettime=<本轮>`；窗口吻合 | 不过门不开机 |
+| K2-1 写确实发了 | `SWEET MARK: mfc v1 sel=1 iid=0x48ba param=0x8001024 rc=0` 恰 1 行 | `rc!=0` ⇒ 发都发不出去，先修发送；0 行 ⇒ 参数没进 cmdline |
+| **K2-2 主判据：`post-set`** | **`size=12 err=0 rate=96000 bw=32 nch=2`**（= 我们写的 `{0x00017700,0x00020020,0x00020001}` 原样读回） | **MFC 存下来了** ⇒ 与 TDM 同形；转换级从此有格式，声音问题移出"格式内容"轴 |
+| | `size=72` 且 `st≠0/err≠0`（WR 那种） | MFC **接受但不存** 0x08001024 ⇒ 这条参数不是可写参数或 iid 不对；**这是新的负结果，值钱** |
+| | `size=8 err=0 rate=-1`（和 pre-set 一模一样） | 有人写了但写的不是格式 ⇒ 看 `post-prepare/post-start` 是否被传播覆盖 |
+| K2-3 后续相位 | `post-prepare`、`post-start`、`post-tone` 三处 MFC 的取值 | 存下来了但 `post-start` 又变 -1 ⇒ **有东西在 START 时重置转换级**（新的一轴）；一路保持 96000 ⇒ 格式轴闭合，回到"线上有没有时钟/功放供电"那一轴 |
+| K2-4 听感（附带，不是主判据） | `sweetvol=6` = **−14.5 dBFS**（用户定的上限），120 帧 | 听到 ⇒ 进音质；没听到且 K2-2 成功 ⇒ 无声与 MFC 格式无关，这条当场记下 |
+| K2-5 仪器故障类 | `mfcget v4 … no response` ≥3、`unexpected rsp=`、`basic … echoed_op=` | 按仪器处理，不算模块结论 |
+| K2-6 回归 | 与 K1 逐项等值（上面那串），且 `data_buffer send`≈121 | 不齐 ⇒ 不判 |
+
+**风险（写明）**：K2 是本项目**第一次真的往 MFC 模块写状态**。若该模块因非法/不支持的格式内部出错，
+图的后半段可能报错——但读回与回归门都能看见，且不改图、不改时钟、不写盘；
+最坏情况是这一发的三模块读数变脏，代价一发开机，不换不可逆状态。
