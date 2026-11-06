@@ -164,13 +164,48 @@ ArmSmmu4K / QcomGeniSpi 四个仓里没有 audio 字样"就准备写"UniXNU 没�
 | `status=0x2` | ACF 图正文**必须**走带外/SHM，带内这条对图描述符关闭（不是对 SET_CFG 关闭） |
 | `no response` | 按 M1 的先例，**同镜像重放一次**再判（一次性早退已被 M1r 证明会伪装成结果） |
 
-**这一枪的代价与污染，先写清楚**：换了图之后，驱动后面那些发给
-`0x40bd / 0x428f / 0x48ba` 的单模块 SET_CFG 就不再是单变量（它们点名的是我们旧图里的 iid）。
-所以 K13 只判上表四格，`mfcget v4` 的读回**记录但不作一阶结论**。
-字节账：现在 581 B，` sweetvgraph=5`(15) 替换 `sweetvgraph` 现有取值不改长度；
-不过 cmdline 长度必须打包实测，不许继承。
-改动量：`sweet_glink.c` 里 vg 分支加一个 `== 5` 的（正文/偏移/长度 + 一条 witness
-`SWEET MARK: vginl v2 vg=5 off=0 len=2724 form=inband`），marker 进 workflow。
+---
+
+## 8. 第 52 枪 K13 判决（`logs/ring-k13-vendor4-inband.txt`，`sweettime=1793982907`）
+## **落在表里第三格，并且顺手打掉了一条我自己写错的既有断言**
+
+窗口/身份：`vginl v1 vg=3 off=12 len=2712 form=inband`（证人自己算的 off/len）、
+发送行 `APM graph_open/vendor4-inband src=0x2010 dst=0x1 (2752 bytes) inline-big`
+（2752 = 24 + 16 + 2712 ✓ 算术对得上）、ring 以 `===== done =====` 正常收尾。
+
+| 门 | 实测 | 判读 |
+|---|---|---|
+| GRAPH_OPEN | **`rsp op=0x1001000 status=0x2`** | **第三格成立**：ACF 图正文**不能**走带内。这与 §6 里那条既有规矩（`payload_size ≤256` 才带内）**一致**，所以这不是一次意外，是一次**预测被真机兑现** |
+| 后续 | `graph_open/vp-wr … status=0`（回落到我们自己的图）→ `graph_start … status=0` → `pcm tone done (120 buffers)` | 回落脚本按事先写的规矩执行；本轮主判据已在上表拿到 |
+| 顺带的新读数 | `dblat v2 tone n=120 min=5 avg=8 max=10`（K12 同一颗内核是 `min=avg=max=5`） | 回执节律**动了**。但本轮同时多了"一次被拒的 GRAPH_OPEN + 回落到另一张图"，所以**不能归因给图内容**；记为观测，不记为结论 |
+
+### 查证时被打掉的那条断言（重要，因为它在两份文档里活着）
+`docs/reference-vendor-tx-timeline` 与本文 §6 都写过"厂商 GRAPH_OPEN 是**带内** 2712"。
+回源 `logs/gpr-20261027-090802.txt` 那一行逐字重读：
+
+```
+p5=16781312 (=0x01001000 GRAPH_OPEN)  p6=0  p7=0  p8=2966982840 (=0xb0d7f408)  p9=2712
+```
+
+`apm_cmd_header_t = {payload_address_lsw, msw, mem_map_handle, payload_size}` ⇒
+**p8 ≠ 0**：厂商那 2712 字节的正文**在它自己映射的一块区里**（handle `0xb0d7f408`），
+`addr=0` 是"在这块区的偏移 0"。⇒ 厂商的 GRAPH_OPEN 是**带外**，不是带内；
+"带内 2712"这个标签是错的，它把 `payload_size` 字段当成了"正文在包内"的证据。
+
+### 同时排掉的一个我自己提的便宜假设
+我本来准备写"三次 SHM 形式之所以没响应，是因为 `g_apm_graph_open_shm` 发的是**捕获里那个陈旧的厂商 handle**"。
+回源 `bsd/dev/sweet_glink.c:5457`：那个位置传的是 **`g_shm_handle`——我们自己 SHM_MAP 拿到的句柄**，
+旧 ring 打印的 `0xb0d7f408` 只是数值长得像。**该假设作废**，没有这个 bug。
+
+### 那么现在被拒的是什么（唯一还活着的形状差）
+两种传输都把同一份正文拒了：带内 `0x2`（本轮）、带外 `0x2`/无响应（历史 3 次）。
+带外那三次用的句柄是我们自己的，但它们把图正文**拷进了与 PCM 缓冲区同一块 region**
+（`:5445` `g_shm_va + off`，off 用 12/16）；厂商那里 GRAPH_OPEN 的句柄
+（`0xb0d7f408`）与 DATA_BUFFER 的句柄**是两个不同的映射**。
+⇒ 剩下唯一没试过的形状变量 = **给图描述符单独 SHM_MAP 一块区，拿一个新句柄，按 `addr=0/msw=0/len=2712` 发带外 GRAPH_OPEN**。
+这是 K14 的内容，需要一发真代码（`g_apm_cmd` 之外没有别的路径），
+**判据照规矩先写后开**。
+
 
 ---
 
