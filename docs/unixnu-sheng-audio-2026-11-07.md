@@ -347,3 +347,25 @@ cd ../../xnu-gh && python3 -u tools/decode_graph_blob.py > /tmp/decode.txt 2>&1;
 | `no response` | 同镜像重放一次再判（M1r 的规矩） |
 **注意**：这一枪**不直接买声音**；它买的是"缺失命令族清单"里第一项的真伪，且三条分支都有确定归宿，
 不会变成第 N 次旋钮。改动量：一个带 boot-arg 门控的发送 + 一条 witness；marker 进 workflow。
+
+## 12. G1（第 53 枪）0279 已落，判据开机前写死
+
+补丁 `xnu/patches/0279-sweet-register-module-events.patch`（1 hunk，+44 行）；
+`tools/ci_replay.sh`：**applied=220**（0278 时是 219）且
+`OK: CI post-image == chain-tree HEAD for bsd/dev/sweet_glink.c` ⇒ 重放等价测试通过。
+代码做一件事：在**已经拿 status=0** 的 vp-wr 路径、`g_audio_tone()` 之前，
+带内发 `APM_CMD_REGISTER_MODULE_EVENTS (0x0100100e) → dst=0x40bd`，
+正文 24 B、前 12 字节照抄厂商带内观测 `{0x40bd, 0x0800103f, 1}`（其余置零）。
+门控 `sweetregevt=<0|1>`（0 = 对照，什么都不发）；witness
+`SWEET MARK: regevt v1 on=%d dst=%#x param=%#x bytes=%u` 打印它**实际用的**状态。
+
+| 门 | 期望 | 不成立的含义 |
+|---|---|---|
+| W0 身份 | 产物内 `regevt v1 `×1、`amptone v1 `×1、`dblat v2 `×1、`mfcget v4 `×5；ring 内 `sweettime=<本轮>`；窗口 total==解码字节 | 少任何一条 ⇒ 仪器未生效，**不许**判命令 |
+| W1 证人 | `regevt v1 on=1 dst=0x40bd param=0x800103f bytes=24` 恰 1 行 | 缺 ⇒ 分支没跑，本轮作废 |
+| W2 发送 | `APM reg_events/wr src=0x2010 dst=0x40bd (40 bytes)` 一类的发送行在应答之上 | 缺 ⇒ 没发出去，不算负结果 |
+| **W3 主判据** | `reg_events/wr rsp op=0x02001005 status=0` | `0x3` ⇒ 这颗 SPF 不支持，**永久划掉该命令族**；`0x1/0x2` ⇒ 正文/目标形状不对，**只允许再改一个字段**重发；无响应 ⇒ 同镜像重放一次再判（M1r 规矩） |
+| W4 回归 | `graph_open/vp-wr status=0`、`graph_start … status=0`、`pcm tone done (120 buffers)`、`dblat v2 tone … timeout=0`、`no rsp` 增量 ≤ 1（就是这条新命令）、panic 0 | 老四行变了 ⇒ 新命令扰了既有路径，记为仪器读数 |
+| W5 耳朵 | `sweetvol=16`、120×6 ms（用户已给的额度） | 次要；W3 才是这一枪买的东西 |
+
+预算 53/120。这一枪**不直接买声音**，买的是"缺失命令族"这条假设的真/伪，且三支都有归宿。

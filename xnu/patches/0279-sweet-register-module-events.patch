@@ -1,0 +1,55 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 4dcb090..1cb0c79 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -7970,6 +7970,50 @@ g_apm_graph_bringup(void)
+ 					    0x08001024u, 72, "post-start");
+ 				}
+ 			}
++			/*
++			 * 0279: the vendor registers module events on the graphs it
++			 * builds, and we have never sent the opcode at all
++			 * (grep -c 0x100100e in this file was 0 before this block).
++			 * The command and its byte layout come out of the IN-BAND
++			 * body of the 2026-11-05 capture, not out of any blob we
++			 * hold: `REGISTER_MODULE_EVENTS src=0x2011 dst=0x40c4
++			 * payload_size=24` with the only non-zero words
++			 * t10=0x40c4 t11=0x0800103f t12=0x1.  So we ship those same
++			 * 24 bytes with the iid taken from our own graph, and we
++			 * ship them on the path that already answers status=0, so
++			 * the single variable is this command.  The target has to be
++			 * an iid that exists in the graph we opened: the link table
++			 * of g_graph_vp_wr names 0x4006 0x4007 0x4012 0x40bd 0x418e
++			 * 0x4199 0x41e2 0x422c 0x428f 0x42d3 0x4333 0x4436 0x4448
++			 * 0x467e 0x468d 0x48ba, and 0x40c4 / 0x4019 / 0x4308 /
++			 * 0x40bf / 0x40c0 / 0x4165 are NOT among them - which is
++			 * exactly why 0x40bd is the only honest target here, being
++			 * also the endpoint our DATA_BUFFERs go to.
++			 * sweetregevt=0 sends nothing, which is the control; the
++			 * witness prints the state it actually used so a round
++			 * cannot claim the send happened on the strength of an
++			 * argument it passed.
++			 */
++			{
++				int regevt = 0;
++				uint8_t ev[24];
++
++				(void)PE_parse_boot_argn("sweetregevt", &regevt,
++				    sizeof(regevt));
++				printf("SWEET MARK: regevt v1 on=%d dst=%#x "
++				    "param=%#x bytes=%u\n", regevt, G_VP_WR_IID,
++				    0x0800103fu, (unsigned)sizeof(ev));
++				sweet_log_sync();
++				if (regevt) {
++					memset(ev, 0, sizeof(ev));
++					g_put32(ev + 0, G_VP_WR_IID);
++					g_put32(ev + 4, 0x0800103fu);
++					g_put32(ev + 8, 1u);
++					(void)g_apm_cmd(port, G_VP_WR_IID, ev,
++					    sizeof(ev), 0x0100100eu,
++					    "reg_events/wr");
++				}
++			}
+ 			g_audio_tone(port, G_VP_WR_IID);
+ 			/*
+ 			 * 0272, the fourth phase: after the tone has returned, i.e.
