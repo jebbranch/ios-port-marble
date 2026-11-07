@@ -923,3 +923,31 @@ args = 第 63 枪 + `sweetrxlog=1`（唯一变化 = 观测面）。
 | EOS 之后**完全没有** `rxall` 行 | 我们**根本收不到任何包** ⇒ 事件发往未开的通道/端口，或 RX 路径本身在该阶段停了 ⇒ 转通道/端口调查 |
 | 回归 | `dec-cnv started`、`pcm tone done (120 buffers)`、`eos v2 on=1`、`dynrx` 行数、panic 0 |
 **注意**：`rxall` 会打印所有完成的包（含 120 个 DONE），ring 会变大；判读只看 **EOS 发送行之后**的那些行。
+
+## 45. 第 64 枪判决（0287）：仪器**证明可用**，而 `EOS_RENDERED` 确实从未到达
+`logs/ring-e2-rxall.txt`，`sweettime=1794047000` ✓，cmdline 578 B（592 被守卫拦下后去掉已否证的 `sweetdynlog=1`）。
+全轮 **137 条 `rxall v1`**，opcode 分布：
+```
+121 × 0x05001004  DATA_BUFFER_DONE_V2   （120 帧 + 1 探针）
+  9 × 0x02001005  basic result
+  5 × 0x02001002  PRM request done
+  1 × 0x02001007  SPF state
+  1 × 0x02001001  MEM_MAP_DONE
+  0 × 0x05001001  EOS_RENDERED          ← 一条都没有
+```
+EOS 发送行在第 2120 行，**其后没有任何 `rxall` 行**（只有 `wr_eos/last: no response`）。
+⇒ 这一次**不是仪器问题**：收包路径被证明能记录每一类应答（含 121 个 DONE），
+窗是 5 秒，动态通道也证过零包 ⇒ **`0x05001001` 就是没来**。
+⇒ 用户听感：**没有**（ring 证明 120 帧推完）⇒ 第三条有效负读数。
+⇒ 剩下两种解释：(a) 这颗固件对该 endpoint/policy **不发**该事件；(c) 事件发往**我们没开的通道/端口**。
+（"EOS 在 STOP 之后发"这一支被削弱：`g_audio_tone` 前 120 行内没有 STOP/CLOSE 调用。）
+
+## 46. 目标止损交付（按登记条款）
+**定论**：含 `PCM_DEC 0x40bf` + `PCM_CNV 0x40c0` 的 A 形式图**能开、能起、能推完 120 帧、
+DSP 回 121 个 DONE，但扬声器不响**；`EOS_RENDERED` 在仪器被证明可用的前提下**从未到达**。
+⇒ **"图数据流已完整跑通但仍无声"成立**，AP 侧 EOS/事件仪器这条路**到此为止**。
+**需要用户决定的点（二选一）**：
+- **硬件侧**：TDM sink 实际接口/时钟/数据线、AFE 端口配置、AW882xx 供电/复位/mute
+  （含把 descriptor 从 offset 0 挪到 `0x4000` 的卫生修正）；
+- **资产/协议侧**：厂商三图三端口结构（`0x2010/0x2011/0x2012`）+ 那条 18504 的 APM 级 SET_CFG，
+  以及 `0x10013D01`(AFE id) 是否该出现在 APM MODULE_LIST 的单变量摘除实验。
