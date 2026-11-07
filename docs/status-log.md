@@ -2633,3 +2633,14 @@ M1 用 `iid=0x428f`（真实模块）+ `param=0x08001004` 走带内 `SET_CFG`，
 新增 0289 默认关闭的 sweetdescsep 单变量隔离草案：1 hunk / +22 行，wire offset 与 memcpy 地址同步移到 0x4000；拒绝 nowait/大缓冲组合。12 项回归、严格 host 编译、ASan/UBSan、单补丁重放和全链对照通过；229→230 applied，49 个基线已有 skip 不变，零新增 skip，工作源码逐字节一致。
 
 本轮没有设备启动/写操作，未提交/推送，未完成完整 XNU 构建。kernel-latest 未改变；开机仍需用户明确确认与提交后的事前 gate/新产物验证。
+
+## 2026-11-08：0289 已构建，描述符隔离对照两枪通过（66/120）
+
+用户明确要求推送触发构建并继续测试。内核提交 6f72bdc 已推，release raw 摘要 ce969727… 与资产配对相等；修后 bdb90910…，CNTP 原始唯一位点 0x4aa348 已 NOP，新 marker 命中 1 次。
+两张镜像实际 cmdline 都为 582 B，整包仅 descsep/sweettime 对应字段不同（独立打包的 ADT 随机 seed 在开机前对齐）。事前判据先提交，镜像摘要先提交 c80d8ea，再开设备；该文档推送的 SSH 连接曾两次失败，内核构建提交及 gate 已在远端。
+
+第 65 枪 d0：sweettime=1794069367，raw total/解码 99545/99545。第 66 枪 d1：sweettime=1794069467，99202/99202，descsep witness 恰 1 次 on=1 off=0x4000 len=856。
+两轮均 dec-cnv open/start=0、120 tone/121 DONE、dblat 5/8/10 ms timeout=0、137 rxall（分布相同）、无回落/无 EOS/无 panic，done+PSCI_RESET 正常。隔离被固件接受，控制/提交行为保持；**听感未取得，不判有声或无声**。两枪止损已到，未自动增加第三枪，设备回 Android、末次电量 98%。
+
+零额外开机的新证据：本地 libar-gsl.so 与设备原位 hash 同为 d4640221…，真实 EOS 为 4 B GPR payload、日志 28 B、直接 async_send，旧 XNU 的 44 B 多了 APM 头。旧“没有 EOS 事件所以 AP 原因全排除”解释撤回，原始零事件观测保留。本轮未改 EOS 代码/未开 EOS 枪。
+详见 `audio-descsep-live-2026-11-08.md`、`audio-eos-wire-2026-11-08.md`，文本 ring 与独立评分均归档。

@@ -1,0 +1,60 @@
+{
+  "image": "images/d1-descsep-isolated-0289-paired.img",
+  "sha256": "1cfad91ff6e01e56badceee8ed9e6b28d34d294aae9fc4136fade4e638295d5b",
+  "payload_offset": 11636736,
+  "cmdline": "debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=1 gicrstride=0x40000 sweetbatt=1 sweetglink=1 sweetreboot=1 sweetbufs=120 sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetshmhi=1 sweets1ap=3 sweetampfirst=1 sweetvol=16 sweettdmvendor=7 sweetvgraph7=1 sweetrxlog=1 sweetdescsep=1 sweettime=1794069467",
+  "cmdline_bytes": 582,
+  "sweettime": "1794069467",
+  "descsep": 1,
+  "image_checks": {
+    "cmdline_budget": true,
+    "unique_keys": true,
+    "expected_flags": true,
+    "no_other_experiment_flags": true,
+    "timestamp": true,
+    "markers": true,
+    "build_log_matches_payload": true
+  },
+  "image_valid": true,
+  "ring": "d1-descsep-isolated-0289",
+  "raw_sha256": "7df5e276f5ed307f2a9cdd9878048c2e01ec4d013f177a9ee4b72222f80d319b",
+  "version": 1,
+  "size": 4194304,
+  "total": 99202,
+  "seq": 409,
+  "decoded_bytes": 99202,
+  "graph_opens": [
+    "graph_open/dec-cnv"
+  ],
+  "done_count": 121,
+  "descriptor_witnesses": [
+    [
+      "1",
+      "0x4000",
+      "856"
+    ]
+  ],
+  "ring_checks": {
+    "decoded_window_matches_file": true,
+    "timestamp_matches_image": true,
+    "one_expected_graph_no_fallback": true,
+    "graph_witness": true,
+    "descriptor_witness": true,
+    "not_refused": true,
+    "open_ok": true,
+    "start_ok": true,
+    "started": true,
+    "tone_120": true,
+    "timeout_zero": true,
+    "done_121": true,
+    "receive_positive_controls": true,
+    "no_eos_sent": true,
+    "eos_disabled_witness": true,
+    "tone_gain": true,
+    "normal_end": true,
+    "no_panic": true
+  },
+  "ring_valid": true,
+  "audible_sound": "unknown; requires human observation",
+  "valid": true
+}

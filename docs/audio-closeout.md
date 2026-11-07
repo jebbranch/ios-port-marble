@@ -6323,3 +6323,17 @@ D22AP_ADT=../xnu/research/ipsw-x/d22ap.adt bash scripts/mkimage.sh \
 - 只有隔离轮 open/start 拒绝或 no response：定位为此次 offset 变化引入的行为差异，先报告事实，不将其泛化为“图内容被否”；不加第三枪旋钮。
 - 任一身份、收尾或回落门失败：该轮 VOID；若设备卡死立即停止，不能为完成对照强行软件复位。
 - 两枪完成后本轮开机止损，不自动开展 B1、EOS 或格式第三枪；后续只做离线判读和记录。
+
+### 第 65/66 枪配对判决（2026-11-08；事前表不改）
+
+**两轮均通过全部门。** 原始记录：`logs/ring-d0-descsep-control-0289.txt`、`logs/ring-d1-descsep-isolated-0289.txt`；独立评分见 `verify/d0-descsep-control-0289-result.json`、`verify/d1-descsep-isolated-0289-result.json`。
+
+- 第 65 枪：sweettime=1794069367，raw total=99545、解码=99545，descsep=0（证人 0 行为预登记期望）；仅 1 次 dec-cnv open，open/start=0，120 tone / 121 DONE，dblat 5/8/10 ms、timeout=0，正常 done+PSCI_RESET，无 panic、无回落、无 EOS 发送。
+- 第 66 枪：sweettime=1794069467，raw total=99202、解码=99202，**证人恰 1 行 on=1 off=0x4000 len=856**；其他控制/提交门完全相同，正常 done+PSCI_RESET。
+- 两轮均 137 个 rxall：121 DONE、9 basic、5 PRM、1 SPF、1 MEM_MAP_DONE，仪器阳性成立。
+- 两轮镜像整包除 cmdline 外逐字节一致；ADT seed 在开机前对齐，不把独立打包的随机值差异藏掉。
+- 判决：**新 offset 被本机接受，隔离没有破坏控制面或提交/ACK 路径**。AP 写入路径与 host 字节证明一致，但没有真机逐 buffer 内容/渲染证据，不能说已到功放。
+- **用户没有报告听感，声音=未知，不记无声。**
+- 预算 **66/120**，本轮两枪止损已到，不再加第三枪。设备恢复 Android，最后电量 98%、boot_completed=1。
+
+等待复位时额外做了零开机核查：本地 libar-gsl.so 与设备原位 SHA256 相同，厂商 EOS 明确分配 4 B payload、直接 policy=1、日志 28 B、原包 async_send；旧 XNU EOS 的 44 B 封装与其不一致。详见 `docs/audio-eos-wire-2026-11-08.md`，不据旧零事件排除 AP 封装原因；本轮未改 EOS、未开新 EOS 枪。

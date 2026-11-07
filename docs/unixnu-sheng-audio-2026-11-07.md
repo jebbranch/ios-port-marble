@@ -1005,3 +1005,15 @@ DSP 回 121 个 DONE，但扬声器不响**；`EOS_RENDERED` 在仪器被证明�
 - EOS 的真实 44 B 包正文为 `{0,0,0,4,1}`；本地 Qualcomm GSL 参考用 28 B，而 Linux 参考用 44 B。保留冲突，尚未证明本机接受哪种；“没有事件”仍是观测，不能扩大成“请求格式一定正确”。本轮不重开 EOS 设备实验。
 - 0289 只在 sweetdescsep=1 下把描述符复制地址和 wire offset 同改到 0x4000，拒绝 nowait/非默认 buffer；默认关闭。**12 项回归、-Werror 编译、ASan/UBSan、单补丁与全链对照通过**。原链 applied=229 / skip=49，新链 applied=230 / 相同 skip=49，零新增 skip，post-image 与工作源码相等。
 - 补丁/workflow/本页及证据仍未提交或推送；完整 XNU 未构建，out/kernel.adsp 仍为 0288。不能给这颗旧内核加新 flag 冒充修复后实验。
+
+## 50. 2026-11-08：0289 两枪实测通过，EOS 厂商封装由本机库确认
+
+用户明确要求推送构建并继续测试后，0289 提交 **6f72bdc** 已推送并取回，raw ce969727… / CNTP 修后 bdb90910…；新 marker 命中一次。事前表先提交，配对镜像记录先提交 **c80d8ea**，再开第 65/66 枪。
+
+两镜像真实 cmdline 均 582 B，整包除 descsep/sweettime 所在 cmdline 字段之外逐字节相同（独立打包 ADT random-seed 差异在开机前排除）。
+两轮 open/start=0、120 tone/121 DONE、dblat 5/8/10 ms timeout=0、137 rxall 分布相同、无回落/无 EOS/无 panic、正常 done+PSCI_RESET；隔离组 **恰 1 行 on=1 off=0x4000 len=856**。
+因此：隔离在本机执行且新 OOB offset 被接受，控制/提交没有回归；AP 描述符覆盖写路径已隔离，**声音尚未取得用户听感，未知，不记无声**。
+预算 **66/120**，本轮两枪止损已到，没有擅自加第三枪。
+
+等待复位时只读核查了 `libar-gsl.so`：本地与设备原位 SHA256 同为 **d4640221…**；真实 `gsl_dp_write_send_eos` 分配 4 B GPR payload、force_inband=1、policy 直接位于 GPR payload 起点，日志固定28 B、原 packet 直接 async_send。**本机厂商 EOS = 28 B，旧 XNU 发 44 B，与其不一致。** 先前“AP 原因全部排除”的排他性解释撤回；原始零 EOS 事件观测保留，正确封装的 DSP 响应尚未测试。本轮未改 EOS 代码。
+完整结果/证据见 `audio-descsep-live-2026-11-08.md`、`audio-eos-wire-2026-11-08.md`。

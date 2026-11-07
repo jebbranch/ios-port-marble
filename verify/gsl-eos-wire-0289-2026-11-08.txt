@@ -1,0 +1,115 @@
+d46402219e582856b03d84972cef5ebb1687193c916d8ca7cc697a2b3b2120ad  /Users/huxiaoshi/Desktop/marble-ios/work/phone-libs/libar-gsl.so
+   187: 0000000000033808    32 FUNC    GLOBAL DEFAULT    15 gsl_dp_write_send_eos
+   214: 0000000000033830     8 FUNC    GLOBAL DEFAULT    15 gsl_msg_alloc_ext
+
+/Users/huxiaoshi/Desktop/marble-ios/work/phone-libs/libar-gsl.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000033808 <gsl_dp_write_send_eos>:
+   33808: d503245f     	bti	c
+   3380c: 17fff780     	b	0x3160c <__cfi_check+0x1b60c>
+
+/Users/huxiaoshi/Desktop/marble-ios/work/phone-libs/libar-gsl.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000016000 <__cfi_check>:
+   31640: b9408405     	ldr	w5, [x0, #0x84]
+   31644: 710004a8     	subs	w8, w5, #0x1
+   31648: 54001423     	b.lo	0x318cc <__cfi_check+0x1b8cc>
+   3164c: b9407002     	ldr	w2, [x0, #0x70]
+   31650: b9407c01     	ldr	w1, [x0, #0x7c]
+   31654: aa0003f3     	mov	x19, x0
+   31658: 52800036     	mov	w22, #0x1               // =1
+   3165c: 52820040     	mov	w0, #0x1002             // =4098
+   31660: 1ac822c8     	lsl	w8, w22, w8
+   31664: 910103e9     	add	x9, sp, #0x40
+   31668: 72a08000     	movk	w0, #0x400, lsl #16
+   3166c: 52800083     	mov	w3, #0x4                // =4
+   31670: 52800027     	mov	w7, #0x1                // =1
+   31674: 2a1f03e4     	mov	w4, wzr
+   31678: 2a1f03e6     	mov	w6, wzr
+   3167c: b90013ff     	str	wzr, [sp, #0x10]
+   31680: b9000bff     	str	wzr, [sp, #0x8]
+   31684: f9000fe9     	str	x9, [sp, #0x18]
+   31688: b90003e8     	str	w8, [sp]
+   3168c: 94000a3d     	bl	0x33f80 <gsl_msg_alloc_ext@plt>
+   31690: 340001e0     	cbz	w0, 0x316cc <__cfi_check+0x1b6cc>
+   31694: 90000028     	adrp	x8, 0x35000
+   31698: f9412108     	ldr	x8, [x8, #0x240]
+   3169c: 2a0003f4     	mov	w20, w0
+   316a0: 39400108     	ldrb	w8, [x8]
+   316a4: 36080fc8     	tbz	w8, #0x1, 0x3189c <__cfi_check+0x1b89c>
+   316a8: 90fffea1     	adrp	x1, 0x5000
+   316ac: d0fffea2     	adrp	x2, 0x7000
+   316b0: 90fffec4     	adrp	x4, 0x9000
+   316b4: 911b9821     	add	x1, x1, #0x6e6
+   316b8: 9112ec42     	add	x2, x2, #0x4bb
+   316bc: 91376084     	add	x4, x4, #0xdd8
+   316c0: 52800040     	mov	w0, #0x2                // =2
+   316c4: 52810c03     	mov	w3, #0x860              // =2144
+   316c8: 14000073     	b	0x31894 <__cfi_check+0x1b894>
+   316cc: f94023e8     	ldr	x8, [sp, #0x40]
+   316d0: b9400109     	ldr	w9, [x8]
+   316d4: d342fd29     	lsr	x9, x9, #2
+   316d8: 927e0d29     	and	x9, x9, #0x3c
+   316dc: b8296916     	str	w22, [x8, x9]
+
+/Users/huxiaoshi/Desktop/marble-ios/work/phone-libs/libar-gsl.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000016000 <__cfi_check>:
+   31800: f9400300     	ldr	x0, [x24]
+   31804: f94023e1     	ldr	x1, [sp, #0x40]
+   31808: 9100e3e3     	add	x3, sp, #0x38
+   3180c: 52800382     	mov	w2, #0x1c               // =28
+   31810: 940008a8     	bl	0x33ab0 <ar_fwrite@plt>
+   31814: f94002e0     	ldr	x0, [x23]
+   31818: b40001c0     	cbz	x0, 0x31850 <__cfi_check+0x1b850>
+   3181c: 94000885     	bl	0x33a30 <ar_osal_mutex_unlock@plt>
+   31820: 34000180     	cbz	w0, 0x31850 <__cfi_check+0x1b850>
+   31824: 394002c8     	ldrb	w8, [x22]
+   31828: 36080148     	tbz	w8, #0x1, 0x31850 <__cfi_check+0x1b850>
+   3182c: 90fffea1     	adrp	x1, 0x5000
+   31830: d0fffea2     	adrp	x2, 0x7000
+   31834: d0fffea4     	adrp	x4, 0x7000
+   31838: 911b9821     	add	x1, x1, #0x6e6
+   3183c: 9112ec42     	add	x2, x2, #0x4bb
+   31840: 9135e884     	add	x4, x4, #0xd7a
+   31844: 52800040     	mov	w0, #0x2                // =2
+   31848: 52810d63     	mov	w3, #0x86b              // =2155
+   3184c: 94000849     	bl	0x33970 <ar_log@plt>
+   31850: f94023e0     	ldr	x0, [sp, #0x40]
+   31854: 9400089b     	bl	0x33ac0 <__gpr_cmd_async_send@plt>
+   31858: 2a0003f4     	mov	w20, w0
+   3185c: 34000200     	cbz	w0, 0x3189c <__cfi_check+0x1b89c>
+   31860: f94023e0     	ldr	x0, [sp, #0x40]
+
+/Users/huxiaoshi/Desktop/marble-ios/work/phone-libs/libar-gsl.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000016000 <__cfi_check>:
+   32a4c: 2a0603f5     	mov	w21, w6
+   32a50: 2a0503f3     	mov	w19, w5
+   32a54: 2a0303f4     	mov	w20, w3
+   32a58: 72001cff     	tst	w7, #0xff
+   32a5c: 54000460     	b.eq	0x32ae8 <__cfi_check+0x1cae8>
+   32a60: 2b150295     	adds	w21, w20, w21
+   32a64: 54001082     	b.hs	0x32c74 <__cfi_check+0x1cc74>
+   32a68: 6f00e400     	movi	v0.2d, #0000000000000000
+   32a6c: 52800068     	mov	w8, #0x3                // =3
+   32a70: ad0003e0     	stp	q0, q0, [sp]
+   32a74: 290283e4     	stp	w4, w0, [sp, #0x14]
+   32a78: 910003e0     	mov	x0, sp
+   32a7c: 390003e8     	strb	w8, [sp]
+   32a80: 390023f3     	strb	w19, [sp, #0x8]
+   32a84: 390043ff     	strb	wzr, [sp, #0x10]
+   32a88: b90007e1     	str	w1, [sp, #0x4]
+   32a8c: b9000fe2     	str	w2, [sp, #0xc]
+   32a90: b9001ff5     	str	w21, [sp, #0x1c]
+   32a94: f90013f8     	str	x24, [sp, #0x20]
+   32a98: 94000402     	bl	0x33aa0 <__gpr_cmd_alloc_ext@plt>
+   32a9c: 340006e0     	cbz	w0, 0x32b78 <__cfi_check+0x1cb78>

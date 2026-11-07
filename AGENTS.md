@@ -1,6 +1,6 @@
 # marble / iOS-on-Android 项目工作守则
 
-> **2026-11-08 执行更新**：用户已明确要求提交推送构建并继续测试。本轮按 `docs/audio-closeout.md` 新登记的 65/66 枪做 0289 描述符隔离开/关对照，最多两枪，原 B1 去 AW 仍暂停；执行记录见 [`docs/audio-descsep-live-2026-11-08.md`](docs/audio-descsep-live-2026-11-08.md)。开始时预算 64/120；取回新产物和镜像门通过前不开机。
+> **2026-11-08 执行完成**：0289 已推送构建并取回，第 65/66 枪描述符隔离开/关对照全部事前日志门通过，当前预算 **66/120**，听感尚未取得。EOS 已由与设备原位 hash 相同的 GSL 二进制确认厂商是 28 B，旧 XNU 的 44 B 与其不一致；旧零事件不能排除 AP 封装原因。记录见 [`docs/audio-descsep-live-2026-11-08.md`](docs/audio-descsep-live-2026-11-08.md) 与 [`docs/audio-eos-wire-2026-11-08.md`](docs/audio-eos-wire-2026-11-08.md)。本轮两枪止损已到，未开 B1/EOS/第三枪，设备已正常回 Android。
 
 > **2026-11-07 续接更新**：第 65 枪尚未开；B1 被零开机预检暂停。描述符覆盖 PCM、配置未跟随模块删除、回落路径及 EOS 封装冲突的证据，见 [`docs/audio-preflight-2026-11-07.md`](docs/audio-preflight-2026-11-07.md)。0289 为本地已验证但未提交/未完整构建的草案，现有 kernel 仍为 0288；预算仍 64/120。
 

@@ -1,0 +1,39 @@
+{
+  "budget_after": 66,
+  "budget_limit": 120,
+  "registered_two_boot_stop_reached": true,
+  "rows": [
+    {
+      "label": "d0-descsep-control-0289",
+      "sweettime": "1794069367",
+      "total": 99545,
+      "seq": 404,
+      "valid": true,
+      "done_count": 121,
+      "rx_opcodes": {
+        "0x2001002": 5,
+        "0x2001007": 1,
+        "0x2001001": 1,
+        "0x2001005": 9,
+        "0x5001004": 121
+      },
+      "audible_sound": "unknown"
+    },
+    {
+      "label": "d1-descsep-isolated-0289",
+      "sweettime": "1794069467",
+      "total": 99202,
+      "seq": 409,
+      "valid": true,
+      "done_count": 121,
+      "rx_opcodes": {
+        "0x2001002": 5,
+        "0x2001007": 1,
+        "0x2001001": 1,
+        "0x2001005": 9,
+        "0x5001004": 121
+      },
+      "audible_sound": "unknown"
+    }
+  ]
+}
