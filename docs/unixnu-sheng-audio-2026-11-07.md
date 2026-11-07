@@ -560,3 +560,28 @@ e1（2724 那份）**"run115 挂死形态，不是被拒"** —— 同一族现�
 **结论：`REGISTER_MODULE_EVENTS` 不是缺失的那一环。** 它被接受、流照旧、仍然无声 ⇒ 从嫌疑名单划掉。
 **目标止损格已到**（本轮预算内 3 枪：52 K13、53 framing、54 G1）：
 按登记时的条款 —— 停止 AP 侧一切实验，转资产/内容线。
+
+## 21. A2（第 55 枪）判决：`no response` 是**通道被打死**，不是内容判决
+`logs/ring-a2-2960-livechk.txt`，`sweettime=1794032879`，args 与第 53 枪逐字符相同（唯一变化 = 带探活的 0280）：
+```
+vginl v1 vg=2 off=0 len=2960 form=shm
+APM graph_open/ukee2960 src=0x2010 (shm handle=0xb0d7f408 len=2960)
+graph_open/ukee2960: no response
+SWEET MARK: livechk v1 rc=-1
+SWEET GLINK: spf_state post-vgraph: no rsp        <-- 探活：APM 已经不回答任何东西
+APM graph_open/vp-wr … : no response              <-- 我们的控制 open 同样死
+```
+⇒ **两次逐条复现**（53、55），不需要 M1r 式"重放确认"。
+⇒ 探活这一件仪器把两格彻底分开了：**我们此前所有对大正文的 `no response` 读数都不能算内容判决**。
+⇒ 已知：760 B 走同一个 `g_apm_graph_open_shm`（同函数、同 handle、同区内偏移 0）每次 `status=0`；
+2960 B 每次都打死 ⇒ **界限在 760 与 2960 之间**，而 `sweetvglen` 是现成旋钮 ⇒ 可以二分。
+
+## 22. G-a（第 56 枪）判据 —— 零新代码，开机前写死
+`sweetvgraph=2 sweetvgoff=0 sweetvglen=1536`（正文在此截断 ⇒ **形状故意不完整**；
+这一发的读数**只是 `spf_state post-vgraph` 有没有应答**，不是内容）。
+| 观察 | 判读 |
+|---|---|
+| `spf_state post-vgraph` **有应答**（`len=` 那种行） | 1536 B 打不死 ⇒ 上限 >1536 ⇒ 下一刀切 2048/2560 |
+| `spf_state post-vgraph: no rsp` | ≤1536 就死 ⇒ 上限在 760–1536 之间 ⇒ 下一刀切 1024，并把结论改指向**映射布局**（区 0x5000、与 PCM 共用 offset 0） |
+| `graph_open/ukee2960 rsp … status=…`（任意非 0） | **额外收获**：这一格才第一次真正判到正文（能被回答就说明通道活着） |
+身份门：`livechk v1 rc=` 必须在 ring 内；`sweettime=1794033…` 对得上；窗口 total==解码字节。
