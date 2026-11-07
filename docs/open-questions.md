@@ -1,4 +1,17 @@
 # marble ADSP 音频：突破 + 一个具体的页表问题（求第二意见）
+> **⚠️ 本文件含已被推翻的结论（2026-11-07 更新）。当前权威状态见
+> [`unixnu-sheng-audio-2026-11-07.md`](unixnu-sheng-audio-2026-11-07.md) §§13–42。**
+> 已作废/收窄的旧说法：① "18 KB / 18128 / 18504 cal 是墙" —— 降级为未检验假设；
+> ② "ACDB 重建容器 = EBADPARAM，内容被否" —— 那些拒绝来自 **B 形式（ACF 索引）**，
+> 而 B 形式开头 16 字节被 APM 当参数头读会得到 `param_size=0xB0000002`（2.75 GiB），
+> 它是 GSL/ACDB 侧结构、**从来不是 APM wire payload**；③ `g_graph_vendor4`(2724) 是**上一代**
+> 且自身索引超界 4 B，由它得出的一切结论作废；④ 旧 2960 五枪用默认 `off=16/len=2944`
+> 削掉了 entry[0] 的头，其 `0x2` 是自伤不是判决；⑤ "图里缺 DEC/CNV" 与 "各缺一半" 两次都被
+> 逐字 dump 推翻 —— 被接受的 `g_graph_vp_wr` 同时有 WR 与硬件段；⑥ `DATA_BUFFER_DONE` 只证明入队；
+> ⑦ "EOS 无应答是 100 ms 窗太短" 已撤回（`g_apm_xfer` 等 5 s）。
+> **当前事实**：856 B A 形式（+PCM_DEC/PCM_CNV）`graph_open=0`、`graph_start=0`、
+> `pcm tone done (120 buffers)`，用户两次都没听到 ⇒ 两条有效负读数；预算 62/120。
+
 
 ## 0. 环境（不变）
 
