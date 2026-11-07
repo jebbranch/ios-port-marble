@@ -746,3 +746,12 @@ total: 760 -> 856 B (+96)
 ⇒ **0281 不动**（已推的补丁不回头改），H1 改用 **0282**：新增这张数组 + `sweetvgraph7=1` 走
 同一个 `g_apm_graph_open_shm`（区内偏移 0、我们自己的句柄、同 token）。
 判据沿用 §29：**主判据 = 有没有任何应答**；`status=0` 才请耳朵。
+
+## 33. H1 改为 0282（判据沿用 §29，开机前写死）
+`sweetvgraph7=1` 发 `g_graph_vp_wr_dec_cnv`（**856 B**，由 `tools/patch_aform_body.py` 在
+`g_graph_vp_wr` 的字节上就地改出：`SG_CONFIG`/`CONTAINER_CONFIG` 断言逐字节不变）。
+证人 `SWEET MARK: dcnv v1 on=%d bytes=%u`；发送行 `APM graph_open/dec-cnv … len=856`。
+**主判据 = 有没有任何应答**：`status=0/1/2/3` 都算通道活着（第一次真正判到正文）；
+`no response` ⇒ 按目标止损判死正文族，转三件资产工作。
+附带读：`dec-cnv started` / `graph_start status=` / `not consumed` / `dblat v2 tone` / `pcm tone done (120 buffers)`；
+**耳朵只在 `status=0` 时请**（`sweetvol=16`、120×6 ms ≈0.7 s）。
