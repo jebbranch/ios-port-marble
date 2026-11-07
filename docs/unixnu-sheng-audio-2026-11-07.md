@@ -619,3 +619,15 @@ livechk v1 rc=-1   +   spf_state post-vgraph: no rsp
 —— 同一份字节、长度降到"已知能活"的量级，那才能把"尺寸"与"这份字节本身"彻底分开。
 **本轮不开**（止损已到，且 57/120 之内我不擅自加枪）。
 ⇒ 转 **B 线**：ACDB 重建 per-entry 正文（会话合成：2872 vs 2904）、18504 cal 对象、从未开的第三张图 `0x2012`。
+
+## 25. G-c（第 58 枪）判据 —— 用户点头后加的这一发，开机前写死
+`sweetvgraph=2 sweetvgoff=0 sweetvglen=760`：**同一份 `ukee_current` 字节、同一个前缀**，
+长度降到"另一份容器每次都活得下来"的量级（760）。它把 G-b 留下的那条混淆切成两半：
+| 观察 | 判读 |
+|---|---|
+| `graph_open/ukee2960 rsp … status=<任意>`（**有应答**） | **是尺寸**：阈值落在 (760,1024]；并且这同时是**第一次真正判到正文**（通道活着，DSP 回答了这份字节） |
+| `no response` **且** `spf_state post-vgraph: no rsp` | **不是尺寸，是这份字节**：`ukee_current` 开头 760 字节里就有让 APM 停摆的东西 ⇒ "大正文"这条通道判死，转 B 线 |
+| `no response` 但 `spf_state post-vgraph` **有应答** | 第三种读法：**单条命令**被吞、APM 本身没事 ⇒ 与"打死通道"不同因，下一枪改查命令本身 |
+身份门：`vginl v1 vg=2 off=0 len=760 form=shm`、`livechk v1 rc=`、`sweettime=<本轮>`、窗口 total==解码字节；
+回归门：本轮后面的 `graph_open/vp-wr` 是否恢复 `status=0`（53/55/57 三发里它都被连带打死）。
+预算 58/120（用户点头的第 1 项，goal 已在其止损格收口，不占旧 goal）。
