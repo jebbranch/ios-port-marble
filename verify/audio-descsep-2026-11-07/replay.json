@@ -1,0 +1,423 @@
+{
+  "result": "PASS; zero new skips; full post-image matches working source",
+  "runs": [
+    {
+      "label": "isolated",
+      "base": "ccb174f075f3cc328473136ee69f31bcb9a40df4",
+      "applied": 1,
+      "skipped_touching_file": [],
+      "matches_expected": true,
+      "sha256": "d92371a7aedd89aeb625750ae2f71c5b3019cc60a19918343ae3356f41c3d398"
+    },
+    {
+      "label": "baseline",
+      "base": "e33e15e",
+      "applied": 229,
+      "skipped_touching_file": [
+        {
+          "patch": "0110-sweet-adsp-pas.patch",
+          "error": "error: bsd/dev/sweet_glink.c: already exists in working directory\n"
+        },
+        {
+          "patch": "0112-sweet-glink-log-sync.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:48\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0113-sweet-apm-graph.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:117\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0114-sweet-i2c-amps.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:51\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0115-sweet-apm-shm.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:30\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0116-sweet-audio-cfg.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1152\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0117-sweet-audio-pcm.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1364\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0118-sweet-audio-fix.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1466\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0120-sweet-intf-v2.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1500\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0121-sweet-intf-matrix.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1500\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0122-sweet-tdm-endpoint.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1158\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0123-sweet-wr-tdm.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1158\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0125-sweet-tdm-mf-clk.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1567\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0126-sweet-vendor-playback-graph.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1147\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0127-sweet-vendor-inline-open.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1238\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0128-sweet-pcm-map-before-tone.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1279\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0130-sweet-buffer-endpoint-probe.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1503\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0131-sweet-stream-port-buffers.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1513\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0132-sweet-shm-handle-offset.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1351\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0133-sweet-low-shm-allocation.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1231\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0134-sweet-shm-src-port-valid.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1331\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0135-sweet-single-page-shm.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1231\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0136-sweet-map-probe-sweep.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1308\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0137-sweet-map-window-probes.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1621\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0138-sweet-clean-map-probe.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:808\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0139-sweet-low-shared-probes.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1667\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0140-sweet-rtc-haptics-dump.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:36\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0141-sweet-rtc-set-haptics-play.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:39\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0143-sweet-spmi-soft-errors.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:985\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0147-sweet-audio-vendor-low-pa.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1811\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0151-sweet-haptics-rev2.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:947\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0152-sweet-rtc-block-read.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:910\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0153-sweet-spmi-block-decl.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:39\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0154-sweet-haptics-first-diag.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:956\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0155-sweet-spmi-owner-guard.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:989\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0156-sweet-clock-bootarg-retry.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:2273\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0157-sweet-haptics-fault-hboost.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1007\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0158-sweet-audio-shm-fixed-region.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1480\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0159-sweet-hboost-sdam-sid0.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1018\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0160-sweet-audio-shm-token-probe.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1622\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0164-sweet-haptics-sysctl.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:24\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0172-sweet-shm-plain-physical.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1355\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0175-sweet-shm-gpr-map.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1304\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0176-sweet-shm-address-sweep.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1313\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0177-sweet-shm-vendor-address.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1314\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0178-sweet-smmu-probe.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1310\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0179-sweet-shm-pool-sweep.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1351\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0180-sweet-phys-selftest.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1358\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0201-sweet-hap-amplitude.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1034\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        }
+      ],
+      "matches_expected": true,
+      "sha256": "7826d794496e5af854354831f4be63479dd0896926f8e689fd6442a9063413c9"
+    },
+    {
+      "label": "full",
+      "base": "e33e15e",
+      "applied": 230,
+      "skipped_touching_file": [
+        {
+          "patch": "0110-sweet-adsp-pas.patch",
+          "error": "error: bsd/dev/sweet_glink.c: already exists in working directory\n"
+        },
+        {
+          "patch": "0112-sweet-glink-log-sync.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:48\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0113-sweet-apm-graph.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:117\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0114-sweet-i2c-amps.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:51\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0115-sweet-apm-shm.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:30\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0116-sweet-audio-cfg.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1152\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0117-sweet-audio-pcm.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1364\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0118-sweet-audio-fix.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1466\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0120-sweet-intf-v2.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1500\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0121-sweet-intf-matrix.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1500\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0122-sweet-tdm-endpoint.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1158\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0123-sweet-wr-tdm.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1158\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0125-sweet-tdm-mf-clk.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1567\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0126-sweet-vendor-playback-graph.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1147\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0127-sweet-vendor-inline-open.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1238\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0128-sweet-pcm-map-before-tone.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1279\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0130-sweet-buffer-endpoint-probe.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1503\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0131-sweet-stream-port-buffers.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1513\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0132-sweet-shm-handle-offset.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1351\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0133-sweet-low-shm-allocation.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1231\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0134-sweet-shm-src-port-valid.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1331\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0135-sweet-single-page-shm.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1231\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0136-sweet-map-probe-sweep.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1308\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0137-sweet-map-window-probes.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1621\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0138-sweet-clean-map-probe.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:808\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0139-sweet-low-shared-probes.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1667\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0140-sweet-rtc-haptics-dump.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:36\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0141-sweet-rtc-set-haptics-play.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:39\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0143-sweet-spmi-soft-errors.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:985\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0147-sweet-audio-vendor-low-pa.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1811\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0151-sweet-haptics-rev2.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:947\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0152-sweet-rtc-block-read.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:910\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0153-sweet-spmi-block-decl.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:39\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0154-sweet-haptics-first-diag.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:956\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0155-sweet-spmi-owner-guard.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:989\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0156-sweet-clock-bootarg-retry.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:2273\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0157-sweet-haptics-fault-hboost.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1007\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0158-sweet-audio-shm-fixed-region.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1480\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0159-sweet-hboost-sdam-sid0.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1018\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0160-sweet-audio-shm-token-probe.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1622\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0164-sweet-haptics-sysctl.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:24\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0172-sweet-shm-plain-physical.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1355\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0175-sweet-shm-gpr-map.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1304\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0176-sweet-shm-address-sweep.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1313\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0177-sweet-shm-vendor-address.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1314\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0178-sweet-smmu-probe.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1310\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0179-sweet-shm-pool-sweep.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1351\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0180-sweet-phys-selftest.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1358\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        },
+        {
+          "patch": "0201-sweet-hap-amplitude.patch",
+          "error": "error: patch failed: bsd/dev/sweet_glink.c:1034\nerror: bsd/dev/sweet_glink.c: patch does not apply\n"
+        }
+      ],
+      "matches_expected": true,
+      "sha256": "d92371a7aedd89aeb625750ae2f71c5b3019cc60a19918343ae3356f41c3d398"
+    }
+  ]
+}

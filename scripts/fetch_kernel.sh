@@ -71,7 +71,7 @@ if [ "$GOT" != "$DIGEST" ]; then
 fi
 
 cp "$RAW" "$OUT_DIR/kernel.adsp"
-python3 - "$OUT_DIR/kernel.adsp" <<'PY'
+python3 -I - "$OUT_DIR/kernel.adsp" <<'PY'
 import sys
 p = sys.argv[1]
 d = bytearray(open(p, 'rb').read())

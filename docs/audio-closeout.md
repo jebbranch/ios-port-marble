@@ -6266,3 +6266,60 @@ K10 的 578 − ` sweetdbstep=1`(14) = **564**（正是 K9 实测过的那个数
 必须先删一个已有开关（`sweetmfcget=3`，14 B，其读数 K1–K5 已闭）。
 **这一发我没有开**：它买的是仪表，不是声音，而 §"sheng 源码带来的新格"
 （见 `docs/unixnu-sheng-audio-2026-11-07.md`）给出的是能直接买内容的枪。
+
+---
+
+## 2026-11-08：0289 描述符隔离对照，第 65/66 枪事前判据（未开）
+
+用户本轮明确要求：**“请你直接展开工作，推送触发构建，然后继续测试”**。
+据此执行音频构建及最多两次 RAM-only 对照；不扩大响度/时长，不开 GPU/基带/Wi-Fi，不写分区命令。
+预算起点 **64/120**，两轮都执行后为 **66/120**；原 B1 去 AW 候选仍暂停。
+本轮只判“描述符隔离是否保持已知控制面/提交行为，并修正 AP 侧 PCM 污染”；无听感或渲染证据时不判扬声器出声。
+
+### 参数与顺序
+
+两轮都使用同一份经完整构建、CNTP 修补和 marker 门验证的 0289 内核：
+
+```bash
+D22AP_ADT=../xnu/research/ipsw-x/d22ap.adt bash scripts/mkimage.sh \
+  sweetbufs=120 sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetshmhi=1 \
+  sweets1ap=3 sweetampfirst=1 sweetvol=16 sweettdmvendor=7 sweetvgraph7=1 \
+  sweetrxlog=1 sweetdescsep=0
+```
+
+- 第 65 枪 `d0-descsep-control-0289`：`sweetdescsep=0`，图描述符仍在 offset 0。
+- 第 66 枪 `d1-descsep-isolated-0289`：参数唯一语义变化 `sweetdescsep=1`，描述符复制地址和 wire offset 都为 `0x4000`。
+- 两轮均不发 EOS，不带去 AW / 旧四包 / 新格式 / nowait / 大缓冲开关；sweettime 由脚本自动生成，镜像身份可不同。
+- 两条 cmdline 离线预期均 **582 B**，打包后从 payload 的真实 608 B 字段和最终镜像内嵌 payload 实测，≤590 才放行；不是只 grep 常量。
+- 音幅沿用 `sweetvol=16`，`sweetbufs=120`（约 0.72 s）；不更响、不更长。
+
+### 每轮前置门
+
+| 门 | 必须满足 | 未满足时 |
+|---|---|---|
+| W0 设备 | 只指定项目目标 serial；无其他会话抢设备；电量 >50% | 不启动 |
+| W1 新内核 | 完整构建产物含 `SWEET MARK: descsep v1 on=%d off=%#x len=%u`、`dcnv v2`、`rxall v1`；CNTP raw 恰一处、修后 0 处；按资产名配对摘要 | 不打包/不开机；旧 0288 不得冒充 |
+| W2 本地链 | stub 严格编译、12 项 host 回归；ci_replay post-image==链树 HEAD（原有 49 skip 不增加） | 不推送/不开机 |
+| W3 镜像 | 实际 cmdline 唯一 sweettime，正确 descsep 值、vgraph7=1、bufs=120、vol=16、cpus=1；两轮去掉 sweettime/descsep 后逐字相同 | 不启动 |
+| W4 事前表 | 本节已 commit，记录本轮镜像摘要/时间戳后再启动 | 不启动 |
+
+### 收包与判读门（两轮分别打分）
+
+| 观察 | 期望/判读 |
+|---|---|
+| 身份 | ring 内第一枚 sweettime 等于该镜像 build log/payload；raw SWEETLOG magic/total 与解码窗口匹配；只用本轮窗口，不读陈旧 tail |
+| DEC/CNV 路径 | `dcnv v2 on=1 bytes=856 start=0xb0000002`；`graph_open/dec-cnv` 仅 1 次，open/start status=0；`dec-cnv started` |
+| 实际隔离 | 控制轮 `descsep v1 on=` 0 行（门为 0 时该 printf 不执行）；隔离轮恰 1 行 `on=1 off=0x4000 len=856`；任何 refused 行使该轮无效 |
+| 回落排除 | no-aw、aform-cur、ukee2960、默认 vp-wr 等其他 graph_open 发送数=0；失败后回落不得当主路径成功 |
+| 数据回执 | `pcm tone done (120 buffers)`，`dblat v2 tone n=120 ... timeout=0`，`rxall v1 op=0x5001004` 恰 121 条；这是提交/ACK，不是渲染证据 |
+| 收包仪器阳性 | 至少一个 basic result、一个 MEM_MAP_DONE 和实际 DONE；不能只用“没有某事件”当负结果 |
+| EOS | 没有 `APM wr_eos/last` 发送，分支证人应为 `eos v2 on=0`；不重新判 EOS |
+| 安全收尾 | `===== done =====`、`PSCI SYSTEM_RESET` 均在有效窗口，panic 0；回到 adb 可读取 |
+| 听感 | 只有上述路径/回归门成立才记录用户听感；用户未报告时写“未知”，绝不把未知写成无声 |
+
+### 配对判决与止损
+
+- 两轮均 open/start=0、120 帧/121 ACK/正常收尾：隔离没有破坏控制面/提交路径；由同一代码的本地字节测试可确认 AP 侧污染修复生效，但是否有声需听感，不能说已经到功放。
+- 只有隔离轮 open/start 拒绝或 no response：定位为此次 offset 变化引入的行为差异，先报告事实，不将其泛化为“图内容被否”；不加第三枪旋钮。
+- 任一身份、收尾或回落门失败：该轮 VOID；若设备卡死立即停止，不能为完成对照强行软件复位。
+- 两枪完成后本轮开机止损，不自动开展 B1、EOS 或格式第三枪；后续只做离线判读和记录。

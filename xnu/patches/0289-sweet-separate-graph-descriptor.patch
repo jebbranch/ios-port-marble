@@ -1,0 +1,33 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index a6ad8bf..a739b13 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -5755,6 +5755,28 @@ g_apm_graph_open_shm(uint32_t src_port, const uint8_t *payload, uint32_t len,
+ {
+ 	uint8_t pkt[24 + 16];
+ 	uint32_t pkt_size = sizeof(pkt);
++	int descsep = 0;
++
++	(void)PE_parse_boot_argn("sweetdescsep", &descsep, sizeof(descsep));
++	if (descsep) {
++		int nowait = 0;
++		uint32_t dbb = 0;
++
++		/* The separated descriptor is safe only with the two default PCM
++		 * buffers; fire-and-forget walks the entire mapped region. */
++		(void)PE_parse_boot_argn("sweetnowait", &nowait, sizeof(nowait));
++		(void)PE_parse_boot_argn("sweetdbb", &dbb, sizeof(dbb));
++		if (nowait || (dbb != 0 && dbb != 1152u)) {
++			printf("SWEET MARK: descsep v1 refused nw=%d dbb=%u\n",
++			    nowait, dbb);
++			sweet_log_sync();
++			return -1;
++		}
++		off = 0x4000u;
++		printf("SWEET MARK: descsep v1 on=%d off=%#x len=%u\n",
++		    descsep, off, len);
++		sweet_log_sync();
++	}
+ 
+ 	if (!g_shm_mapped || !g_shm_va || off + len > g_shm_region_size()) {
+ 		return -1;

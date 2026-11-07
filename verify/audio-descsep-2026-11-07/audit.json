@@ -1,0 +1,134 @@
+{
+  "source_sha256": "d92371a7aedd89aeb625750ae2f71c5b3019cc60a19918343ae3356f41c3d398",
+  "scope": "host mocks only; no DSP/hardware/audio verdict",
+  "cmdline_bytes_auto_timestamp": 578,
+  "cmdline_bytes_duplicate_timestamp": 599,
+  "graph_bytes": {
+    "h1": 856,
+    "b1": 808
+  },
+  "kernel": {
+    "bytes": 17548216,
+    "sha256": "80c8e9b171fa5f7ee190449bc2e0a5e15c94a09ba7e8763c8ef3fc85e8ac9b45",
+    "cntp_unpatched": 0,
+    "markers": {
+      "SWEET MARK: noaw v1 ": 1,
+      "SWEET MARK: dcnv v2 ": 1,
+      "SWEET MARK: rxall v1 ": 1,
+      "SWEET MARK: descsep v1 ": 0
+    }
+  },
+  "cases": [
+    {
+      "kind": "memory",
+      "body_bytes": 856,
+      "offset": 0,
+      "pcm_a_changed": 1,
+      "descriptor_buffers": 61,
+      "total_buffers": 121
+    },
+    {
+      "kind": "memory",
+      "body_bytes": 808,
+      "offset": 0,
+      "pcm_a_changed": 1,
+      "descriptor_buffers": 61,
+      "total_buffers": 121
+    },
+    {
+      "kind": "memory",
+      "body_bytes": 856,
+      "offset": 16384,
+      "pcm_a_changed": 0,
+      "descriptor_buffers": 0,
+      "total_buffers": 121
+    },
+    {
+      "kind": "cfg",
+      "vcfg2": 0,
+      "aw": 2,
+      "dec": 0,
+      "cnv": 0,
+      "absent": 0
+    },
+    {
+      "kind": "cfg",
+      "vcfg2": 1,
+      "aw": 2,
+      "dec": 1,
+      "cnv": 1,
+      "absent": 2
+    },
+    {
+      "kind": "b1",
+      "refused": 0,
+      "aw": 2,
+      "absent": 2,
+      "fallback": 0,
+      "total_buffers": 121
+    },
+    {
+      "kind": "b1",
+      "refused": 1,
+      "aw": 0,
+      "absent": 0,
+      "fallback": 1,
+      "total_buffers": 0
+    },
+    {
+      "kind": "eos",
+      "packet_bytes": 44,
+      "opcode": 67112962,
+      "payload_words": [
+        0,
+        0,
+        0,
+        4,
+        1
+      ]
+    },
+    {
+      "kind": "separation",
+      "nowait": 0,
+      "dbb": 0,
+      "size": 856,
+      "rc": 0,
+      "packet_offset": 16384,
+      "pcm_a_changed": 0
+    },
+    {
+      "kind": "separation",
+      "nowait": 1,
+      "dbb": 0,
+      "size": 856,
+      "rc": -1,
+      "packet_offset": 0,
+      "pcm_a_changed": 0
+    },
+    {
+      "kind": "separation",
+      "nowait": 0,
+      "dbb": 4096,
+      "size": 856,
+      "rc": -1,
+      "packet_offset": 0,
+      "pcm_a_changed": 0
+    },
+    {
+      "kind": "separation",
+      "nowait": 0,
+      "dbb": 0,
+      "size": 4097,
+      "rc": -1,
+      "packet_offset": 0,
+      "pcm_a_changed": 0
+    }
+  ],
+  "ready_to_boot": false,
+  "readiness_note": "Frozen B1 has unresolved configuration targets/fallthrough; the descriptor overlaps PCM. EOS framing differs between the local GSL and Linux references. No device verdict.",
+  "compiler_flags": "-std=gnu11 -Wall -Wextra -Wformat=2 -Werror",
+  "host_adaptations": [
+    "barriers elided; transport/timing/register access mocked",
+    "sizeof(tdm_intf) and (void)src_port silence existing unused declarations"
+  ]
+}

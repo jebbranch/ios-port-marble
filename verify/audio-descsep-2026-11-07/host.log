@@ -1,0 +1,73 @@
+SWEET MARK: dbb v1 bytes=1152 ms=6
+SWEET MARK: tone gain g=16 peak=16384
+SWEET GLINK: pcm: tone filled before start
+SWEET GLINK: APM host/open src=0x2010 (shm handle=0x12345678 len=856)
+SWEET GLINK: host/open rsp op=0x1001000 status=0
+SWEET GLINK: buffer probe dst=0x40bd -> 0
+SWEET GLINK: pcm tone start (dst=0x40bd)
+SWEET MARK: amptone v1 on=0 at=60/120
+SWEET GLINK: pcm tone done (120 buffers)
+AUDIT {"kind":"memory","body_bytes":856,"offset":0,"pcm_a_changed":1,"descriptor_buffers":61,"total_buffers":121}
+SWEET GLINK: pcm: tone filled before start
+SWEET GLINK: APM host/open src=0x2010 (shm handle=0x12345678 len=808)
+SWEET GLINK: host/open rsp op=0x1001000 status=0
+SWEET GLINK: buffer probe dst=0x40bd -> 0
+SWEET GLINK: pcm tone start (dst=0x40bd)
+SWEET GLINK: pcm tone done (120 buffers)
+AUDIT {"kind":"memory","body_bytes":808,"offset":0,"pcm_a_changed":1,"descriptor_buffers":61,"total_buffers":121}
+SWEET GLINK: pcm: tone filled before start
+SWEET GLINK: APM host/open src=0x2010 (shm handle=0x12345678 len=856)
+SWEET GLINK: host/open rsp op=0x1001000 status=0
+SWEET GLINK: buffer probe dst=0x40bd -> 0
+SWEET GLINK: pcm tone start (dst=0x40bd)
+SWEET GLINK: pcm tone done (120 buffers)
+AUDIT {"kind":"memory","body_bytes":856,"offset":16384,"pcm_a_changed":0,"descriptor_buffers":0,"total_buffers":121}
+SWEET MARK: tdmmf v1 tv=7 w1=0x30020
+SWEET MARK: tdmcfg v1 sup=7 tdpwr=0
+SWEET MARK: tdmcfg v1 1018 not sent
+SWEET MARK: tdmcfg v1 1176 not sent (tp=0 sup=7)
+SWEET MARK: tdmcfg v1 113c not sent
+AUDIT {"kind":"cfg","vcfg2":0,"aw":2,"dec":0,"cnv":0,"absent":0}
+SWEET MARK: tdmmf v1 tv=7 w1=0x30020
+SWEET MARK: tdmcfg v1 sup=7 tdpwr=0
+SWEET MARK: tdmcfg v1 1018 not sent
+SWEET MARK: tdmcfg v1 1176 not sent (tp=0 sup=7)
+SWEET MARK: tdmcfg v1 113c not sent
+SWEET MARK: vcfg2 rc bf=0 c0=0 c8=-1 p65=-1
+AUDIT {"kind":"cfg","vcfg2":1,"aw":2,"dec":1,"cnv":1,"absent":2}
+SWEET MARK: noaw v1 on=1 bytes=808 start=0xb0000002
+SWEET GLINK: pcm: tone filled before start
+SWEET GLINK: APM graph_open/no-aw src=0x2010 (shm handle=0x12345678 len=808)
+SWEET GLINK: graph_open/no-aw rsp op=0x1001000 status=0
+SWEET MARK: tdmmf v1 tv=7 w1=0x30020
+SWEET MARK: tdmcfg v1 sup=7 tdpwr=0
+SWEET MARK: tdmcfg v1 1018 not sent
+SWEET MARK: tdmcfg v1 1176 not sent (tp=0 sup=7)
+SWEET MARK: tdmcfg v1 113c not sent
+SWEET GLINK: no-aw started
+SWEET GLINK: buffer probe dst=0x40bd -> 0
+SWEET GLINK: pcm tone start (dst=0x40bd)
+SWEET GLINK: pcm tone done (120 buffers)
+AUDIT {"kind":"b1","refused":0,"aw":2,"absent":2,"fallback":0,"total_buffers":121}
+SWEET MARK: noaw v1 on=1 bytes=808 start=0xb0000002
+SWEET GLINK: pcm: tone filled before start
+SWEET GLINK: APM graph_open/no-aw src=0x2010 (shm handle=0x12345678 len=808)
+SWEET GLINK: graph_open/no-aw rsp op=0x1001000 status=0x2
+SWEET GLINK: no-aw open refused
+AUDIT {"kind":"b1","refused":1,"aw":0,"absent":0,"fallback":1,"total_buffers":0}
+SWEET GLINK: APM host/eos src=0x2010 dst=0x40bd (44 bytes)
+AUDIT {"kind":"eos","packet_bytes":44,"opcode":67112962,"payload_words":[0,0,0,4,1]}
+SWEET GLINK: pcm: tone filled before start
+SWEET MARK: descsep v1 on=1 off=0x4000 len=856
+SWEET GLINK: APM host/separated src=0x2010 (shm handle=0x12345678 len=856)
+SWEET GLINK: host/separated rsp op=0x1001000 status=0
+AUDIT {"kind":"separation","nowait":0,"dbb":0,"size":856,"rc":0,"packet_offset":16384,"pcm_a_changed":0}
+SWEET GLINK: pcm: tone filled before start
+SWEET MARK: descsep v1 refused nw=1 dbb=0
+AUDIT {"kind":"separation","nowait":1,"dbb":0,"size":856,"rc":-1,"packet_offset":0,"pcm_a_changed":0}
+SWEET GLINK: pcm: tone filled before start
+SWEET MARK: descsep v1 refused nw=0 dbb=4096
+AUDIT {"kind":"separation","nowait":0,"dbb":4096,"size":856,"rc":-1,"packet_offset":0,"pcm_a_changed":0}
+SWEET GLINK: pcm: tone filled before start
+SWEET MARK: descsep v1 on=1 off=0x4000 len=4097
+AUDIT {"kind":"separation","nowait":0,"dbb":0,"size":4097,"rc":-1,"packet_offset":0,"pcm_a_changed":0}
