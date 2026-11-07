@@ -848,3 +848,26 @@ EOS_RENDERED 本来就该在最后一帧之后约 0.7 s 才到 ⇒ **100 ms 窗�
 再决定 EOS 该用"加长窗"还是"专门的异步事件监听"。
 教训归入既有规矩：**引用一个旋钮的作用范围之前必须打开它的定义**，
 不能因为它名字里有 rspwait 就认定它管所有应答。
+
+## 41. E0 判完（零开机）：**窗是 5 秒，不是 100 ms —— §39 的解释作废**
+`g_apm_cmd()` 把收发委托给 **`g_apm_xfer()`（`bsd/dev/sweet_glink.c:2788-2802`）**：
+```c
+g_rsp_ready = 0; g_rsp_len = 0;
+g_send_gpr(pkt, pkt_size);
+for (unsigned i = 0; i < 5000; i += 5) {   /* 5000 ms = 5 秒 */
+        g_drain(0);
+        if (g_rsp_ready) break;
+        g_wait(5);
+}
+if (!g_rsp_ready) printf("SWEET GLINK: %s: no response\n", what);
+```
+⇒ **第 62 枪那条 `wr_eos/last: no response` 是等满 5 秒之后打的**，而音频只有 720 ms。
+⇒ **§39 里"100 ms 窗太短"的解释错了**（`sweetrspwait` 只管数据面单缓冲探针，:6598-6612），
+   幸而第 63 枪按住了没发 —— 否则就是花一次开机去加长一个本来就有 5 秒的窗。
+收包路径（`:798-818`）按**本地通道 id `liid`** 重组，完成即 `g_rsp_ready = 1`，
+**没有按 opcode/token 过滤** ⇒ 事件不是被"过滤"掉的。
+⇒ 剩下的解释只能是：**`0x05001001` 没有出现在我们 drain 的那条通道上**，
+或这颗固件对该 endpoint/policy 不发这个事件，或 EOS 的时机/策略不对（我们在 tone 全部推完之后才发）。
+⇒ **E1 不再是"加长窗"**，而是要么**多通道/异步监听**（需要补丁），
+要么**改 EOS 时机**（在最后一批 buffer 之前发，policy=LAST 的语义本就是"插在最后一批之后"）。
+两者都要先零开机把 `g_drain()` 与通道注册读清楚，再决定，**不盲目开枪**。
