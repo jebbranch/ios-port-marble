@@ -546,3 +546,17 @@ e1（2724 那份）**"run115 挂死形态，不是被拒"** —— 同一族现�
 ⇒ 由 W4 得出的**下一步仪器**（比"再试内容"优先）：把这张容器发出去之后，
 **先发一条已知-good 的小命令探活**（`get_spf_state`），把"APM 是否还活着"与"正文是否被拒"分开。
 没有这个探活，`no response` 永远有两种读法。
+
+## 20. G1 判决（第 54 枪，`logs/ring-g1-regevt.txt`，`sweettime=1794032001`）—— 目标止损格到达
+| 门 | 实测 |
+|---|---|
+| W0 身份 | `sweettime=1794032001` 在 ring 内 ✓；ring 85646 B |
+| W1 证人 | `regevt v1 on=1 dst=0x40bd param=0x800103f bytes=24` ✓ |
+| W2 发送 | `APM reg_events/wr src=0x2010 dst=0x40bd (64 bytes)` ✓ |
+| **W3 主判据** | **`reg_events/wr rsp op=0x100100e status=0`** ⇒ **这颗 APM 接受这条命令**，我们此前从未发过它 |
+| W4 回归 | `graph_open/vp-wr status=0`、`graph_start status=0`、`pcm tone done (120 buffers)`、`dblat v2 tone n=120 min=5 avg=8 max=10 timeout=0`、`===== done =====` ⇒ **全部照旧，通道没死**（与 53 形成干净对照） |
+| W5 耳朵 | 用户报"没有" —— 且本轮 tone 被证明跑完 120 帧 ⇒ **这是一条有效的负读数** |
+
+**结论：`REGISTER_MODULE_EVENTS` 不是缺失的那一环。** 它被接受、流照旧、仍然无声 ⇒ 从嫌疑名单划掉。
+**目标止损格已到**（本轮预算内 3 枪：52 K13、53 framing、54 G1）：
+按登记时的条款 —— 停止 AP 侧一切实验，转资产/内容线。
