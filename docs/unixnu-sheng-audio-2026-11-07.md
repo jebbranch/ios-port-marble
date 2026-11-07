@@ -648,3 +648,31 @@ livechk v1 rc=-1  +  spf_state post-vgraph: no rsp
 ⇒ 下一件**零开机**可做的判别：把 `ukee_current` 前 760 B 与 `g_graph_vp_wr` 前 760 B 做**逐块结构对照**
 （外层头、第一个 entry 的 key/size、第一个 param 块的头格式），因为差异一定在其中之一里 ——
 最可疑的是**外层 `{total,count}` 索引**：vp_wr 根本没有这层（它直接以 16 B 参数头开始，iid=1）。
+
+## 27. 正式结论（本文件收口）：GRAPH_OPEN 有两种合法正文形式，我们只用对过一种
+**结论（实测，非推）**：`APM_CMD_GRAPH_OPEN` 的正文可以是
+- **A 形式｜平铺参数记录**：开头就是 `apm_module_param_data_t{iid=1, param, size, err}` 的序列
+ （`g_graph_vp_wr` 760 B 就是它）。**这种形式我们每次都拿 `status=0`**，能 PREPARE/START/推 120 帧。
+- **B 形式｜ACF 图索引 blob**：开头是 `{u32 total, u32 count}` + 每子图 `{u32 key, u32 size, 正文}`
+ （`g_graph_ukee_current` 2960、`g_graph_vendor4` 2724 都是它，厂商 11-05 抓包那三次带外也是它）。
+ **这种形式我们发了 5 次（2960/1536/1024/760 + 老的 off=16 系列），没有一次拿到应答，
+ 且它会把 APM 打死到连 A 形式的控制 open 都不回。**
+
+**边界已经钉住的三件事**（以后不许重走）：
+1. **不是尺寸**：同为 760 B，A 形式活、B 形式死（第 58 vs 历次 vp_wr）。
+2. **不是传输/句柄/偏移/token**：两者走**同一个函数** `g_apm_graph_open_shm`（同 handle、区内偏移 0、同 token `0x400`），A 形式 status=0。
+3. **不是 src 端口**：0x2011 已开过两次，A 形式在两个端口下都 status=0（`ring-g1-graph-2011`、`ring-j2-port-2011`）。
+⇒ **所以 B 形式在我们这里的失败是"形式本身没被这条路吃下"**：要么它的语义要求我们先做某件我们没做的事
+（厂商那边是**先 SHM_MAP 一块专门给描述符的区**、再按 `addr=0 handle=<该次映射>` 发；
+我们复用 PCM 那块 0x5000 区），要么这份 blob 需要我们没有的运行时配套（会话合成正文 / 18504 cal / 第三张图）。
+**这两支都归入 B 线，且都有零开机第一步**，不再靠开机试探。
+
+## 28. 下一枪（H1）的取材方式：A 形式 + 当代内容
+既然 **A 形式是我们唯一验证过能被吃下的 GRAPH_OPEN 正文**，H1 = 用 A 形式（平铺 `iid=1` 参数记录）
+把**当代内容**写出来：外层不要 ACF 索引，直接
+`SG_CONFIG(0x08001001) / CONTAINER_CONFIG(0x08001000) / MODULE_LIST(0x08001002) /
+ MODULE_PROP(0x08001003) / MODULE_CONN(0x08001004)`，
+里面填**当代 key** `{b0000002, b0000025, b0000024, b0000023}` 与**缺的硬件段模块**
+`TDM_SINK 0x428f / MFC 0x48ba / AW 0x42d3`（这些字节我们都已从 2724 的自洽 entry[0]/[2]/[3] 与
+厂商带内 SET_CFG 正文里拿到）。**先零开机把 `tools/splice_graph.py` 改成产出 A 形式并走链自洽**，
+再谈打包。
