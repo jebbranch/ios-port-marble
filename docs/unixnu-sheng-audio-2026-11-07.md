@@ -796,3 +796,17 @@ ring 内 no rsp = 0（通道活着，不是 53/55/57/58 那种打死）
 **打分注意**：`g_apm_cmd` 把正文前两个字打印成 `op=/status=`，对本事件它们其实是
 **`module_instance_id` 与 `render_status`** —— 别按 op/status 读。
 耳朵：本枪沿用 `sweetvol=16`、120×6 ms；**EOS 与听感同轮取**，若 rendered 且仍无声，那就是最干净的一次定位。
+
+## 37. 第 60 枪判决（0283）：**带转换级的图第一次完整跑通**
+```
+dcnv v2 on=1 bytes=856 start=0xb0000002
+graph_open/dec-cnv rsp op=0x1001000 status=0
+graph_start      rsp op=0x1001002 status=0
+dec-cnv started
+pcm tone done (120 buffers)
+dblat v2 tone n=120 min=5 avg=8 max=10 ms timeout=0 step=5
+```
+⇒ 第 59 枪的 `did not start` 确认是**我们 start 名单的 bug**（4 个 key vs 正文 1 个），不是内容问题。
+⇒ **含 `PCM_DEC 0x40bf` + `PCM_CNV 0x40c0` 的图现在 OPEN=0、START=0、120 帧全部推完、无 timeout。**
+⇒ 耳朵这一格**现在有效**（ring 证明流真的跑完了）—— 已向用户取读数，未回前不写结论。
+⇒ 下一枪 = 第 61 枪 `h3-eos.img`（`sweeteos=1`）：EOS_RENDERED 把观察点推到"样本之后"。
