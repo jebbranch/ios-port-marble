@@ -72,6 +72,7 @@
 
 原始文本：`logs/ring-d0-descsep-control-0289.txt`、`logs/ring-d1-descsep-isolated-0289.txt`；raw 保留在本地 `logs/raw/`。
 独立打分：`verify/d0-descsep-control-0289-result.json`、`verify/d1-descsep-isolated-0289-result.json`；配对摘要 `verify/descsep-pair-0289-verdict.json`。
+发布前另查到全局 Git autocrlf=input 会把两个原始窗口各删去 245 个 CR 字节，导致仓库文本不再等于 raw total。已给这两个文件单独设置 `.gitattributes -text` 保留原字节，重新入库并比较 Git blob 与本地窗口完全相同；没有修剪日志内容或改变判读。
 
 设备两次都自己复位回 Android，最后 sys.boot_completed=1、电量 98%；没有软件救机操作。
 默认 `out/kernel.adsp` 已更新为验证过的 0289（bdb90910…）；旧 0288 保留在 `out/kernel.0288-before-descsep.adsp`，没有丢失原对照产物。

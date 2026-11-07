@@ -1,0 +1,3 @@
+# SWEETLOG windows must retain CRLF bytes to match the ring header's total.
+logs/ring-d0-descsep-control-0289.txt -text
+logs/ring-d1-descsep-isolated-0289.txt -text

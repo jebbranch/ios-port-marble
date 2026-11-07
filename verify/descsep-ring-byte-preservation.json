@@ -1,0 +1,16 @@
+[
+  {
+    "label": "d0-descsep-control-0289",
+    "bytes": 99545,
+    "crlf_count": 245,
+    "sha256": "56b5ce6a0ded3fa98ba5df7a8855329b5f0c414c1b3bd45057fc73a1722e9779",
+    "git_blob_equals_raw_decoded_window": true
+  },
+  {
+    "label": "d1-descsep-isolated-0289",
+    "bytes": 99202,
+    "crlf_count": 245,
+    "sha256": "f79f045c147d394575ac7a1737abe115fd777b9918e866328bbfe11ca62881a3",
+    "git_blob_equals_raw_decoded_window": true
+  }
+]
