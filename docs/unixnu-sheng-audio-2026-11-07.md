@@ -689,3 +689,22 @@ livechk v1 rc=-1  +  spf_state post-vgraph: no rsp
 | W4 连带 | 若 W3=0：`graph_start status=`、`not consumed`、`dblat v2 tone … timeout=0`、`pcm tone done (120 buffers)`；`spf_state` 若被后续路径调用应仍有应答 | 图开成但 start/数据面异常 ⇒ 内容仍有缺口，H2 按块 diff（MODULE_LIST→CONN→CONTAINER） |
 | W5 耳朵 | **仅当 W3=status=0** 才请用户听（`sweetvol=16`、120×6 ms ≈0.7 s） | 其他情况这条不算读数 |
 预算 59/120。cmdline 长度打包实测，不许继承。
+
+## 30. **H1 暂缓**：H0 那份 784 B 不能就这么开机（自己抓到自己一个错）
+把 `g_graph_vp_wr`（已知 status=0）与 `g_graph_aform_cur` 按块并排一比：
+| 块 | vp_wr（被接受） | 我生成的 | 差 |
+|---|---|---|---|
+| SG_CONFIG | 48 | **44** | **少一个 word** |
+| CONTAINER_CONFIG | 100 | 60 | 少 3 个属性 |
+| MODULE_LIST | 80 | 108 | 多 4 个模块 |
+| MODULE_PROP | 196 | 292 | 多 6 条端口记录 |
+| MODULE_CONN | 244 | 180 | 少 4 条连接 |
+⇒ **SG_CONFIG 48 vs 44 是要害**：被接受的那份比"我以为的字段表"多一个字（很可能是
+`{count=1, …}` 那个前导字），也就是说 **我的 emitter 又在按猜测重排正文结构** ——
+这正是我们踩过的老坑（"never decode a body shape we only assumed"）。
+而且这份正文**一次改了五块**，即便拿到 `0x2` 也归不了因。
+⇒ **修正做法（仍然零开机）**：**不要重新生成**，而是
+**以 `g_graph_vp_wr` 的字节为底，逐块就地改字段**（先把 `MODULE_LIST` 里的模块换成当代内容，
+其余四块一字节不动）—— 这样天然保证布局与被接受的那份完全一致，而且天然就是单变量。
+⇒ H1 的 0281 补丁先不打包开机；等我按上面方式重出正文（H0′），再走同一判据。
+（今天不浪费这一枪：CI 产物本来就还没出来，marker 计数仍为 0。）
