@@ -755,3 +755,16 @@ total: 760 -> 856 B (+96)
 `no response` ⇒ 按目标止损判死正文族，转三件资产工作。
 附带读：`dec-cnv started` / `graph_start status=` / `not consumed` / `dblat v2 tone` / `pcm tone done (120 buffers)`；
 **耳朵只在 `status=0` 时请**（`sweetvol=16`、120×6 ms ≈0.7 s）。
+
+## 34. H1（第 59 枪）判决：正文被接受，start 失败是**我们的工具缺陷**
+```
+dcnv v1 on=1 bytes=856 | APM graph_open/dec-cnv … len=856
+graph_open/dec-cnv rsp op=0x1001000 status=0      <- 接受！
+dec-cnv did not start                            <- start 名单 4 个 key，正文只声明 1 个
+ring 内 no rsp = 0（通道活着，不是 53/55/57/58 那种打死）
+```
+⇒ **本项目第一次真正判到 GRAPH_OPEN 正文**：A 形式 + PCM_DEC/PCM_CNV = **被接受**；
+此前所有拒绝属于 **ACF 索引形式**发不出去，不是内容不对。
+⇒ 下一枪（第 60 枪，0283）= `g_apm_graph_start(port, 0xb0000002u)`（正文自己声明的那个 key），
+证人 `dcnv v2 on=%d bytes=%u start=%#x`。判据：start `status=0` ⇒ 进 not consumed/dblat/
+`pcm tone done (120 buffers)` 并**请耳朵**（sweetvol=16）；仍拒 ⇒ 合并子图到顶，转厂商多图/描述符专用区。

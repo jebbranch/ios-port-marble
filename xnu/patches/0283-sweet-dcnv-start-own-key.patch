@@ -1,0 +1,31 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 96f1edc..552b7fa 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -7950,8 +7950,14 @@ g_apm_graph_bringup(void)
+ 		int v7 = 0;
+ 
+ 		(void)PE_parse_boot_argn("sweetvgraph7", &v7, sizeof(v7));
+-		printf("SWEET MARK: dcnv v1 on=%d bytes=%u\n", v7,
+-		    (unsigned)sizeof(g_graph_vp_wr_dec_cnv));
++		/* 0283: H1 (boot 59) accepted the body - `graph_open/dec-cnv rsp
++		 * op=0x1001000 status=0` - but `did not start`, and the reason is
++		 * ours: the body declares ONE subgraph (0xb0000002) while this
++		 * path started FOUR (g_ukee_current_sgs), so the names could not
++		 * match.  Start exactly what the body declares, and print the key
++		 * actually used so the round cannot claim it from the argument. */
++		printf("SWEET MARK: dcnv v2 on=%d bytes=%u start=%#x\n", v7,
++		    (unsigned)sizeof(g_graph_vp_wr_dec_cnv), 0xb0000002u);
+ 		sweet_log_sync();
+ 		if (v7) {
+ 			if (g_pcm_prepare() == 0 &&
+@@ -7959,8 +7965,7 @@ g_apm_graph_bringup(void)
+ 			    (uint32_t)sizeof(g_graph_vp_wr_dec_cnv), 0,
+ 			    "graph_open/dec-cnv") == 0) {
+ 				g_audio_graph_cfg_vp(port);
+-				if (g_apm_graph_start_list(port,
+-				    g_ukee_current_sgs, 4) == 0) {
++				if (g_apm_graph_start(port, 0xb0000002u) == 0) {
+ 					printf("SWEET GLINK: dec-cnv started\n");
+ 					sweet_log_sync();
+ 					g_audio_tone(port, G_VP_WR_IID);
