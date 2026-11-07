@@ -527,3 +527,22 @@ cmdline = K13 那行把 `sweetvgraph=3` 换成 `=2`（等长）再加 ` sweetvgo
 正在飞的第 53 枪（2960 正确 framing）不管 W3 落在哪一格，**都不改变上面这条结论**：
 它判的是"这份缺硬件段的容器能不能被接受"，而答案若为 `0x2`，
 说明连**结构自洽但内容不完整**的当代容器也被拒 ⇒ 那就必须先把 entry[0] 拼对再谈出声。
+
+## 19. 第 53 枪判决（`logs/ring-g1p-2960-off0.txt`，`sweettime=1794031385`）
+| 门 | 实测 | 判读 |
+|---|---|---|
+| W0 身份 | cmdline 回显含 `sweetvgraph=2 sweetvgoff=0 sweetvglen=2960`；ring 88379 B | 过 |
+| W1 证人 | `vginl v1 vg=2 off=0 len=2960 form=shm` ✓ **framing 这次真的生效了** | 过 |
+| W2 发送 | `APM graph_open/ukee2960 src=0x2010 (shm handle=0xb0d7f408 len=2960)` ✓（不是历史的 2944） | 过 |
+| **W3** | **`graph_open/ukee2960: no response`** | 落在"重放一次"那一格，**不判内容** |
+| **W4 回归** | **`APM graph_open/vp-wr … : no response`**（我们平时必回 status=0 的那张控制图！）、**无 `graph_start`、无 `pcm tone done`**，ring 到 `===== done =====` 正常收尾 | **这一格才是本轮真正的读数**：发出 2960 的带外正文之后，**APM 对随后所有命令都不再应答** |
+
+**这不是"内容被拒"，是"通道被打死"**：同一次开机里，控制图从 `status=0` 变成 `no response`，
+说明 APM/GPR 在那一发之后不再回话。历史线索对上了：`docs/START-HERE.md:193` 早写过
+e1（2724 那份）**"run115 挂死形态，不是被拒"** —— 同一族现象，今天用正确 framing 复现了一次。
+⇒ 机制候选（**未证实**，只列）：(a) 2960 B 正文写进了与 DATA_BUFFER 共用的那块 20 KB 区的 offset 0，
+把区搞乱；(b) DSP 去读这块 OOB 正文时卡在翻译/长度上；(c) 一发未答的长命令让 APM 线程停摆。
+⇒ 已排：重放同镜像确认（第 54 枪，`b5yy5l1jj` 在取 ring）。
+⇒ 由 W4 得出的**下一步仪器**（比"再试内容"优先）：把这张容器发出去之后，
+**先发一条已知-good 的小命令探活**（`get_spf_state`），把"APM 是否还活着"与"正文是否被拒"分开。
+没有这个探活，`no response` 永远有两种读法。
