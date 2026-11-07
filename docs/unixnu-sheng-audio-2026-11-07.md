@@ -887,3 +887,10 @@ if (!g_rsp_ready) printf("SWEET GLINK: %s: no response\n", what);
 | `dynrx v1` 有行但 op 全是别的 | 事件没来 ⇒ 嫌疑转向 EOS 时机/策略或固件不发该事件 |
 | 完全没有 `dynrx v1` 行 | 动态通道本轮压根没收到包 ⇒ 该分支不是吞包点，回到事件没发/发往别处 |
 | 回归 | `dec-cnv started`、`pcm tone done (120 buffers)`、`eos v2 on=1`、`no rsp` 增量 ≤1 |
+
+### 42b. `dynrx` 的字节偏移已按既有约定核对（零开机）
+重组缓冲里**含 24 B GPR 头**：`g_liids` 路径把 `tail+16` 读进 buf，而 `g_apm_xfer` 打印
+`op=g_le32(g_rsp+24)`、`status=g_le32(g_rsp+28)`（basic result 的 payload 从 24 开始）
+⇒ GPR opcode 在 **offset 20**、payload 前两个字在 **24/28**。
+0286 的 `db[20..23]/db[24..27]/db[28..31]` 与此一致 ⇒ 打印的 `op/w0/w1` 语义正确。
+（这条要在开机前核，否则拿到 `op=0x…` 也不知道该不该信。）
