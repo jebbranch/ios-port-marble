@@ -725,3 +725,24 @@ MODULE_LIST size=80 words=20: 1 b0000002 e0000002 8 |
 （我的 emitter 漏了），而最后一个属性值是 **`0xffffffff`**（scenario 未设），我却写了 `1`。
 ⇒ **H0′ 的做法**：在 `g_graph_vp_wr` 的字节上就地加这两个模块 + 两条 port + 改连接，
 其余一字节不动 —— 这样布局天然与被接受的那份一致，改动面也小到只有一个主题。
+
+## 32. H0′ 完成：就地改 `g_graph_vp_wr` 的字节，门 = 只允许三块变
+`tools/patch_aform_body.py` → `docs/data/h1p-graph-body-patched-vp-wr.txt`
+```
+accepted body: 760 B, 5 blocks: SG_CONFIG=48 CONTAINER_CONFIG=100
+               MODULE_LIST=80 MODULE_PROP=196 MODULE_CONN=244
+gate: SG_CONFIG and CONTAINER_CONFIG byte-identical to the accepted body  OK
+  MODULE_LIST   80 ->  96 B     (count 8 -> 10, +PCM_DEC 0x07001005/0x40bf
+                                 +PCM_CNV 0x07001003/0x40c0)
+  MODULE_PROP  196 -> 244 B     (count 8 -> 10, 两条 PORT_INFO in=1 out=1)
+  MODULE_CONN  244 -> 276 B     (15 -> 17 条：0x40bd:1->0x4012:2 改成经
+                                 0x40bf、0x40c0 两跳)
+total: 760 -> 856 B (+96)
+```
+⇒ 与 0281 用的那份 784 B 相比，这一份**结构不是我以为的**，而是**被接受那份的字节**：
+`SG_CONFIG`、`CONTAINER_CONFIG` 由脚本断言逐字节相同，任何越界改动都会让脚本**拒绝输出**。
+⇒ 856 B 走 A 形式：尺寸上比 760 大 96 B，而我们已证明 760 的 B 形式才会打死通道，
+所以这个尺寸不构成新变量（A 形式 2960 B 都没试过，但那条已由"形式"解释）。
+⇒ **0281 不动**（已推的补丁不回头改），H1 改用 **0282**：新增这张数组 + `sweetvgraph7=1` 走
+同一个 `g_apm_graph_open_shm`（区内偏移 0、我们自己的句柄、同 token）。
+判据沿用 §29：**主判据 = 有没有任何应答**；`status=0` 才请耳朵。
