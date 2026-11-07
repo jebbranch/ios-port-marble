@@ -424,3 +424,18 @@ cd ../../xnu-gh && python3 -u tools/decode_graph_blob.py > /tmp/decode.txt 2>&1;
 G2 = 同一份当代容器**只把 src 端口换成 `0x2011`**（单变量、零资产依赖）；
 G3 = 若 G2 被拒 ⇒ 内容轴只剩"重建 entry 正文"，那需要先把 ACDB 里的 per-module cal 记录
 与 entry 长度做对表（零开机可做，工具已有 `tools/acdb_graph_rebuild.py`）。
+
+## 15. G2 在零成本阶段被判为**重复**（省下一枪）
+
+我上一条把"同一份当代容器、只把 src 端口换成 `0x2011`"排成 G2。回源后**取消**：
+- 代码里早有开关：`:7771 sweetsgraphport`（`graph port override %#x`，`:7779 g_stream_port = port`）。
+- **已经开过两次**：`logs/ring-g1-graph-2011.txt`、`logs/ring-j2-port-2011.txt`，
+  两枚 witness 都在（`graph port override 0x2011` + `APM graph_open/vp-wr src=0x2011 dst=0x1 (800 bytes)`），
+  应答都是 **`status=0`**，`graph_start` 也 `status=0`。
+⇒ **端口这一格早已关闭**：从 `0x2011` 开图 DSP 完全接受，声音也没有变 ⇒
+"厂商用第二个端口开流图"不是差异所在。G2 **不排队、不开机**。
+（这也是为什么"新格"必须先对旧 ring 查重再登记：这一枪省下来的是真子弹。）
+
+**剩下的枪序**：G1（0279，CI 构建中）→ 若 G1 不给出分辨力，就只剩
+**G3 = 用本机 6 份 ACDB 重建当代 entry 正文里那 56–88 字节**（先零开机做对表，
+不许先开机要读数）。
