@@ -871,3 +871,19 @@ if (!g_rsp_ready) printf("SWEET GLINK: %s: no response\n", what);
 ⇒ **E1 不再是"加长窗"**，而是要么**多通道/异步监听**（需要补丁），
 要么**改 EOS 时机**（在最后一批 buffer 之前发，policy=LAST 的语义本就是"插在最后一批之后"）。
 两者都要先零开机把 `g_drain()` 与通道注册读清楚，再决定，**不盲目开枪**。
+
+## 42. E0b：找到一条**会吞包的收包分支** ⇒ E1 改为给它装观测（0286）
+`bsd/dev/sweet_glink.c:769-796`：命中 `g_dyn_liids[]` 的包被填进缓冲、发 `RX_DONE`、然后 **break，
+全程不设 `g_rsp_ready`** ⇒ 落在动态通道上的任何东西对所有等待者都是**不可见**的。
+结合 E0（窗是 5 秒、无 opcode 过滤），第 62 枪 `no response` 的最可能解释就是
+**EOS_RENDERED 到了，但被这条分支吞了**。
+⇒ **0286**：在 `left == 0` 处、`sweetdynlog=1` 门控下打印
+`SWEET MARK: dynrx v1 liid=%u op=%#x w0=%#x w1=%#x`（op 取 GPR 头 offset 20，w0/w1 取 payload 前两个字；
+对 `0x05001001` 就是 `{iid, render_status}`）。字为内联拼装，因为 `g_le32` 的前置声明在 :1008（晚于此处）。
+**第 63 枪判据（开机前写死）**：args 沿用第 62 枪 + `sweetdynlog=1`。
+| 观察 | 判读 |
+|---|---|
+| `dynrx v1 … op=0x5001001 w0=0x40bd w1=<status>` | **拿到了渲染侧读数**：w1=rendered ⇒ 无声在 TDM/功放/供电侧；w1=dropped ⇒ 数据在图里被丢 |
+| `dynrx v1` 有行但 op 全是别的 | 事件没来 ⇒ 嫌疑转向 EOS 时机/策略或固件不发该事件 |
+| 完全没有 `dynrx v1` 行 | 动态通道本轮压根没收到包 ⇒ 该分支不是吞包点，回到事件没发/发往别处 |
+| 回归 | `dec-cnv started`、`pcm tone done (120 buffers)`、`eos v2 on=1`、`no rsp` 增量 ≤1 |

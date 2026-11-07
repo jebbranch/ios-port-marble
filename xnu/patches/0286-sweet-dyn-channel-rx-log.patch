@@ -1,0 +1,54 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index fa04e8a..7c47b31 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -786,6 +786,49 @@ g_rx_one(void)
+ 					g_dyn_liids[dyn].filled += chunk;
+ 				}
+ 				if (left == 0) {
++					/*
++					 * 0286: this branch consumes a whole packet
++					 * and breaks WITHOUT ever setting
++					 * g_rsp_ready, so anything arriving on a
++					 * dynamic channel is invisible to
++					 * g_apm_xfer's 5 s wait.  Boot 62 sent EOS
++					 * (0x04001002, witness + send line both
++					 * present) and got "no response" after that
++					 * full 5 s - and the window is NOT the
++					 * problem (g_apm_xfer:2794 loops to 5000 ms;
++					 * sweetrspwait only governs the data-plane
++					 * single-buffer probe).  So the event may be
++					 * landing here and being swallowed.  Print
++					 * what this path actually received instead
++					 * of guessing: opcode plus the first two
++					 * payload words, which for EOS_RENDERED
++					 * (0x05001001) are {iid, render_status}.
++					 * Gated so the control boot stays quiet.
++					 */
++					int dynlog = 0;
++
++					(void)PE_parse_boot_argn("sweetdynlog",
++					    &dynlog, sizeof(dynlog));
++					if (dynlog) {
++						const uint8_t *db =
++						    g_dyn_liids[dyn].buf;
++
++						/* g_le32 is only forward-declared at
++						 * :1008, i.e. AFTER this point, so
++						 * assemble the words here instead of
++						 * calling it - an implicit declaration
++						 * would break the build. */
++						printf("SWEET MARK: dynrx v1 liid=%u "
++						    "op=%#x w0=%#x w1=%#x\n",
++						    (unsigned)liid,
++						    (unsigned)(db[20] | db[21] << 8 |
++						    db[22] << 16 | (uint32_t)db[23] << 24),
++						    (unsigned)(db[24] | db[25] << 8 |
++						    db[26] << 16 | (uint32_t)db[27] << 24),
++						    (unsigned)(db[28] | db[29] << 8 |
++						    db[30] << 16 | (uint32_t)db[31] << 24));
++						sweet_log_sync();
++					}
+ 					g_dyn_liids[dyn].filled = 0;
+ 					g_send(CMD_RX_DONE_W_REUSE,
+ 					    (uint16_t)g_dyn_liids[dyn].lcid,
