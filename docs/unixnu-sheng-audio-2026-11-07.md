@@ -810,3 +810,13 @@ dblat v2 tone n=120 min=5 avg=8 max=10 ms timeout=0 step=5
 ⇒ **含 `PCM_DEC 0x40bf` + `PCM_CNV 0x40c0` 的图现在 OPEN=0、START=0、120 帧全部推完、无 timeout。**
 ⇒ 耳朵这一格**现在有效**（ring 证明流真的跑完了）—— 已向用户取读数，未回前不写结论。
 ⇒ 下一枪 = 第 61 枪 `h3-eos.img`（`sweeteos=1`）：EOS_RENDERED 把观察点推到"样本之后"。
+
+## 38. 第 60/61 枪判决
+**第 60 枪（0283）**：`dcnv v2 on=1 bytes=856 start=0xb0000002` → `graph_open status=0` →
+`graph_start status=0` → `dec-cnv started` → `pcm tone done (120 buffers)` → `dblat timeout=0`。
+**用户听感：没听到** ⇒ 这是**有效负读数**（ring 证明流跑完）⇒
+**含 PCM_DEC/PCM_CNV 的图完整跑通 120 帧仍无声**，成为事实。
+**第 61 枪（0284）：作废，不是负结果。** ring 里有 tone、有 `sweeteos=1` 的回显，
+但**没有 `eos v1` 证人、没有 `wr_eos` 发送行** ⇒ 探针被放在默认 vp-wr 路径，
+而 `sweetvgraph7=1` 从自己分支 return，**根本没走到**。按 W1 门记分支未跑。
+⇒ **0285** 把同一条 EOS 放进 dec-cnv 分支，新字面量 `eos v2`；第 62 枪重取。

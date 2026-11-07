@@ -1,0 +1,42 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index cd83f83..fa04e8a 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -7969,6 +7969,37 @@ g_apm_graph_bringup(void)
+ 					printf("SWEET GLINK: dec-cnv started\n");
+ 					sweet_log_sync();
+ 					g_audio_tone(port, G_VP_WR_IID);
++					/*
++					 * 0285: the EOS probe has to live in THIS
++					 * branch.  0284 put it after the tone in the
++					 * default vp-wr path, but sweetvgraph7=1
++					 * returns from here, so boot 61 ran the tone
++					 * and never reached it - the ring has the
++					 * tone and no `eos v1` witness at all, which
++					 * by our own gate makes that round
++					 * unanswerable rather than a negative.
++					 * Same command, same policy, new literal so
++					 * the two placements can never be confused.
++					 */
++					{
++						int eos = 0;
++						uint8_t ep[4];
++
++						(void)PE_parse_boot_argn("sweeteos",
++						    &eos, sizeof(eos));
++						printf("SWEET MARK: eos v2 on=%d "
++						    "dst=%#x policy=%u\n", eos,
++						    G_VP_WR_IID, 1u);
++						sweet_log_sync();
++						if (eos) {
++							g_put32(ep, 1u);
++							(void)g_apm_cmd(port,
++							    G_VP_WR_IID, ep,
++							    sizeof(ep),
++							    0x04001002u,
++							    "wr_eos/last");
++						}
++					}
+ 				} else {
+ 					printf("SWEET GLINK: dec-cnv did not start\n");
+ 					sweet_log_sync();
