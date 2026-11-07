@@ -1,0 +1,5 @@
+release page: https://github.com/jebbranch/ios-port-marble/releases/expanded_assets/kernel-latest
+want sha256: ce969727ba39e6acb2710d124e1a1ed2cf1c8355014123ca4d22bddfa812d329
+CNTP_CTL occurrences: ['0x4aa348']
+patched CNTP_CTL at 0x4aa348
+ready: /Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/out/fetch-0289-6f72bdc/kernel.adsp

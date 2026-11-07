@@ -23,7 +23,7 @@ FW_DIR="${ADSP_FW_DIR:-$HOME/Desktop/marble-ios/work/adsp-fw}"
 [ -f "$FW_DIR/adsp2.mdt" ] || {
   echo "missing $FW_DIR/adsp2.mdt; run scripts/extract_adsp_fw.sh" >&2; exit 1; }
 
-python3 - "$K" <<'PY'
+python3 -I - "$K" <<'PY'
 import sys
 d = open(sys.argv[1], 'rb').read()
 n = d.count(bytes.fromhex('28e21bd5'))
@@ -100,10 +100,10 @@ BASE_ADT="${D22AP_ADT:-$ROOT/research/ipsw-x/d22ap.adt}"
   echo "missing Apple base ADT: $BASE_ADT" >&2
   echo "set D22AP_ADT=/path/to/d22ap.adt (see scripts/mkadt.py header)" >&2
   exit 1; }
-D22AP_ADT="$BASE_ADT" python3 "$ROOT/scripts/mkadt.py" "$OUT/marble.adt" --highmem
+D22AP_ADT="$BASE_ADT" python3 -I "$ROOT/scripts/mkadt.py" "$OUT/marble.adt" --highmem
 
-python3 "$ROOT/scripts/mkfwblob.py" "$FW_DIR" "$OUT/adsp2.fwblob"
-python3 "$ROOT/scripts/mkpayload.py" "$K" "$OUT/marble.adt" \
+python3 -I "$ROOT/scripts/mkfwblob.py" "$FW_DIR" "$OUT/adsp2.fwblob"
+python3 -I "$ROOT/scripts/mkpayload.py" "$K" "$OUT/marble.adt" \
   "$OUT/marble-adsp.payload" --cmdline "$CMDLINE" \
   --ramdisk "$OUT/adsp2.fwblob" | tail -2
 
