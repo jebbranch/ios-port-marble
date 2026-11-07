@@ -1,0 +1,26 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 1cb0c79..536a2ea 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -7881,6 +7881,21 @@ g_apm_graph_bringup(void)
+ 				g_smmu_faults("vgraph-pre");
+ 				rc = g_apm_graph_open_shm(port, body + vgoff,
+ 				    (uint32_t)vglen, 0, tag);
++				/*
++				 * 0280: ask the APM whether it is still alive, right
++				 * here, so "this body was refused" and "the APM
++				 * stopped answering anything" can never again be read
++				 * as each other.  Boot 53 is the reason: the container
++				 * got no response, our control graph got no response
++				 * behind it, and with no liveness poke in that boot the
++				 * round could not be scored as a content result at all.
++				 * g_apm_state_query_sync() already waits for the answer
++				 * (1080: "so a dead/restarted APM is visible"); the
++				 * witness prints the rc this round actually got.
++				 */
++				printf("SWEET MARK: livechk v1 rc=%d\n", rc);
++				sweet_log_sync();
++				g_apm_state_query_sync("post-vgraph");
+ 				g_smmu_faults("vgraph-post");
+ 				if (rc == 0) {
+ 					g_audio_graph_cfg_vp(port);
