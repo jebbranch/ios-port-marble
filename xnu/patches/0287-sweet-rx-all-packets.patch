@@ -1,0 +1,59 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 7c47b31..e452eca 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -855,6 +855,54 @@ g_rx_one(void)
+ 				for (uint32_t k = 0; k < g_rsp_len; k++) {
+ 					g_rsp[k] = g_liids[i].buf[k];
+ 				}
++				/*
++				 * 0287: full receive-path observability.  Boot 63
++				 * refuted the swallowing hypothesis - the dynamic
++				 * branch printed nothing at all - and E0 had already
++				 * excluded the window (g_apm_xfer waits 5000 ms) and
++				 * opcode filtering.  So after EOS we still do not know
++				 * whether ANY packet comes back, what its opcode is,
++				 * or which port it arrives on.  Print those three for
++				 * every completed packet on the main path, gated so
++				 * the control boot stays quiet.  Words are assembled
++				 * inline: g_le32 is only forward-declared at :1008,
++				 * after this point.  GPR header layout is
++				 * {0 ver/len, 4 domains, 8 src_port, 12 dst_port,
++				 * 16 token, 20 opcode}, payload from 24.
++				 */
++				{
++					int rxlog = 0;
++
++					(void)PE_parse_boot_argn("sweetrxlog",
++					    &rxlog, sizeof(rxlog));
++					if (rxlog) {
++						printf("SWEET MARK: rxall v1 "
++						    "op=%#x src=%#x dst=%#x "
++						    "w0=%#x w1=%#x len=%u\n",
++						    (unsigned)(g_rsp[20] |
++						    g_rsp[21] << 8 |
++						    g_rsp[22] << 16 |
++						    (uint32_t)g_rsp[23] << 24),
++						    (unsigned)(g_rsp[8] |
++						    g_rsp[9] << 8 |
++						    g_rsp[10] << 16 |
++						    (uint32_t)g_rsp[11] << 24),
++						    (unsigned)(g_rsp[12] |
++						    g_rsp[13] << 8 |
++						    g_rsp[14] << 16 |
++						    (uint32_t)g_rsp[15] << 24),
++						    (unsigned)(g_rsp[24] |
++						    g_rsp[25] << 8 |
++						    g_rsp[26] << 16 |
++						    (uint32_t)g_rsp[27] << 24),
++						    (unsigned)(g_rsp[28] |
++						    g_rsp[29] << 8 |
++						    g_rsp[30] << 16 |
++						    (uint32_t)g_rsp[31] << 24),
++						    (unsigned)g_rsp_len);
++						sweet_log_sync();
++					}
++				}
+ 				g_rsp_ready = 1;
+ 				g_liids[i].filled = 0;
+ 				/* RX_DONE carries the *local* channel id. */
