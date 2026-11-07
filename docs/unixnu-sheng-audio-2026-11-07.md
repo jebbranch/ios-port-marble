@@ -585,3 +585,21 @@ APM graph_open/vp-wr … : no response              <-- 我们的控制 open 同
 | `spf_state post-vgraph: no rsp` | ≤1536 就死 ⇒ 上限在 760–1536 之间 ⇒ 下一刀切 1024，并把结论改指向**映射布局**（区 0x5000、与 PCM 共用 offset 0） |
 | `graph_open/ukee2960 rsp … status=…`（任意非 0） | **额外收获**：这一格才第一次真正判到正文（能被回答就说明通道活着） |
 身份门：`livechk v1 rc=` 必须在 ring 内；`sweettime=1794033…` 对得上；窗口 total==解码字节。
+
+## 23. G-a（第 56 枪）判决：1536 也打死 ⇒ 界限在 (760, 1536]
+`logs/ring-ga-2960-len1536.txt`（117051 B），`sweettime=1794033200` 身份 ✓：
+```
+vginl v1 vg=2 off=0 len=1536 form=shm
+APM graph_open/ukee2960 src=0x2010 (shm handle=0xb0d7f408 len=1536)
+graph_open/ukee2960: no response
+SWEET MARK: livechk v1 rc=-1
+spf_state post-vgraph: no rsp
+```
+**必须同时记下一条混淆，G-b 就是为它设计的**：
+- `len=2960` 是**完整、自洽**的容器（slack 0）；`len=1536` 是从同一份容器**中间截断**（切在 entry[1] 里）；
+  两者都打死，而 760（另一份**完整**容器）能答。
+- ⇒ 现在不能区分"**尺寸**超过某个上限"与"**这份容器的内容**本身有问题"。
+- ⇒ **G-b = `sweetvglen=1024`（同一份容器、同一个前缀，只是更短）**：
+  若 1024 **有应答** ⇒ 打死通道的是**尺寸**（阈值落在 (1024,1536]），
+  因为 1024 与 1536 唯一的差别是同一个前缀的长度；
+  若 1024 **仍无应答** ⇒ 尺寸解释被削弱，转 G-c：**映射布局**（区 0x5000、描述符与 PCM 缓冲共用 offset 0）。
