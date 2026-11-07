@@ -25,7 +25,7 @@ userdata、不改 GPT。测试结束内核自己复位，手机回到 TWRP/Andro
 | 触摸 / 按键 / RTC | ✅（触摸有已知限制） |
 | USB（枚举 / 部分传输） | 🟡 |
 | ADSP（PAS + GLINK + AudioReach APM） | ✅ GLINK 通、图可 open/prepare/start、TDM 参数全 status 0 |
-| 音频（TDM → 功放） | 🟡 控制面全通；`SHM_MAP` 高字修正后不再挂总线，卡在 **DSP 不消费 DATA_BUFFER**（详见下文） |
+| 音频（TDM → 功放） | 🟡 控制面全通、数据面已推流：含 `PCM_DEC/PCM_CNV` 的图 `open=0 / start=0 / pcm tone done (120 buffers)`，**但仍无声**（两次有效负读数）。当前在定性「无声在哪一侧」，见 [docs/unixnu-sheng-audio-2026-11-07.md](docs/unixnu-sheng-audio-2026-11-07.md) |
 | 电池（pmic_glink） | 🟡 协议通、字段待校准 |
 | 震动（PM8350B） | 🟡 电源键触发已验证；UIKit/CoreHaptics 的请求被 backboardd 用户态 gate 拦下，见 [docs/haptics-abi-2026-10-30.md](docs/haptics-abi-2026-10-30.md) |
 | GPU（kgsl-smmu / GPU_CC / GMU） | 🔴 **进行中**：AP 能读写全部 GPU 寄存器、GMU 固件能装进 TCM；卡在 CX 域电源无法真正打通（详见“GPU 硬件启动”） |
@@ -33,22 +33,24 @@ userdata、不改 GPT。测试结束内核自己复位，手机回到 TWRP/Andro
 
 ## 音频当前卡点（一句话）
 
-**控制面全通，卡在数据面**：厂商 `SHM_MAP` 的地址高 32 位不是地址，而是
-**stream index（`msw=1`）**。我们此前一直发 0，才导致"DSP 一读主存整机冻结"；
-新增 `sweetshmhi=1` 之后同一套 S1 配置不再挂总线，所有控制命令 status 0。
-现在剩下的是 **`DATA_BUFFER` 发出去、DSP 不回 DONE**（`gfsr=0`，无 fault），
-以及厂商 4 子图 blob 的 `GRAPH_OPEN` 无响应——属于配置完整性，不是硬件权限。
+**图能开、能起、能推完 120 帧，但扬声器不响；正在把「无声」定性到一侧。**
+权威状态与全部判决见 **[docs/unixnu-sheng-audio-2026-11-07.md](docs/unixnu-sheng-audio-2026-11-07.md) §§13–44**。
 
-完整证据链、失败记录与下一轮假设见
-**[docs/audio-closeout.md](docs/audio-closeout.md)**（最新结论）、
-**[docs/audio-status.md](docs/audio-status.md)**（快照）、
-**[docs/status-log.md](docs/status-log.md)**（逐轮时间线）、
-**[docs/handoff.md](docs/handoff.md)**（上手流程）。
-`docs/smmu-dead-ends.md` 里的寄存器数据仍有效，但"停止 apps-smmu 路线"的
-旧结论已被 `audio-closeout.md` 推翻。
+已经钉住的事实：
+- `SHM_MAP` 地址高字是 **stream index（`msw=1`）**，不是 33 位地址；改对之后不再挂总线。
+- **`DATA_BUFFER_DONE` 只证明入队**：实测 1–2 ms 回一帧，而一帧是 6 ms 音频（厂商 20.5 ms/4096 B ≈ 实时）。
+- `GRAPH_OPEN` 有两种正文形式：**A 形式**（平铺 `{iid=1,param,size,err}` 记录）是我们唯一被接受的；
+  **B 形式**（`{total,count}` 的 ACF 图索引）**从来不是 APM 的 wire payload** —— 其开头 16 字节被当参数头读
+  会得到 `param_size=0xB0000002`（2.75 GiB），会把 APM 打死。B 形式路线已关闭。
+- 以被接受的 760 B 正文为底**就地加** `PCM_DEC 0x40bf` + `PCM_CNV 0x40c0`（856 B，`SG_CONFIG`/`CONTAINER_CONFIG`
+  逐字节不变）⇒ `graph_open=0`、`graph_start=0`、`dec-cnv started`、`pcm tone done (120 buffers)`、`timeout=0`，
+  **用户两次都没听到**（−6.0 dBFS、0.7 s）⇒ 两条有效负读数。
+- 已排除：尺寸、传输/handle/区内偏移/token、src 端口（`0x2011` 开过两次都 `status=0`）、
+  幅度/时长/节律、TDM 位时钟票位置、WR 媒体格式、`REGISTER_MODULE_EVENTS`（发了、`status=0`、仍无声）。
 
-厂商 GPR 报文格式见 **[docs/vendor-gpr-packets.md](docs/vendor-gpr-packets.md)**，
-抓包原始数据在 `docs/traces/`，解码用 `scripts/parse_gpr_trace.py`。
+当前未决：`EOS_RENDERED`（`0x04001002{policy=1}` → `0x05001001{iid,render_status}`）收不到。
+已排除「等待窗太短」（`g_apm_xfer` 等 **5 秒**）与「动态通道吞包」（该分支零包）。
+正在做**全量收包观测**（0287，`sweetrxlog=1`）以分清：固件不发该事件 / EOS 时机不对 / 事件发往未开的通道。
 
 ## GPU 硬件启动（进行中）
 
