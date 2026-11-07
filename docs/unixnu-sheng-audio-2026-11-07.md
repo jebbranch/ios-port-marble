@@ -631,3 +631,20 @@ livechk v1 rc=-1   +   spf_state post-vgraph: no rsp
 身份门：`vginl v1 vg=2 off=0 len=760 form=shm`、`livechk v1 rc=`、`sweettime=<本轮>`、窗口 total==解码字节；
 回归门：本轮后面的 `graph_open/vp-wr` 是否恢复 `status=0`（53/55/57 三发里它都被连带打死）。
 预算 58/120（用户点头的第 1 项，goal 已在其止损格收口，不占旧 goal）。
+
+## 26. G-c（第 58 枪）判决：**落在第二格 —— 是字节，不是尺寸**
+`logs/ring-gc-2960-len760.txt`，`sweettime=1794033872` ✓：
+```
+vginl v1 vg=2 off=0 len=760 form=shm
+graph_open/ukee2960 (shm handle=0xb0d7f408 len=760): no response
+livechk v1 rc=-1  +  spf_state post-vgraph: no rsp
+```
+**这发之所以干净：同一次开机里长度相同、传输相同的对照已经存在** ——
+`g_graph_vp_wr` 也是 760 B、也走 `g_apm_graph_open_shm`、同 handle 同区内偏移 0，**每次都拿 status=0**；
+`ukee_current` 截到 760 B 就把 APM 打死。
+⇒ **尺寸轴彻底排除**（阈值说被 760=活 / 760=死 直接否证）；
+⇒ **`ukee_current` 开头 ≤760 字节里就含有让 APM 停摆的东西**；
+⇒ "发大正文 OOB 描述符"这条路**判死**，B 线成为唯一方向。
+⇒ 下一件**零开机**可做的判别：把 `ukee_current` 前 760 B 与 `g_graph_vp_wr` 前 760 B 做**逐块结构对照**
+（外层头、第一个 entry 的 key/size、第一个 param 块的头格式），因为差异一定在其中之一里 ——
+最可疑的是**外层 `{total,count}` 索引**：vp_wr 根本没有这层（它直接以 16 B 参数头开始，iid=1）。
