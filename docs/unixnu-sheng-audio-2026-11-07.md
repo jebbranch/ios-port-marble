@@ -894,3 +894,22 @@ if (!g_rsp_ready) printf("SWEET GLINK: %s: no response\n", what);
 ⇒ GPR opcode 在 **offset 20**、payload 前两个字在 **24/28**。
 0286 的 `db[20..23]/db[24..27]/db[28..31]` 与此一致 ⇒ 打印的 `op/w0/w1` 语义正确。
 （这条要在开机前核，否则拿到 `op=0x…` 也不知道该不该信。）
+
+## 43. 第 63 枪判决（0286）：**第三格 —— 动态通道压根没收到包，吞包假设被否证**
+`logs/ring-e1-dynrx.txt`，`sweettime=1794045805` ✓，前置门 PASS：
+```
+dec-cnv started / pcm tone done (120 buffers)
+eos v2 on=1 dst=0x40bd policy=1
+APM wr_eos/last src=0x2010 dst=0x40bd (44 bytes)
+wr_eos/last: no response
+dynrx v1 行数 = 0
+```
+⇒ 按 §42 第三格：**那条会吞包的分支本轮一个包都没收到** ⇒ "EOS 事件被它吞了"**不成立**。
+⇒ 结合 E0（窗 5 秒、收包不按 opcode 过滤），剩下三种解释：
+(a) 这颗固件对该 endpoint/policy **不发** `0x05001001`；
+(b) **EOS 时机/策略不对**（我们在 120 帧全推完之后才发）；
+(c) 事件发往**我们根本没开的通道/端口**。
+⇒ **下一枪（第 64 枪）应该是"全量收包观测"**：在主 RX 路径（`g_liids` 完成处）
+按门控打印**每个完整包的 opcode + dst port**，覆盖 EOS 之后的窗口 ——
+这能一次分开 (a)/(b)/(c)：有没有任何包回来、回来的 op 是什么、从哪个端口来。
+比继续猜 EOS 策略更有分辨力，且仍是观测而非行为改动。
