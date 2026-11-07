@@ -951,3 +951,17 @@ DSP 回 121 个 DONE，但扬声器不响**；`EOS_RENDERED` 在仪器被证明�
   （含把 descriptor 从 offset 0 挪到 `0x4000` 的卫生修正）；
 - **资产/协议侧**：厂商三图三端口结构（`0x2010/0x2011/0x2012`）+ 那条 18504 的 APM 级 SET_CFG，
   以及 `0x10013D01`(AFE id) 是否该出现在 APM MODULE_LIST 的单变量摘除实验。
+
+## 47. B1（第 65 枪，0288）判据 —— 开机前写死
+`sweetvgraph8=1`：发 **808 B** A 形式正文 = 856 B 那份**摘掉 `0x10013d01`/`0x42d3`**
+（MODULE_LIST 10→9、MODULE_PROP 10→9、MODULE_CONN 17→16，`MFC:1→SPLITTER:2` 绕过被摘节点）。
+硬门已过：`SG_CONFIG`/`CONTAINER_CONFIG` 与被接受正文**逐字节相同**、走链 slack=0。
+**冲突证据（判据的一部分，不许事后挑一边）**：评审认为 AFE id 不该进 APM MODULE_LIST；
+但我们 11-05 抓包里厂商自己发 `SET_CFG dst=0x42d3 param=0x10013d2a`。
+| 观察 | 判读 |
+|---|---|
+| `graph_open/no-aw status=0` + `no-aw started` + 仍无声 | 该 id **不是**无声原因 ⇒ 疑点降权，转 B2 |
+| `graph_open` 或 `start` 由 0 变**非 0** | 该 id **确实被这颗固件当合法 APM 模块** ⇒ **反证评审**，疑点关闭 |
+| 任一处 `no response` | 先按四因排除（分支未跑/窗/收包丢弃/对端不发），**不得直接归因** |
+| 回归 | `pcm tone done (120 buffers)`、`rxall` 若开则看 DONE 计数、panic 0 |
+耳朵：沿用 `sweetvol=16`、120×6 ms；**若这一枪响了立刻报**。
