@@ -1,5 +1,9 @@
 # marble XNU —— iOS 16 内核跑在 Redmi Note 12 Turbo 上
 
+> **接手（尤其换会话）先读这一份：[`docs/STATUS-2026-11-07.md`](docs/STATUS-2026-11-07.md)** ——
+> 全部九条线的当前位置、开机预算 64/120、下一枪（第 65 枪）的就绪状态与打包命令、
+> 以及本会话撤回过的九条旧说法。
+>
 > **音频/SMMU 接手必读：** [`docs/smmu-dead-ends.md`](docs/smmu-dead-ends.md) ——
 > 已经证伪的 SMMU 做法、正确的寄存器地图、以及“别再拿 DATA_BUFFER 当探针”的纪律。
 >
@@ -25,16 +29,18 @@ userdata、不改 GPT。测试结束内核自己复位，手机回到 TWRP/Andro
 | 触摸 / 按键 / RTC | ✅（触摸有已知限制） |
 | USB（枚举 / 部分传输） | 🟡 |
 | ADSP（PAS + GLINK + AudioReach APM） | ✅ GLINK 通、图可 open/prepare/start、TDM 参数全 status 0 |
-| 音频（TDM → 功放） | 🟡 控制面全通、数据面已推流：含 `PCM_DEC/PCM_CNV` 的图 `open=0 / start=0 / pcm tone done (120 buffers)`，**但仍无声**（两次有效负读数）。当前在定性「无声在哪一侧」，见 [docs/unixnu-sheng-audio-2026-11-07.md](docs/unixnu-sheng-audio-2026-11-07.md) |
+| 音频（TDM → 功放） | 🟡 控制面全通、数据面已推流：含 `PCM_DEC/PCM_CNV` 的 856 B 图 `open=0 / start=0 / pcm tone done (120 buffers)`、DSP 回 **121 个 DONE**，**但仍无声**（**三次**有效负读数）。`EOS_RENDERED` 在收包仪器被证明可用的前提下**从未到达** ⇒ AP 侧事件路线关闭，现在把「无声」定性到一侧（硬件 vs 资产）。见 [docs/unixnu-sheng-audio-2026-11-07.md](docs/unixnu-sheng-audio-2026-11-07.md) |
 | 电池（pmic_glink） | 🟡 协议通、字段待校准 |
 | 震动（PM8350B） | 🟡 电源键触发已验证；UIKit/CoreHaptics 的请求被 backboardd 用户态 gate 拦下，见 [docs/haptics-abi-2026-10-30.md](docs/haptics-abi-2026-10-30.md) |
-| GPU（kgsl-smmu / GPU_CC / GMU） | 🔴 **进行中**：AP 能读写全部 GPU 寄存器、GMU 固件能装进 TCM；卡在 CX 域电源无法真正打通（详见“GPU 硬件启动”） |
-| Wi-Fi / BT | ⬜ 未开始 |
+| GPU（kgsl-smmu / GPU_CC / GMU） | 🔴 **冻结**：AP 能读写全部 GPU 寄存器、GMU 固件能装进 TCM；卡在 CX 域电源无法真正打通。reopen 门未满足（要 spin heartbeat + 活过 stall 的输出通道）；**没有用户点头不开 GPU 枪**（详见“GPU 硬件启动”） |
+| Wi-Fi / BT | ⬜ **停车**（2026-11-05 用户决定"先缓缓"）：芯片 QCA6490 `17cb:1103` 已盘点，便宜的第一口 = board-data 普查 + 只读 PCIe 探测 |
+| 基带 / modem | ⬜ 11-05 开线：内核半条可行，墙是 iOS 16 telephony 用户态 ⇒ 先做零开机资产普查 |
 
 ## 音频当前卡点（一句话）
 
-**图能开、能起、能推完 120 帧，但扬声器不响；正在把「无声」定性到一侧。**
-权威状态与全部判决见 **[docs/unixnu-sheng-audio-2026-11-07.md](docs/unixnu-sheng-audio-2026-11-07.md) §§13–44**。
+**图能开、能起、能推完 120 帧、DSP 回 121 次 DONE，但扬声器不响；正在把「无声」定性到一侧。**
+权威状态与全部判决见 **[docs/unixnu-sheng-audio-2026-11-07.md](docs/unixnu-sheng-audio-2026-11-07.md) §§13–48**，
+新会话的第一入口是 **[docs/STATUS-2026-11-07.md](docs/STATUS-2026-11-07.md)**。
 
 已经钉住的事实：
 - `SHM_MAP` 地址高字是 **stream index（`msw=1`）**，不是 33 位地址；改对之后不再挂总线。
@@ -44,15 +50,28 @@ userdata、不改 GPT。测试结束内核自己复位，手机回到 TWRP/Andro
   会得到 `param_size=0xB0000002`（2.75 GiB），会把 APM 打死。B 形式路线已关闭。
 - 以被接受的 760 B 正文为底**就地加** `PCM_DEC 0x40bf` + `PCM_CNV 0x40c0`（856 B，`SG_CONFIG`/`CONTAINER_CONFIG`
   逐字节不变）⇒ `graph_open=0`、`graph_start=0`、`dec-cnv started`、`pcm tone done (120 buffers)`、`timeout=0`，
-  **用户两次都没听到**（−6.0 dBFS、0.7 s）⇒ 两条有效负读数。
+  **用户三次都没听到**（−6.0 dBFS、0.7 s、120×6 ms）⇒ 三条有效负读数。
 - 已排除：尺寸、传输/handle/区内偏移/token、src 端口（`0x2011` 开过两次都 `status=0`）、
-  幅度/时长/节律、TDM 位时钟票位置、WR 媒体格式、`REGISTER_MODULE_EVENTS`（发了、`status=0`、仍无声）。
+  幅度/时长/节律、TDM 位时钟票位置、WR/MFC 媒体格式、图的代次与 key 集合、
+  `REGISTER_MODULE_EVENTS`（发了、`status=0`、仍无声）。
 
 当前未决：`EOS_RENDERED`（`0x04001002{policy=1}` → `0x05001001{iid,render_status}`）收不到。
-已排除「等待窗太短」（`g_apm_xfer` 等 **5 秒**）与「动态通道吞包」（该分支零包）。
-正在做**全量收包观测**（0287，`sweetrxlog=1`）以分清：固件不发该事件 / EOS 时机不对 / 事件发往未开的通道。
+四种成因已逐一排除 —— 分支未跑（第 61 枪判 VOID）、窗太短（`g_apm_xfer` 等 **5 秒**）、
+动态通道丢弃（第 63 枪该分支**零包**）、仪器不可用（第 64 枪 0287 的全量收包日志
+**同环抓到 137 包、opcode 分布正常，而 `0x05001001` 是 0，EOS 之后一条都没有**）。
+⇒ **AP 侧的 EOS/事件仪器路线按止损条款关闭**；这个零是关于对端的正面结论。
+现在做 B 线（资产/协议侧）：**第 65 枪 = 把外部评审质疑的 AFE id `0x10013D01`/iid `0x42d3`
+从被接受的正文里摘掉**（0288，`sweetvgraph8=1`，808 B）。**内核已取回并过门，只差打包开机。**
 
-## GPU 硬件启动（进行中）
+## GPU 硬件启动（**冻结中**，2026-11-07）
+
+> **状态纠正**：这一条线现在是**冻结**，不是"进行中"。原因不是"危险"，而是 **reopen 门未满足**：
+> 需要一条真正的 spin heartbeat + 一条能活过 stall 的输出通道，否则读数无法解释。
+> 旧说法"一放复位机器就停"**已撤回**（`delay()` 会阻塞、G4 跳过了 SPI mask、0228 数的是串扰）。
+> **绝不主动 collapse GPU**（那样永远回不来）；**没有用户明确点头，不开任何 GPU 枪。**
+> 外部 PR #1 重放干净（`applied=212`，无跳过），但合并被音频轮挤到后面 —— 它会**在取产物中途覆盖
+> kernel-latest** ⇒ 它的两笔债要**重编号到 0289+**（补丁链现在到 0288），并把 CNTVCT spin 界住。
+> 细节见 [`docs/gpu-probe.md`](docs/gpu-probe.md) / [`docs/gpu-feasibility.md`](docs/gpu-feasibility.md)。
 
 目标：把 Adreno 725v1（a730 家族、gen7 GMU）从 XNU 里点亮 —— 先 GMU/CM3，
 再 CP、HFI，最后才是 Metal。启动链是 ABL → 自写裸机 shim → XNU，

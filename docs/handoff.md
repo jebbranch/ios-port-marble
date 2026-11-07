@@ -1,7 +1,16 @@
 # HANDOFF — marble XNU 音频/电源/震动（2026-10-25 13:00）
 
+> **⚠️ 本页已过时三代（2026-11-07 加横幅）。** 本文件的 §0 与 §2 说"数据面卡在 DSP 读主存"
+> —— **那一步 2026-11-02 就通过了**：现在图能 open/start、120 帧全部推完、DSP 回 121 个
+> `DATA_BUFFER_DONE_V2`、`timeout=0`，卡点早已移到"**全都绿但不出声**"。
+> 本页只保留当年的 SMMU 事实表与流程；当前状态一律以
+> **[`STATUS-2026-11-07.md`](STATUS-2026-11-07.md)（新会话第一入口）** 与
+> **[`unixnu-sheng-audio-2026-11-07.md`](unixnu-sheng-audio-2026-11-07.md) §§13–48** 为准。
+
 给接手的人：**10 分钟读完这页就能继续。**
-细节看 `CURRENT.md`（结论快照）和 `STATUS.md`（时间线 + 每次失败原因）。
+细节看 [`STATUS-2026-11-07.md`](STATUS-2026-11-07.md)（当前结论快照）和
+[`status-log.md`](status-log.md)（按时间追加的完整实验日志 + 每次失败原因）。
+（注：本文件原来指向的 `CURRENT.md` / `STATUS.md` **在本仓库不存在**，是旧文件名。）
 
 ## 0. 一句话现状
 
@@ -39,7 +48,7 @@ grep -aE "SWEET SMMU|buffer probe|tone" logs/ring-run<run#>.txt
 - 设备序列号固定 **2aa26095**；任何 adb/fastboot 命令都带 `-s`。
 - 镜像只 `fastboot boot`，不刷写。
 
-## 2. 当前状态（run87 → v28，详见 CURRENT.md §二）
+## 2. 当年状态（run87 → v28；原文指向的 `CURRENT.md` 已不存在 —— 现在的状态见 §0 的横幅）
 
 音频控制面全通，**数据面卡在 DSP 读主存那一步**：第一次 `DATA_BUFFER_V2`
 之后 DSP 挂死、APM 不回包、总线卡死。

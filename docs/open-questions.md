@@ -1,6 +1,6 @@
 # marble ADSP 音频：突破 + 一个具体的页表问题（求第二意见）
 > **⚠️ 本文件含已被推翻的结论（2026-11-07 更新）。当前权威状态见
-> [`unixnu-sheng-audio-2026-11-07.md`](unixnu-sheng-audio-2026-11-07.md) §§13–42。**
+> [`unixnu-sheng-audio-2026-11-07.md`](unixnu-sheng-audio-2026-11-07.md) §§13–48，全项目九条线的一句话状态见 **[`STATUS-2026-11-07.md`](STATUS-2026-11-07.md)**。**
 > 已作废/收窄的旧说法：① "18 KB / 18128 / 18504 cal 是墙" —— 降级为未检验假设；
 > ② "ACDB 重建容器 = EBADPARAM，内容被否" —— 那些拒绝来自 **B 形式（ACF 索引）**，
 > 而 B 形式开头 16 字节被 APM 当参数头读会得到 `param_size=0xB0000002`（2.75 GiB），
@@ -10,7 +10,10 @@
 > 逐字 dump 推翻 —— 被接受的 `g_graph_vp_wr` 同时有 WR 与硬件段；⑥ `DATA_BUFFER_DONE` 只证明入队；
 > ⑦ "EOS 无应答是 100 ms 窗太短" 已撤回（`g_apm_xfer` 等 5 s）。
 > **当前事实**：856 B A 形式（+PCM_DEC/PCM_CNV）`graph_open=0`、`graph_start=0`、
-> `pcm tone done (120 buffers)`，用户两次都没听到 ⇒ 两条有效负读数；预算 62/120。
+> `pcm tone done (120 buffers)`、DSP 回 121 个 DONE —— 用户**三次**都没听到 ⇒ 三条有效负读数。
+> `EOS_RENDERED` 在收包仪器被证明可用的前提下从未到达（第 64 枪 137 包、`0x05001001` = 0）
+> ⇒ AP 侧事件路线按止损关闭，现在做 B 线（第 65 枪 = 0288 摘掉 AFE id，内核已过门，只差打包开机）；
+> **预算 64/120**。新会话第一入口 = [`STATUS-2026-11-07.md`](STATUS-2026-11-07.md)。
 
 
 ## 0. 环境（不变）
