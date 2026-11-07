@@ -676,3 +676,16 @@ livechk v1 rc=-1  +  spf_state post-vgraph: no rsp
 `TDM_SINK 0x428f / MFC 0x48ba / AW 0x42d3`（这些字节我们都已从 2724 的自洽 entry[0]/[2]/[3] 与
 厂商带内 SET_CFG 正文里拿到）。**先零开机把 `tools/splice_graph.py` 改成产出 A 形式并走链自洽**，
 再谈打包。
+
+## 29. H1（第 59 枪）判据 —— 开机前写死（0281，ci_replay applied=222，post-image==链树 HEAD）
+`sweetvgraph6=1`：A 形式、784 B、当代内容，走 `g_apm_graph_open_shm`（区内偏移 0、我们自己的句柄）——
+**与"每次都 status=0"的 760 B 控制相比，只换正文。**
+| 门 | 期望 | 不成立的含义 |
+|---|---|---|
+| W0 身份 | ring 内 `sweettime=<本轮>`；窗口 total==解码字节；产物内 `aform v1 `×1、`livechk v1 `×1、`regevt v1 `×1 | 少一条 ⇒ 不开机/不作数 |
+| W1 证人 | `SWEET MARK: aform v1 on=1 bytes=784` 恰 1 行 | 缺 ⇒ 分支没跑，**不许**判正文 |
+| W2 发送 | `APM graph_open/aform-cur src=0x2010 (shm handle=<非0> len=784)` | 缺 ⇒ 没发出去（`aform open refused`/`no shared memory` 另记） |
+| **W3 主判据** | **任何应答**：`graph_open/aform-cur rsp op=0x1001000 status=0` 或 `status=0x2/0x1/0x3` | 有应答 ⇒ 通道活着 ⇒ **这是本项目第一次真正判到 GRAPH_OPEN 正文**；`no response` ⇒ A 形式承载当代内容也打死 ⇒ 按止损判死"正文"这一族，转"描述符专用区 / 0x2012 / 18504 cal" |
+| W4 连带 | 若 W3=0：`graph_start status=`、`not consumed`、`dblat v2 tone … timeout=0`、`pcm tone done (120 buffers)`；`spf_state` 若被后续路径调用应仍有应答 | 图开成但 start/数据面异常 ⇒ 内容仍有缺口，H2 按块 diff（MODULE_LIST→CONN→CONTAINER） |
+| W5 耳朵 | **仅当 W3=status=0** 才请用户听（`sweetvol=16`、120×6 ms ≈0.7 s） | 其他情况这条不算读数 |
+预算 59/120。cmdline 长度打包实测，不许继承。
