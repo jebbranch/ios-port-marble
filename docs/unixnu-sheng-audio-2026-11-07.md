@@ -470,3 +470,31 @@ G3 = 若 G2 被拒 ⇒ 内容轴只剩"重建 entry 正文"，那需要先把 AC
 这一段（表 4 里厂商的连接是 `0x40bd:1→0x40be:2→0x40bf→0x40c0→0x40c1→0x40c2→0x4008→0x40c4→0x40c6→0x4165`），
 再把上面这些带内正文原样发过去。第一步是纯离线把容器重新走链自洽（slack=0），
 第二、三步才各需要一发。
+
+## 17. G1′（第 53 枪，改为这一发）：当代容器的**正确 framing**，从未发过
+
+查旧 ring 得到一条被埋掉的事实：2960 那份容器上过线 **5 次**，但**每一次 framing 都是错的**：
+```
+4 × APM graph_open/ukee2960 src=0x2010 (shm handle=… len=2944)   → status=0x2 ×3、无响应 ×1
+1 × graph_open/ukee2960-inband (2984 bytes) inline-big           → status=0x2
+```
+`len=2944` 来自代码默认 `vgoff=16 / vglen=2944`。而本轮实测走链证明
+**这份容器的正文就从头开始**：`8 + Σ(8 + size) = 2960`，**slack = 0** ⇒ 正确的 payload 是
+**`off=0 / len=2960`**，跳过前 16 字节等于把第一个 entry 的头削掉 —— 那是一份**必然**畸形的正文。
+⇒ 所以历史上那 5 个 `0x2` **不能算对"内容假设"的判决**，与 2724 那三次同理。
+
+**这一发不需要新代码**：`sweetvgoff` / `sweetvglen` 是现成的 boot-arg
+（`:7838` 之后被 `PE_parse_boot_argn` 覆盖；守卫 `vgoff>64 || vgoff+vglen>body_sz`
+在 `0+2960>2960` 为假 ⇒ 放行），内核就用已在手的 0278。
+cmdline = K13 那行把 `sweetvgraph=3` 换成 `=2`（等长）再加 ` sweetvgoff=0 sweetvglen=2960`
+⇒ **预计 582 B < 590**（打包时实测，不许继承）。
+
+判据（开机前写死）：
+| 门 | 期望 | 不成立的含义 |
+|---|---|---|
+| W0 身份 | ring 内 `sweettime=<本轮>`；`ring_window` total==解码字节；产物内 `vginl v1 `×1、`dbb v1 `×1、`amptone v1 `×1 | 少一条 ⇒ 本轮不作数 |
+| W1 证人 | `SWEET MARK: vginl v1 vg=2 off=0 len=2960 form=shm` **恰 1 行**（证人自己算 off/len） | 缺/值不同 ⇒ framing 没生效，**不许**判内容 |
+| W2 发送 | `APM graph_open/ukee2960 src=0x2010 (shm handle=<非0> len=2960)` 恰 1 行，且 `len` 是 **2960** | 缺 ⇒ 没发出去 |
+| **W3 主判据** | `graph_open/ukee2960 rsp op=0x1001000 status=0` | `0x2` ⇒ **当代正文本身被拒**，内容假设获得第一次干净否定 ⇒ 按目标止损条款转资产线；无响应 ⇒ 同镜像重放一次再判 |
+| W4 连带 | 若 W3=0：`graph_start … status=` 与 `not consumed` 计数、`pcm tone done` | 图开成后能不能 start / 数据面是否照旧，这一格顺带白拿 |
+| W5 耳朵 | `sweetvol=16`、120×6 ms | 次要；W3 才是这一枪买的东西 |
