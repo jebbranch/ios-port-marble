@@ -1,0 +1,46 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 552b7fa..cd83f83 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -8273,6 +8273,41 @@ g_apm_graph_bringup(void)
+ 				}
+ 			}
+ 			g_audio_tone(port, G_VP_WR_IID);
++			/*
++			 * 0284: ask the WR endpoint for EOS_RENDERED, because
++			 * DATA_BUFFER_DONE_V2 cannot answer the question we keep
++			 * asking it.  Its V2 reply carries buffer address/handle/
++			 * status and metadata address/handle/status - no frames
++			 * consumed, no bytes rendered, no DSP timestamp - and our
++			 * own census shows it arriving in 1-2 ms for a 6 ms frame,
++			 * i.e. a queue receipt.  The WR endpoint's EOS interface is
++			 * the one public completion point that sits *after* the
++			 * samples: DATA_CMD_WR_SH_MEM_EP_EOS 0x04001002 with a
++			 * one-word policy (WR_SH_MEM_EP_EOS_POLICY_LAST = 1), and
++			 * the DSP answers DATA_CMD_WR_SH_MEM_EP_EOS_RENDERED
++			 * 0x05001001 with {module_instance_id, render_status}.
++			 * sweeteos=1 sends it after the tone; 0 sends nothing.
++			 * CAVEAT written before booting: 0x05001001 is an event,
++			 * not a basic result, so it may arrive outside this wait
++			 * window - a "no response" here is NOT a verdict about
++			 * rendering, and the witness prints what actually came.
++			 */
++			{
++				int eos = 0;
++				uint8_t ep[4];
++
++				(void)PE_parse_boot_argn("sweeteos", &eos,
++				    sizeof(eos));
++				printf("SWEET MARK: eos v1 on=%d dst=%#x "
++				    "policy=%u\n", eos, G_VP_WR_IID, 1u);
++				sweet_log_sync();
++				if (eos) {
++					g_put32(ep, 1u);
++					(void)g_apm_cmd(port, G_VP_WR_IID, ep,
++					    sizeof(ep), 0x04001002u,
++					    "wr_eos/last");
++				}
++			}
+ 			/*
+ 			 * 0272, the fourth phase: after the tone has returned, i.e.
+ 			 * after 120 DATA_BUFFER_V2s actually crossed the wire to

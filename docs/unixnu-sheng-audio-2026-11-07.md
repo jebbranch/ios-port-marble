@@ -768,3 +768,31 @@ ring 内 no rsp = 0（通道活着，不是 53/55/57/58 那种打死）
 ⇒ 下一枪（第 60 枪，0283）= `g_apm_graph_start(port, 0xb0000002u)`（正文自己声明的那个 key），
 证人 `dcnv v2 on=%d bytes=%u start=%#x`。判据：start `status=0` ⇒ 进 not consumed/dblat/
 `pcm tone done (120 buffers)` 并**请耳朵**（sweetvol=16）；仍拒 ⇒ 合并子图到顶，转厂商多图/描述符专用区。
+
+## 35. 外部评审（GPT）回读 + 我们当场复核的两条
+**复核 1（成立，而且是对着我们的字节算的）**：把 B 形式开头 16 字节当 APM 参数头读，得到
+`module_instance_id=0xb90 param_id=0x4 param_size=0xb0000002 error_code=0x354`
+—— **param_size = 2.75 GiB，而 payload 只有 2960 B（超读约 997564 倍）**。
+这解释了为什么截到 1536/1024/760 都一样死：**毒字段就在开头 16 字节**。
+⇒ B 形式（ACDB/GSL 侧的图索引封装）**从来不是 APM 的 wire payload**；我们一直把数据库侧结构当线上正文发。
+**复核 2（对方建议的 OOB 测试其实早就在做）**：`g_apm_graph_open_shm` 本身就是带外
+（`memcpy` 进映射区 + `{addr=off, msw=0, handle, len}`），我们那张 760 B A 形式**每枪都走它并拿 status=0**
+⇒ 对方判别表第一行**已经成立**：OOB 读取路径没问题，问题在 B 形式的**格式**。
+⇒ 采纳的卫生修正：descriptor 与 PCM buffer 0 都在 offset 0 **确实重叠**，应把 descriptor 挪到 `0x4000`
+（region 0x5000 装得下 2960 B）。这是独立的一小步，不与 EOS 混在同一枪。
+**待核实的疑点（对方提出，我们有反证）**：`0x10013D01`(AWDSP_RX) 是 AFE 模块 id、`0x42D3` 是 AFE port id，
+不该出现在 APM 的 MODULE_LIST 里。但**厂商自己的线上 SET_CFG 就是 `dst=0x42d3, param=0x10013d2a`**
+（11-05 抓包实测），所以这颗固件要么有 APM wrapper，要么 AFE 风格 id 在 APM 里合法。
+⇒ 记为**疑点而非结论**；若第 60 枪 start 仍拒，它升为第一嫌疑。
+
+## 36. 第 61 枪（0284）判据 —— EOS_RENDERED，开机前写死
+`sweeteos=1`：tone 跑完后向 `dst=0x40BD` 发 `0x04001002`，正文 `{policy=1}`（LAST）。
+| 观察 | 判读 |
+|---|---|
+| 收到 `0x05001001`，两字 = `{0x40bd, render_status}` | **第一次拿到样本之后的完成点**：render_status 若为 rendered ⇒ 数据走完播放路径 ⇒ 无声的原因移到 TDM/功放/供电侧；若 dropped ⇒ 数据在图里被丢 ⇒ 回到图内容 |
+| 只收到 basic result / 别的 op | 该固件不支持这条 EOS，或我们 dst/时机不对 ⇒ 记为仪器读数，**不判渲染** |
+| `no response` | **不判渲染**（事件可能落在通用等待窗之外，代码里已写明）；下一枪改成专门的异步监听 |
+| 回归 | `graph_open/graph_start status=0`、`pcm tone done (120 buffers)`、`no rsp` 增量 ≤1、panic 0 |
+**打分注意**：`g_apm_cmd` 把正文前两个字打印成 `op=/status=`，对本事件它们其实是
+**`module_instance_id` 与 `render_status`** —— 别按 op/status 读。
+耳朵：本枪沿用 `sweetvol=16`、120×6 ms；**EOS 与听感同轮取**，若 rendered 且仍无声，那就是最干净的一次定位。
