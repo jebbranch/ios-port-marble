@@ -820,3 +820,18 @@ dblat v2 tone n=120 min=5 avg=8 max=10 ms timeout=0 step=5
 但**没有 `eos v1` 证人、没有 `wr_eos` 发送行** ⇒ 探针被放在默认 vp-wr 路径，
 而 `sweetvgraph7=1` 从自己分支 return，**根本没走到**。按 W1 门记分支未跑。
 ⇒ **0285** 把同一条 EOS 放进 dec-cnv 分支，新字面量 `eos v2`；第 62 枪重取。
+
+## 39. 第 62 枪判决（0285）：探针这次真的跑了，但**等待窗太短，不判渲染**
+```
+sweettime=1794043917 ✓
+dec-cnv started / pcm tone done (120 buffers) / dblat n=120 timeout=0
+SWEET MARK: eos v2 on=1 dst=0x40bd policy=1        <- W1 过（0284 那次是分支未跑）
+APM wr_eos/last src=0x2010 dst=0x40bd (44 bytes)   <- W2 过
+wr_eos/last: no response                          <- W3
+```
+按开机前表，`no response` **不判渲染**。而且原因几乎可以确定在我这边：
+`g_apm_cmd` 的等待窗是 `sweetrspwait`（默认 **100 ms**），而 120 帧 × 6 ms = **720 ms** 的音频，
+EOS_RENDERED 本来就该在最后一帧之后约 0.7 s 才到 ⇒ **100 ms 窗必然看不到**。
+⇒ 下一枪（第 63 枪）**零代码**：同一镜像加 `sweetrspwait=2000`，把窗开到 2 s。
+风险先写：若通用接收路径按 token/opcode 过滤，加长窗也可能收不到 `0x05001001` 事件 ⇒
+那时才需要专门的异步监听补丁，而不是继续加长窗。
