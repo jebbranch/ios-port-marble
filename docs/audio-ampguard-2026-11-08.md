@@ -62,5 +62,7 @@ manifest见 `verify/ampguard-0290/kernel.json`、`image.json`、`image-provenanc
 用户随后要求“Try again”，据此登记一轮新内核验证（第68枪），而不是重做旧代码或追加免费额度；事前表在audio-closeout中。
 0291已提交 **4afb6ce** 并推送构建，正确产物已取回。raw SHA256 `ddb10413f3ac306e7692110049edfc8a120098cae71a7f27dedeaabfcd8d77e9`，修后 `03727a386741a6cbc7a0aeaac6189d1ee03e84ea54f025a2d2677719e4864c4d`；新写事务、保护、descsep/dcnv/rxall等完整marker及CNTP门通过。最初旧0290下载被新marker拒绝，未用于这轮。
 镜像 `images/p2-ampwrite-0291.img`，SHA256 `b1a9630235c35acc9b07397aeb35e3919b0281a87ba0d2df17837deda88f57d7`，sweettime=1794114102，真实cmdline=582 B。参数除身份外与R1/P1相同，ADT seed相同；`--require-ampwrite`镜像门全部通过。
-当前尚未开第68枪，预算67/120；事前身份在 `verify/ampwrite-0291/kernel.json`、`image.json`、`image-provenance.json`。
-用户明确要求 **本轮结束后暂停音频、做收尾并转看其他方面**。据此只完成已经登记的第68枪，不再追加听测、EOS或格式实验；最终结果记录后冻结。
+第68枪已完成，音频按用户要求暂停。有效窗口101520/101520、所有通用与功放/写事务门通过；两颗soft-reset均实际bytes=3，GPIO保持1/1，扫描0次。
+关键真实变化：reg4从4003变b440、reg5从38变05a9；两颗PWDN/AMPPD/HMUTE均从1变0，八条读回全r=0，匹配表值。这证实单消息WRITE使寄存器表真实生效，不再以“44/44”猜测。
+图open/start=0、120tone/121DONE、timeout0、正常复位、panic0；末次Android boot_completed=1、电量99%。只测了登记这一轮，预算最终68/120；听感未明确反馈，保持未知。
+冻结结论与所有未决项见 [AUDIO-CLOSEOUT-2026-11-08.md](AUDIO-CLOSEOUT-2026-11-08.md)。不追加GPIO/PLL/EOS/格式实验，不将启动前工作位清除推广为播放期间或电声输出已验证。

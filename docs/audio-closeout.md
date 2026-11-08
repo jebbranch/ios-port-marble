@@ -6411,3 +6411,10 @@ D22AP_ADT=../xnu/research/ipsw-x/d22ap.adt bash scripts/mkimage.sh \
 | 听感 | 用户明确回报才记有声/无声；没有反馈为未知，不能从ACK推测 |
 
 新一次完成后止损，不自动再放第三次听测，不同时修EOS或PCM输出格式。
+
+### 第68枪0291实测与用户暂停要求
+
+P2 sweettime=1794114102，raw total/解码=101520/101520。新marker两颗各一次bytes3、b0=0/b1=55/b2=aa；保护保持，RESET=1/1、扫描0次，八条真实读回r=0。
+**实际寄存器从第67枪4003/38变为b440/05a9，PWDN/AMPPD/HMUTE均1→0，匹配寄存器表。** 这确认单消息写事务使初始化真实生效，不仅是ACK变好。
+通用回归全部通过：唯一dec-cnv图、OPEN/START=0、120tone/121DONE、timeout0、正常done+PSCI_RESET、panic0。末次Android boot_completed=1，电量99%。第68枪听感未明确反馈，保持未知；启动前工作位不能推广为PLL/I2S/电声输出已证明。
+用户明确要求这一轮后暂停音频。据此本轮结束，不加任何GPIO、功放、EOS或格式测试；最终预算68/120（R1免费扣0）。完整冻结状态见 **AUDIO-CLOSEOUT-2026-11-08.md**，其他方面入口见 OTHER-LINES-2026-11-08.md。

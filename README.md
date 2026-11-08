@@ -1,8 +1,9 @@
 # marble XNU —— iOS 16 内核跑在 Redmi Note 12 Turbo 上
 
 > **接手（尤其换会话）先读这一份：[`docs/STATUS-2026-11-07.md`](docs/STATUS-2026-11-07.md)** ——
-> 全部九条线的当前位置、开机预算 64/120、下一枪（第 65 枪）的就绪状态与打包命令、
-> 以及本会话撤回过的九条旧说法。
+> 全部九条线的当前位置。**音频已于2026-11-08收尾暂停，预算68/120**；最新冻结状态见
+> [`docs/AUDIO-CLOSEOUT-2026-11-08.md`](docs/AUDIO-CLOSEOUT-2026-11-08.md)，不再自动执行旧待开机步骤。
+> 其他方面只整理现状，见 [`docs/OTHER-LINES-2026-11-08.md`](docs/OTHER-LINES-2026-11-08.md)。
 >
 > **音频/SMMU 接手必读：** [`docs/smmu-dead-ends.md`](docs/smmu-dead-ends.md) ——
 > 已经证伪的 SMMU 做法、正确的寄存器地图、以及“别再拿 DATA_BUFFER 当探针”的纪律。
@@ -29,39 +30,28 @@ userdata、不改 GPT。测试结束内核自己复位，手机回到 TWRP/Andro
 | 触摸 / 按键 / RTC | ✅（触摸有已知限制） |
 | USB（枚举 / 部分传输） | 🟡 |
 | ADSP（PAS + GLINK + AudioReach APM） | ✅ GLINK 通、图可 open/prepare/start、TDM 参数全 status 0 |
-| 音频（TDM → 功放） | 🟡 控制面全通、数据面已推流：含 `PCM_DEC/PCM_CNV` 的 856 B 图 `open=0 / start=0 / pcm tone done (120 buffers)`、DSP 回 **121 个 DONE**，**但仍无声**（**三次**有效负读数）。`EOS_RENDERED` 在收包仪器被证明可用的前提下**从未到达** ⇒ AP 侧事件路线关闭，现在把「无声」定性到一侧（硬件 vs 资产）。见 [docs/unixnu-sheng-audio-2026-11-07.md](docs/unixnu-sheng-audio-2026-11-07.md) |
+| 音频（TDM → 功放） | ⏸️ 已收尾暂停，68/120。0290/0291修正诊断复位与寄存器WRITE，最后真实表值b440/05a9、工作位清除生效；856 B图open/start=0、120tone/121DONE、安全复位通过。**声音/最终渲染尚未明确验证**。见 [冻结结论](docs/AUDIO-CLOSEOUT-2026-11-08.md) |
 | 电池（pmic_glink） | 🟡 协议通、字段待校准 |
 | 震动（PM8350B） | 🟡 电源键触发已验证；UIKit/CoreHaptics 的请求被 backboardd 用户态 gate 拦下，见 [docs/haptics-abi-2026-10-30.md](docs/haptics-abi-2026-10-30.md) |
 | GPU（kgsl-smmu / GPU_CC / GMU） | 🔴 **冻结**：AP 能读写全部 GPU 寄存器、GMU 固件能装进 TCM；卡在 CX 域电源无法真正打通。reopen 门未满足（要 spin heartbeat + 活过 stall 的输出通道）；**没有用户点头不开 GPU 枪**（详见“GPU 硬件启动”） |
 | Wi-Fi / BT | ⬜ **停车**（2026-11-05 用户决定"先缓缓"）：芯片 QCA6490 `17cb:1103` 已盘点，便宜的第一口 = board-data 普查 + 只读 PCIe 探测 |
 | 基带 / modem | ⬜ 11-05 开线：内核半条可行，墙是 iOS 16 telephony 用户态 ⇒ 先做零开机资产普查 |
 
-## 音频当前卡点（一句话）
+## 音频收尾与暂停（2026-11-08）
 
-**图能开、能起、能推完 120 帧、DSP 回 121 次 DONE，但扬声器不响；正在把「无声」定性到一侧。**
-权威状态与全部判决见 **[docs/unixnu-sheng-audio-2026-11-07.md](docs/unixnu-sheng-audio-2026-11-07.md) §§13–48**，
-新会话的第一入口是 **[docs/STATUS-2026-11-07.md](docs/STATUS-2026-11-07.md)**。
+**本轮修复了两个真实AP功放缺陷，并在第68枪确认写入实际生效；用户要求该轮之后暂停。**
+权威结论、预算与未决项见 [AUDIO-CLOSEOUT-2026-11-08.md](docs/AUDIO-CLOSEOUT-2026-11-08.md)。
 
-已经钉住的事实：
-- `SHM_MAP` 地址高字是 **stream index（`msw=1`）**，不是 33 位地址；改对之后不再挂总线。
-- **`DATA_BUFFER_DONE` 只证明入队**：实测 1–2 ms 回一帧，而一帧是 6 ms 音频（厂商 20.5 ms/4096 B ≈ 实时）。
-- `GRAPH_OPEN` 有两种正文形式：**A 形式**（平铺 `{iid=1,param,size,err}` 记录）是我们唯一被接受的；
-  **B 形式**（`{total,count}` 的 ACF 图索引）**从来不是 APM 的 wire payload** —— 其开头 16 字节被当参数头读
-  会得到 `param_size=0xB0000002`（2.75 GiB），会把 APM 打死。B 形式路线已关闭。
-- 以被接受的 760 B 正文为底**就地加** `PCM_DEC 0x40bf` + `PCM_CNV 0x40c0`（856 B，`SG_CONFIG`/`CONTAINER_CONFIG`
-  逐字节不变）⇒ `graph_open=0`、`graph_start=0`、`dec-cnv started`、`pcm tone done (120 buffers)`、`timeout=0`，
-  **用户三次都没听到**（−6.0 dBFS、0.7 s、120×6 ms）⇒ 三条有效负读数。
-- 已排除：尺寸、传输/handle/区内偏移/token、src 端口（`0x2011` 开过两次都 `status=0`）、
-  幅度/时长/节律、TDM 位时钟票位置、WR/MFC 媒体格式、图的代次与 key 集合、
-  `REGISTER_MODULE_EVENTS`（发了、`status=0`、仍无声）。
+- descriptor隔离修正了AP覆盖PCM缓冲的写入路径。
+- 0290让正常初始化不再执行诊断复位；RESET实际保持1/1，I2C可读。
+- 0291将寄存器地址和16位值放入一条三字节WRITE；两颗真实reg4/reg5从4003/38变为b440/05a9，PWDN/AMPPD/HMUTE清除。
+- 同一856 B图open/start=0，120tone/121DONE，正常复位无panic；这是控制/WR缓冲消费归还层证据，**不是末端渲染或人耳出声证明**。
+- 第68枪听感未明确反馈，保持未知。旧R1用户明确没听到，只对R1记负读数，不把未留意倒填。
+- EOS旧封装44 B与本机厂商28 B不一致，正确版本未测试；旧零事件不能排除AP请求错误。
+- DEC/CNV输出配置、MUX/MFC校准与播放期间PLL/I2S仍有未决项，iOS应用HAL桥也未闭合。当前内核短音不经Android AudioTrack，应用push/pull标签不是GPIO/I2C缺陷的解释。
+- B形式ACF索引不是APM wire payload、旧截断/陈旧blob路线保持关闭。不再依据旧“全部排除”表自动追加实验。
 
-当前未决：`EOS_RENDERED`（`0x04001002{policy=1}` → `0x05001001{iid,render_status}`）收不到。
-四种成因已逐一排除 —— 分支未跑（第 61 枪判 VOID）、窗太短（`g_apm_xfer` 等 **5 秒**）、
-动态通道丢弃（第 63 枪该分支**零包**）、仪器不可用（第 64 枪 0287 的全量收包日志
-**同环抓到 137 包、opcode 分布正常，而 `0x05001001` 是 0，EOS 之后一条都没有**）。
-⇒ **AP 侧的 EOS/事件仪器路线按止损条款关闭**；这个零是关于对端的正面结论。
-现在做 B 线（资产/协议侧）：**第 65 枪 = 把外部评审质疑的 AFE id `0x10013D01`/iid `0x42d3`
-从被接受的正文里摘掉**（0288，`sweetvgraph8=1`，808 B）。**内核已取回并过门，只差打包开机。**
+本轮已经停在68/120（R1免费扣0）。暂停不删除已修代码；做其他方面时不要沿用音频听测启动参数。
 
 ## GPU 硬件启动（**冻结中**，2026-11-07）
 
@@ -70,7 +60,7 @@ userdata、不改 GPT。测试结束内核自己复位，手机回到 TWRP/Andro
 > 旧说法"一放复位机器就停"**已撤回**（`delay()` 会阻塞、G4 跳过了 SPI mask、0228 数的是串扰）。
 > **绝不主动 collapse GPU**（那样永远回不来）；**没有用户明确点头，不开任何 GPU 枪。**
 > 外部 PR #1 重放干净（`applied=212`，无跳过），但合并被音频轮挤到后面 —— 它会**在取产物中途覆盖
-> kernel-latest** ⇒ 它的两笔债要**重编号到 0289+**（补丁链现在到 0288），并把 CNTVCT spin 界住。
+> kernel-latest** ⇒ 它的两笔债要**重编号到 0292+**（补丁链现在到 0291），并把 CNTVCT spin 界住。
 > 细节见 [`docs/gpu-probe.md`](docs/gpu-probe.md) / [`docs/gpu-feasibility.md`](docs/gpu-feasibility.md)。
 
 目标：把 Adreno 725v1（a730 家族、gen7 GMU）从 XNU 里点亮 —— 先 GMU/CM3，
@@ -263,17 +253,11 @@ SERIAL=2aa26095 ./scripts/pull_logs.sh run1
 
 原理见 **[docs/sweetlog.md](docs/sweetlog.md)**。
 
-## 音频调试现状（详细版见 docs/audio-closeout.md）
+## 音频详细记录入口
 
-- 扬声器走 **TDM-LPAIF-RX-TERTIARY**（96 kHz / 32 bit），不是 CODEC_DMA。
-- 厂商播放图 `0xb0000002` 已被提取并按 wire 格式重建；内联 GRAPH_OPEN、
-  全部 TDM/AW 配置、PREPARE、**START 均返回 0**。
-- 曾经的“DSP 一读主存就整机冻结”已定位：`SHM_MAP` 的地址高字是 stream
-  index，厂商发 `msw=1`，我们发 0。加 `sweetshmhi=1` 后不再挂总线。
-- 现在卡在 **DATA_BUFFER 发出后 DSP 不回 DONE**（`gfsr=0`、无 fault）；厂商
-  4 子图 blob 的 `GRAPH_OPEN` 无响应。AW882xx 的 I2C（`i2c@880000` / `0x34`、`0x35`）
-  在 XNU 下仍无 ACK（Android 下正常，chipid 2032）。
-- 下一步与待验证假设都记录在 `docs/audio-closeout.md`。
+当前冻结结论见 [AUDIO-CLOSEOUT-2026-11-08.md](docs/AUDIO-CLOSEOUT-2026-11-08.md)，原始逐轮判据保留在 [audio-closeout.md](docs/audio-closeout.md)。
+“DATA_BUFFER不回DONE”“功放一直无ACK”“18 KB是已证实的墙”均不是当前状态：缓冲归还已通、功放可读且表值已真实写入；声音与末端渲染仍需独立证据。
+用户已要求暂停，不从历史待办或复现命令自动重开音频。
 
 ## 常见问题
 

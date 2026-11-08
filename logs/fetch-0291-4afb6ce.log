@@ -1,0 +1,4 @@
+release page: https://github.com/jebbranch/ios-port-marble/releases/expanded_assets/kernel-latest
+want sha256: 10bda896d8f443d1b2e33b3f1c415dda4b022da0d820c89db19938e3d0bf33df
+error: kernel.development.sweet payload does not contain EXPECT_MARKER=SWEET MARK: ampwrite v1 addr=%#x bytes=%u b0=%#x b1=%#x b2=%#x
+       (sha 10bda896d8f443d1b2e33b3f1c415dda4b022da0d820c89db19938e3d0bf33df) - this is not the build you are waiting for
