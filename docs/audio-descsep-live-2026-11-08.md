@@ -93,4 +93,5 @@ R1 只重放隔离组，除 sweettime 更新外镜像与第 66 枪完全相同�
 状态：**已完成一次免费重放，所有日志门通过**。sweettime=1794104883、raw total/解码=100838/100838；descsep on=1 off=0x4000 len=856，唯一 dec-cnv 图、open/start=0、120 tone/121 DONE、dblat 5/8/10 ms timeout=0；无回落/无EOS/无panic，done+PSCI_RESET 正常。
 设备回 Android，末次电量98%、boot_completed=1；只执行一次，没有再放第二次。预算扣除=0，仍66/120。
 独立结果：`verify/r1-descsep-listen-free-0289-result.json`；原始文本：`logs/ring-r1-descsep-listen-free-0289.txt`，由 -text 保留原字节。
-前轮“没有注意到”明确保留为未知；本轮实际听感待用户反馈。听测结束后重试推送。
+前轮“没有注意到”明确保留为未知；本轮实际听感待用户反馈。
+听测结束后原有 SSH 推送恢复成功，R1 结果提交 **574dc6d6774521db6ab2a6539782470fbd26e4b7** 连同此前全部滞留提交已到 origin/main；`ls-remote` 的 main 与本地 HEAD 相同，左右计数 **0 0**。本次同步没有改 patches/workflow，不触发新的内核构建。
