@@ -1,0 +1,166 @@
+{
+  "image": "images/p1-ampguard-0290.img",
+  "sha256": "f33210bbb8d2e3accbcc910433bf0fc64f87a6cfb22a94a8c68f80cfafcfc996",
+  "payload_offset": 11636736,
+  "cmdline": "debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=1 gicrstride=0x40000 sweetbatt=1 sweetglink=1 sweetreboot=1 sweetbufs=120 sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetshmhi=1 sweets1ap=3 sweetampfirst=1 sweetvol=16 sweettdmvendor=7 sweetvgraph7=1 sweetrxlog=1 sweetdescsep=1 sweettime=1794110656",
+  "cmdline_bytes": 582,
+  "sweettime": "1794110656",
+  "descsep": 1,
+  "image_checks": {
+    "cmdline_budget": true,
+    "unique_keys": true,
+    "expected_flags": true,
+    "no_other_experiment_flags": true,
+    "timestamp": true,
+    "markers": true,
+    "build_log_matches_payload": true,
+    "ampguard_marker": true
+  },
+  "image_valid": true,
+  "ring": "p1-ampguard-0290",
+  "raw_sha256": "a527c417104a60c55fe3ee388a1dfff0d4946b839610d18172ba0c004b0e5d20",
+  "version": 1,
+  "size": 4194304,
+  "total": 100471,
+  "seq": 414,
+  "decoded_bytes": 100471,
+  "graph_opens": [
+    "graph_open/dec-cnv"
+  ],
+  "done_count": 121,
+  "descriptor_witnesses": [
+    [
+      "1",
+      "0x4000",
+      "856"
+    ]
+  ],
+  "ring_checks": {
+    "decoded_window_matches_file": true,
+    "timestamp_matches_image": true,
+    "one_expected_graph_no_fallback": true,
+    "graph_witness": true,
+    "descriptor_witness": true,
+    "not_refused": true,
+    "open_ok": true,
+    "start_ok": true,
+    "started": true,
+    "tone_120": true,
+    "timeout_zero": true,
+    "done_121": true,
+    "receive_positive_controls": true,
+    "no_eos_sent": true,
+    "eos_disabled_witness": true,
+    "tone_gain": true,
+    "normal_end": true,
+    "no_panic": true
+  },
+  "ring_valid": true,
+  "audible_sound": "unknown; requires human observation",
+  "amp_checks": {
+    "early_guard": true,
+    "late_guard": true,
+    "bitbang_skip_two": true,
+    "no_bitbang_scan": true,
+    "chip_ids": true,
+    "profile_batches": true,
+    "readback_geometry": true,
+    "readback_success": true,
+    "readback_ids": true
+  },
+  "amp_guard_valid": true,
+  "amp_guards": [
+    [
+      1,
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      2,
+      1,
+      1,
+      2,
+      1,
+      1
+    ]
+  ],
+  "post_init_readback": [
+    {
+      "addr": 52,
+      "reg": 0,
+      "status": 0,
+      "value": 8242
+    },
+    {
+      "addr": 52,
+      "reg": 3,
+      "status": 0,
+      "value": 65535
+    },
+    {
+      "addr": 52,
+      "reg": 4,
+      "status": 0,
+      "value": 16387
+    },
+    {
+      "addr": 52,
+      "reg": 5,
+      "status": 0,
+      "value": 56
+    },
+    {
+      "addr": 53,
+      "reg": 0,
+      "status": 0,
+      "value": 8242
+    },
+    {
+      "addr": 53,
+      "reg": 3,
+      "status": 0,
+      "value": 65535
+    },
+    {
+      "addr": 53,
+      "reg": 4,
+      "status": 0,
+      "value": 16387
+    },
+    {
+      "addr": 53,
+      "reg": 5,
+      "status": 0,
+      "value": 56
+    }
+  ],
+  "post_init_states": [
+    {
+      "addr": 52,
+      "known": true,
+      "sysctrl": 16387,
+      "sysctrl2": 56,
+      "pwdn": 1,
+      "amppd": 1,
+      "hmute": 1
+    },
+    {
+      "addr": 53,
+      "known": true,
+      "sysctrl": 16387,
+      "sysctrl2": 56,
+      "pwdn": 1,
+      "amppd": 1,
+      "hmute": 1
+    }
+  ],
+  "power_mute_bits_clear": false,
+  "state_scope": "Post-init bits only; not PLL/I2S lock, rendering or audible output.",
+  "valid": true,
+  "budget_before": 66,
+  "budget_charge": 1,
+  "budget_after": 67
+}

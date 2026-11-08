@@ -12,9 +12,10 @@ SPEC = importlib.util.spec_from_file_location('score_descsep', ROOT / 'tools/sco
 base = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(base)
 MARKER = b'SWEET MARK: ampguard v1 pass=%u skip=%d init=%d profiles=%d rstA=%d rstB=%d'
+WRITE_MARKER = b'SWEET MARK: ampwrite v1 addr=%#x bytes=%u b0=%#x b1=%#x b2=%#x'
 
 
-def amp_gate(text):
+def amp_gate(text, require_write=False):
     guards = [tuple(map(int, row)) for row in re.findall(
         r'SWEET MARK: ampguard v1 pass=(\d+) skip=(-?\d+) init=(\d+) profiles=(\d+) rstA=(-?\d+) rstB=(-?\d+)', text)]
     readback = []
@@ -34,6 +35,11 @@ def amp_gate(text):
         'readback_success': len(readback) == 8 and all(row['status'] == 0 for row in readback),
         'readback_ids': len(readback) == 8 and all(row['status'] == 0 and row['value'] == 0x2032 for row in readback if row['reg'] == 0),
     }
+    writes = []
+    for row in re.findall(r'SWEET MARK: ampwrite v1 addr=(0x[0-9a-f]+) bytes=(\d+) b0=(0x[0-9a-f]+|0) b1=(0x[0-9a-f]+|0) b2=(0x[0-9a-f]+|0)', text):
+        writes.append(tuple(int(value, 0) for value in row))
+    if require_write:
+        checks['single_message_write_witness'] = writes == [(0x34, 3, 0, 0x55, 0xaa), (0x35, 3, 0, 0x55, 0xaa)]
     states = []
     for addr in (0x34, 0x35):
         rows = {row['reg']: row for row in readback if row['addr'] == addr}
@@ -47,7 +53,7 @@ def amp_gate(text):
         states.append(state)
     clear = all(row['known'] and row['pwdn'] == row['amppd'] == row['hmute'] == 0 for row in states)
     return {'amp_checks': checks, 'amp_guard_valid': all(checks.values()),
-            'amp_guards': guards, 'post_init_readback': readback,
+            'amp_guards': guards, 'amp_write_witnesses': writes, 'post_init_readback': readback,
             'post_init_states': states, 'power_mute_bits_clear': clear,
             'state_scope': 'Post-init bits only; not PLL/I2S lock, rendering or audible output.'}
 
@@ -57,15 +63,18 @@ def main():
     parser.add_argument('image', type=Path)
     parser.add_argument('--build-log', type=Path)
     parser.add_argument('--ring')
+    parser.add_argument('--require-ampwrite', action='store_true')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     result = base.image_gate(args.image.resolve(), 1, args.build_log)
     result['image_checks']['ampguard_marker'] = args.image.read_bytes().count(MARKER) == 1
+    if args.require_ampwrite:
+        result['image_checks']['ampwrite_marker'] = args.image.read_bytes().count(WRITE_MARKER) == 1
     result['image_valid'] = all(result['image_checks'].values())
     if args.ring:
         result.update(base.ring_gate(args.ring, result['sweettime'], 1))
         text = (ROOT / 'logs' / f'ring-{args.ring}.txt').read_text(errors='replace')
-        result.update(amp_gate(text))
+        result.update(amp_gate(text, require_write=args.require_ampwrite))
     result['valid'] = result['image_valid'] and result.get('ring_valid', True) and result.get('amp_guard_valid', True)
     output = json.dumps(result, indent=2, ensure_ascii=False) + '\n'
     if args.output:

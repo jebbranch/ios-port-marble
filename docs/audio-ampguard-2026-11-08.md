@@ -50,4 +50,14 @@ I2C 的已落补丁基线为 `1079cf2`（从旧基线重放现有0234/0238/0240/
 镜像 `images/p1-ampguard-0290.img`，SHA256 `f33210bbb8d2e3accbcc910433bf0fc64f87a6cfb22a94a8c68f80cfafcfc996`，sweettime=1794110656，真实cmdline=582 B，image gate通过。
 参数除身份时间外与R1相同，ADT的64 B随机seed固定为R1同一值；新kernel仍是唯一语义改动来源。未固定seed的初始打包版本保留且不启动。
 manifest见 `verify/ampguard-0290/kernel.json`、`image.json`、`image-provenance.json`。
-尚未开第67枪，预算当前66/120；设备结果与听感只在真实执行后填写。
+第67枪已完成，预算现为67/120。有效窗口total/解码=100471/100471；早期pass1 skip1 init0、晚期pass2 skip1 init1 profiles2 RESET=1/1，诊断扫描0次，八条post-init读回全部r=0，两颗芯片ID均0x2032。
+但reg4=0x4003、reg5=0x38，两颗均PWDN=1、AMPPD=1、HMUTE=1：修复了复位副作用，并证实读回可用，却仍处于掉电/静音。图open/start=0、120tone/121DONE、正常PSCI复位、无panic。用户没有对这轮单独报告听感，不能倒填为无声。
+
+## 补充修复0291：寄存器地址和数据必须同一消息
+
+随后从实际调用与厂商writer发现：当前 `se15_aw_write` 把寄存器指针与16位值拆成两条WRITE，厂商是单次 `i2c_master_send` 三字节 `{reg,MSB,LSB}`。读事务的指针WRITE后READ是另一种正确用途，不能照搬给WRITE。
+0291只改写函数为单消息3 B，不改读、寄存器表、图、格式或EOS。marker记录两颗芯片软复位命令实际三个字节。
+严格host事务模型证明新写一条3 B、旧写两条消息；读仍两消息，44项表加软复位从90条消息变45条，NACK仍失败。模型读回b440/05a9不是实机证据，必须由新内核验证。
+1 hunk、+8/-7行，基线9056256，新I2C链提交06b4875；纯基线apply/字节比较、syntax-only、ASan/UBSan、11条既有保护路径回归通过。I2C链265 applied/历史skip16，GLINK链232/历史skip49，post-image均匹配。
+用户随后要求“Try again”，据此登记一轮新内核验证（第68枪），而不是重做旧代码或追加免费额度；事前表在audio-closeout中。
+当前0291尚未取回/启动，预算67/120；新的听测只在新marker和镜像门通过后执行。

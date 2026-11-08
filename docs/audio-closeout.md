@@ -6383,3 +6383,31 @@ D22AP_ADT=../xnu/research/ipsw-x/d22ap.adt bash scripts/mkimage.sh \
 | 听感 | 前述路径成立后记录真实用户反馈；未反馈为未知。若工作位不就绪，应单独报告功放状态，不能把无声当图被否 |
 
 本轮只判默认诊断是否不再破坏功放，以及初始化后实际可读状态；不宣称已完成全部PA启动/PLL/I2S流程或iOS应用音频桥。
+
+### 第67枪0290实测判决
+
+`p1-ampguard-0290`：sweettime=1794110656，raw total/解码=100471/100471。early pass1 skip1 init0 profiles0、late pass2 skip1 init1 profiles2 rstA=1 rstB=1；扫描0次，ID均0x2032、profile44/44，八条post-init读回全r=0。
+两颗reg4=0x4003、reg5=0x38（PWDN/AMPPD/HMUTE均1），不是哨兵：复位副作用已修、读回真实可用，但仍掉电/静音。图控制与提交回归全通过，120tone/121DONE，正常复位、panic0。听感未由用户单独报告，未知。
+预算已计到67/120；没有据“44/44”或ACK宣布功放播放成功。
+
+## 2026-11-08：0291 单消息写寄存器，第68枪事前判据（未开）
+
+用户要求继续“Try again”。本轮先完成已经发现的写事务补正并构建，再做一轮新内核验证，不重放旧两段WRITE、不新增免费额度。
+
+- 唯一新增语义变量：`se15_aw_write` 从两条WRITE改为一条三字节 `{reg,MSB,LSB}`，匹配本机厂商writer；READ仍是指针WRITE后READ。0290保护保持，图/格式/EOS/音量/时长都不改。
+- 新marker：`SWEET MARK: ampwrite v1 addr=%#x bytes=%u b0=%#x b1=%#x b2=%#x`；软复位两颗地址各一次，实际b0=0、b1=0x55、b2=0xaa、bytes=3。marker在发送前只是证人，仍要结合事务结果与真实读回。
+- 本地一hunk纯基线apply、严格编译/语法检查、ASan/UBSan、读写/错误/完整表事务模型和既有11路径保护回归通过；I2C链applied265/历史skip16，GLINK232/历史skip49，post-image==HEAD。
+- 新0291内核的marker/digest/CNTP、真实镜像cmdline和唯一sweettime过门后才启动；沿用P1/R1所有参数、固定同ADT seed。旧0290不能冒充。
+- 最多一轮新听测，预算起点67/120，执行后68/120；不因用户重复“Try again”在同一轮额外连开多枪。仍0.72秒、sweetvol16/sweetbufs120，不改响度。
+
+| 观察 | 判据 |
+|---|---|
+| 设备/身份/回归 | 沿用第67枪所有设备、窗口、控制、121DONE、安全收尾门；事前表和新镜像摘要先commit |
+| 保护持续 | 早期/晚期ampguard正确，reset=1/1、扫描0；两颗ID与profile事务可核 |
+| 新写法证人 | 两地址各一条软复位ampwrite，bytes=3、三个字节正确；缺行/值错则新代码未证明执行 |
+| 真实寄存器 | 八条post-init全r=0；对照第67枪的4003/38，记录实际值和PWDN/AMPPD/HMUTE，而非用模型值冒充 |
+| 值改变、工作位清除 | 支持写事务补正使表/工作状态真实生效；仍不证明PLL/I2S锁定或出声，另记录用户听感 |
+| 仍默认值/工作位为1 | 保留为实际未就绪，继续定位写入/启动流程；不判DSP图失败、不强行清保护位 |
+| 听感 | 用户明确回报才记有声/无声；没有反馈为未知，不能从ACK推测 |
+
+新一次完成后止损，不自动再放第三次听测，不同时修EOS或PCM输出格式。

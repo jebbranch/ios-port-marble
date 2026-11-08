@@ -1,0 +1,4 @@
+replayed onto 130815b: applied=265 skipped_touching_file=16
+skipped: 0114-sweet-i2c-amps.patch 0116-sweet-audio-cfg.patch 0118-sweet-audio-fix.patch 0119-sweet-i2c-decl.patch 0121-sweet-intf-matrix.patch 0122-sweet-tdm-endpoint.patch 0129-sweet-amp-reset-delay.patch 0162-sweet-amp-no-reset-pulse.patch 0163-sweet-geni15-state.patch 0165-sweet-geni15-i2c.patch 0166-sweet-geni15-stepwise.patch 0167-sweet-geni15-wrap2-clocks.patch 0168-sweet-geni15-qup-pins.patch 0169-sweet-geni15-reset-and-errors.patch 0170-sweet-i2c-map-cache-memdiag.patch 0171-sweet-amp-geni-init-tdm.patch
+OK: CI post-image == chain-tree HEAD for bsd/dev/sweet_i2c.c
+work kept in /tmp/ci-replay-39481 (rm -rf when done)

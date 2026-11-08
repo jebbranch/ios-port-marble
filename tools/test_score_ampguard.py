@@ -59,6 +59,15 @@ class GuardTests(unittest.TestCase):
         result = score.amp_gate(text().replace('profiles=2 rstA=1 rstB=1', 'profiles=2 rstA=0 rstB=0'))
         self.assertFalse(result['amp_guard_valid'])
 
+    def test_write_witness_required(self):
+        self.assertFalse(score.amp_gate(text(), require_write=True)['amp_guard_valid'])
+        writes = '\n'.join(f'SWEET MARK: ampwrite v1 addr={a:#x} bytes=3 b0=0 b1=0x55 b2=0xaa' for a in (0x34, 0x35))
+        self.assertTrue(score.amp_gate(text() + '\n' + writes, require_write=True)['amp_guard_valid'])
+
+    def test_wrong_write_frame_invalid(self):
+        writes = '\n'.join(f'SWEET MARK: ampwrite v1 addr={a:#x} bytes=2 b0=0x55 b1=0xaa b2=0' for a in (0x34, 0x35))
+        self.assertFalse(score.amp_gate(text() + '\n' + writes, require_write=True)['amp_guard_valid'])
+
     def test_incomplete_readback(self):
         result = score.amp_gate(text().replace('reg=0x5', 'reg=0x6'))
         self.assertFalse(result['amp_guard_valid'])
