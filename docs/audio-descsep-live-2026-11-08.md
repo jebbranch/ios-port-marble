@@ -82,3 +82,12 @@
 见 [audio-eos-wire-2026-11-08.md](audio-eos-wire-2026-11-08.md)。本地 `libar-gsl.so` 与设备原位 SHA256 相同，真实 EOS 分配 payload_size=4、OOB=0、force_inband=1，policy 在 GPR payload 首字；日志固定记录 28 B，原 packet 直接 async_send。
 这收窄了先前 GSL 28 B / Linux 44 B 的冲突：**本机厂商路径确认是 28 B，旧 XNU EOS 发 44 B 与其不一致**。
 未改 EOS 代码、未开第三枪；旧“无 EOS 事件意味着 AP 原因全排除”的解释撤回，原始零事件观测仍保留。
+
+## 5. R1 免费重复听测（2026-11-08，事前记录）
+
+用户说明前轮没有留意，明确要求再听一次且不计预算，然后重试 push。
+R1 只重放隔离组，除 sweettime 更新外镜像与第 66 枪完全相同；不改音量、长度、图、EOS 或 GPU。
+镜像 `images/r1-descsep-listen-free-0289.img`，SHA256 `2fb4216f0178dc90b9d864c2d5fbc4e5f3a719f314d9136404eeec716f3884c7`，sweettime=1794104883，真实 cmdline=582 B，image gate 通过。
+事前判据在 `audio-closeout.md` R1 小节；image manifest 为 `verify/r1-descsep-listen-free-0289-image.json`。
+本次预算扣除=0，前后均 **66/120**；仍记录一次真实开机，不能删掉流水或把未留意写成无声。
+状态：未开机。完成后只回收本轮日志、记录听感并重试推送。

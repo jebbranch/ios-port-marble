@@ -6337,3 +6337,16 @@ D22AP_ADT=../xnu/research/ipsw-x/d22ap.adt bash scripts/mkimage.sh \
 - 预算 **66/120**，本轮两枪止损已到，不再加第三枪。设备恢复 Android，最后电量 98%、boot_completed=1。
 
 等待复位时额外做了零开机核查：本地 libar-gsl.so 与设备原位 SHA256 相同，厂商 EOS 明确分配 4 B payload、直接 policy=1、日志 28 B、原包 async_send；旧 XNU EOS 的 44 B 封装与其不一致。详见 `docs/audio-eos-wire-2026-11-08.md`，不据旧零事件排除 AP 封装原因；本轮未改 EOS、未开新 EOS 枪。
+
+## 2026-11-08：R1 免费重复听测，事前登记（未开）
+
+用户明确说明前轮“没有注意到”，要求：“请再试一次，这一次不算在预算里，然后再试试push上去”。
+本轮只重放 **0289 隔离组** 一次，不开新变量实验；预算起点与终点都为 **66/120**，新增一条真实开机记录 R1，但本次不扣额度。不把“未留意”记录为无声。
+
+- 配置、图正文、固件、ADT seed、音量/长度都与第 66 枪相同；`sweetdescsep=1`、`sweetvol=16`、`sweetbufs=120`，不发 EOS、不加四包配置、不动 GPU。
+- 从已验证的隔离镜像派生，只更新 `sweettime` 为新值，避免重复镜像身份使上一轮 ring 被误当成新读数。
+- 标签：`r1-descsep-listen-free-0289`；新镜像与其真实 cmdline、SHA256、时间戳在开机前核验并提交。
+- 开机前仍要求目标设备身份、电量>50%、新 marker、实际 cmdline=582 B 且唯一 sweettime，除 sweettime 外整张镜像与原隔离组逐字相同；严格 host 与 image/ring scorer 的前轮验证适用，因为代码不改。
+- 收包门沿用第 66 枪：唯一 dec-cnv 图、open/start=0、恰一条 descsep on=1 off=0x4000 len=856、120 tone/121 DONE、timeout=0、无回落/无 EOS、有效窗口与身份匹配、done+PSCI_RESET、panic 0。
+- 所有路径门成立后才记录听感；用户尚未反馈则仍写未知，不自己判断有声/无声。
+- 只执行这一次免费重放；完成后停止开机并重试推送，不自动加第二次免费枪或 EOS 枪。
