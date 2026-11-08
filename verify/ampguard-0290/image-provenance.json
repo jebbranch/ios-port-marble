@@ -1,0 +1,11 @@
+{
+  "image": "images/p1-ampguard-0290.img",
+  "sha256": "f33210bbb8d2e3accbcc910433bf0fc64f87a6cfb22a94a8c68f80cfafcfc996",
+  "cmdline_bytes": 582,
+  "same_config_as_R1_except_sweettime": true,
+  "adt_seed_pinned_to_R1": true,
+  "seed_sha256": "6c75d28c48d94289858a0fc62ce79988a48bfb808eaeca8cec95580c0a9f08d9",
+  "budget_before": 66,
+  "budget_charge_if_booted": 1,
+  "budget_after_if_booted": 67
+}

@@ -1,0 +1,16 @@
+{
+  "build_commit": "d4c3e67",
+  "kernel_bytes": 17548216,
+  "raw_sha256": "10bda896d8f443d1b2e33b3f1c415dda4b022da0d820c89db19938e3d0bf33df",
+  "patched_sha256": "76d093a1c4381e0fa5941f45bc543741b94204a556f1523cf834f61ba0e3fc27",
+  "markers": {
+    "SWEET MARK: ampguard v1 pass=%u skip=%d init=%d profiles=%d rstA=%d rstB=%d": 1,
+    "SWEET MARK: descsep v1 on=%d off=%#x len=%u": 1,
+    "SWEET MARK: dcnv v2 on=%d bytes=%u start=%#x": 1,
+    "SWEET MARK: rxall v1 ": 1,
+    "SWEET MARK: bitbang skipped": 1
+  },
+  "cntp_raw": 1,
+  "cntp_patched": 0,
+  "marker_check_note": "Use complete descsep on-format; its generic prefix also matches the refused-format."
+}

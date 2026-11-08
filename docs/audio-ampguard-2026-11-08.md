@@ -42,6 +42,12 @@ I2C 的已落补丁基线为 `1079cf2`（从旧基线重放现有0234/0238/0240/
 
 将来接iOS应用声音时，CoreAudio/HAL的回调、环形缓冲、格式、时间戳/硬件时钟确实要适配；这与当前内核短音验证是两层工作。
 
-## 当前状态
+## 当前状态（开机前）
 
-代码及本地验证已完成；尚未取回0290内核、尚未开第67枪。设备结果与听感必须在真实执行后填写，不能预写。
+修复已提交 **d4c3e67** 并推送main，完整内核已取回。raw SHA256 `10bda896d8f443d1b2e33b3f1c415dda4b022da0d820c89db19938e3d0bf33df` 与资产摘要相等；CNTP唯一位点0x4aa348已NOP，修后 `76d093a1c4381e0fa5941f45bc543741b94204a556f1523cf834f61ba0e3fc27`。功放完整marker及descsep/dcnv/rxall/bitbang-skip各一次。
+
+新功放打分器的7条合成正/负对照通过，分别识别读取失败、仍掉电/静音、缺marker和误入扫描；不把哨兵当状态。
+镜像 `images/p1-ampguard-0290.img`，SHA256 `f33210bbb8d2e3accbcc910433bf0fc64f87a6cfb22a94a8c68f80cfafcfc996`，sweettime=1794110656，真实cmdline=582 B，image gate通过。
+参数除身份时间外与R1相同，ADT的64 B随机seed固定为R1同一值；新kernel仍是唯一语义改动来源。未固定seed的初始打包版本保留且不启动。
+manifest见 `verify/ampguard-0290/kernel.json`、`image.json`、`image-provenance.json`。
+尚未开第67枪，预算当前66/120；设备结果与听感只在真实执行后填写。
