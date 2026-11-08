@@ -1,0 +1,7 @@
+{
+  "sha256": "b1a9630235c35acc9b07397aeb35e3919b0281a87ba0d2df17837deda88f57d7",
+  "adt_seed_matches_R1": true,
+  "same_config_except_sweettime": true,
+  "budget_before": 67,
+  "budget_after_if_booted": 68
+}

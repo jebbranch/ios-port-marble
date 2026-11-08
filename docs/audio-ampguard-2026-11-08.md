@@ -60,4 +60,7 @@ manifest见 `verify/ampguard-0290/kernel.json`、`image.json`、`image-provenanc
 严格host事务模型证明新写一条3 B、旧写两条消息；读仍两消息，44项表加软复位从90条消息变45条，NACK仍失败。模型读回b440/05a9不是实机证据，必须由新内核验证。
 1 hunk、+8/-7行，基线9056256，新I2C链提交06b4875；纯基线apply/字节比较、syntax-only、ASan/UBSan、11条既有保护路径回归通过。I2C链265 applied/历史skip16，GLINK链232/历史skip49，post-image均匹配。
 用户随后要求“Try again”，据此登记一轮新内核验证（第68枪），而不是重做旧代码或追加免费额度；事前表在audio-closeout中。
-当前0291尚未取回/启动，预算67/120；新的听测只在新marker和镜像门通过后执行。
+0291已提交 **4afb6ce** 并推送构建，正确产物已取回。raw SHA256 `ddb10413f3ac306e7692110049edfc8a120098cae71a7f27dedeaabfcd8d77e9`，修后 `03727a386741a6cbc7a0aeaac6189d1ee03e84ea54f025a2d2677719e4864c4d`；新写事务、保护、descsep/dcnv/rxall等完整marker及CNTP门通过。最初旧0290下载被新marker拒绝，未用于这轮。
+镜像 `images/p2-ampwrite-0291.img`，SHA256 `b1a9630235c35acc9b07397aeb35e3919b0281a87ba0d2df17837deda88f57d7`，sweettime=1794114102，真实cmdline=582 B。参数除身份外与R1/P1相同，ADT seed相同；`--require-ampwrite`镜像门全部通过。
+当前尚未开第68枪，预算67/120；事前身份在 `verify/ampwrite-0291/kernel.json`、`image.json`、`image-provenance.json`。
+用户明确要求 **本轮结束后暂停音频、做收尾并转看其他方面**。据此只完成已经登记的第68枪，不再追加听测、EOS或格式实验；最终结果记录后冻结。
