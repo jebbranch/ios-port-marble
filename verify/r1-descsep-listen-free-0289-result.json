@@ -1,0 +1,65 @@
+{
+  "image": "images/r1-descsep-listen-free-0289.img",
+  "sha256": "2fb4216f0178dc90b9d864c2d5fbc4e5f3a719f314d9136404eeec716f3884c7",
+  "payload_offset": 11636736,
+  "cmdline": "debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=1 gicrstride=0x40000 sweetbatt=1 sweetglink=1 sweetreboot=1 sweetbufs=120 sweetpcm=1 sweets1=1 sweetiova=1 sweets1va=0x1FFE8000 sweetshmhi=1 sweets1ap=3 sweetampfirst=1 sweetvol=16 sweettdmvendor=7 sweetvgraph7=1 sweetrxlog=1 sweetdescsep=1 sweettime=1794104883",
+  "cmdline_bytes": 582,
+  "sweettime": "1794104883",
+  "descsep": 1,
+  "image_checks": {
+    "cmdline_budget": true,
+    "unique_keys": true,
+    "expected_flags": true,
+    "no_other_experiment_flags": true,
+    "timestamp": true,
+    "markers": true,
+    "build_log_matches_payload": true
+  },
+  "image_valid": true,
+  "ring": "r1-descsep-listen-free-0289",
+  "raw_sha256": "fc2178882fb8931b0c42839d02f054a04daa633d12f572136b4400e775618098",
+  "version": 1,
+  "size": 4194304,
+  "total": 100838,
+  "seq": 354,
+  "decoded_bytes": 100838,
+  "graph_opens": [
+    "graph_open/dec-cnv"
+  ],
+  "done_count": 121,
+  "descriptor_witnesses": [
+    [
+      "1",
+      "0x4000",
+      "856"
+    ]
+  ],
+  "ring_checks": {
+    "decoded_window_matches_file": true,
+    "timestamp_matches_image": true,
+    "one_expected_graph_no_fallback": true,
+    "graph_witness": true,
+    "descriptor_witness": true,
+    "not_refused": true,
+    "open_ok": true,
+    "start_ok": true,
+    "started": true,
+    "tone_120": true,
+    "timeout_zero": true,
+    "done_121": true,
+    "receive_positive_controls": true,
+    "no_eos_sent": true,
+    "eos_disabled_witness": true,
+    "tone_gain": true,
+    "normal_end": true,
+    "no_panic": true
+  },
+  "ring_valid": true,
+  "audible_sound": "unknown; requires human observation",
+  "valid": true,
+  "budget_before": 66,
+  "budget_charge": 0,
+  "budget_after": 66,
+  "replay_kind": "one user-authorized listening repeat",
+  "decoded_sha256": "d686062d857727e64dd2ee29f97730140fa52ca6857c086eff3fbd2cde9a533e"
+}

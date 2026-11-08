@@ -6350,3 +6350,10 @@ D22AP_ADT=../xnu/research/ipsw-x/d22ap.adt bash scripts/mkimage.sh \
 - 收包门沿用第 66 枪：唯一 dec-cnv 图、open/start=0、恰一条 descsep on=1 off=0x4000 len=856、120 tone/121 DONE、timeout=0、无回落/无 EOS、有效窗口与身份匹配、done+PSCI_RESET、panic 0。
 - 所有路径门成立后才记录听感；用户尚未反馈则仍写未知，不自己判断有声/无声。
 - 只执行这一次免费重放；完成后停止开机并重试推送，不自动加第二次免费枪或 EOS 枪。
+
+### R1 实测判决（免费重放，预算不变）
+
+已执行一次。sweettime=1794104883，raw total=100838、解码字节=100838，独立身份/窗口门通过；唯一 dec-cnv 图、open/start=0，descsep witness 恰 1 行 on=1 off=0x4000 len=856，120 tone / 121 DONE，dblat min/avg/max=5/8/10 ms、timeout=0；无回落、无 EOS，done+PSCI_RESET 正常、panic 0。
+设备恢复 Android，末次电量98%、boot_completed=1。完整记录为 `logs/ring-r1-descsep-listen-free-0289.txt` 与 `verify/r1-descsep-listen-free-0289-result.json`。
+**预算扣除=0，前后仍66/120**；保留 R1 真实流水，没有将本次删除或误编号成计费第67枪。
+前轮用户明确说“没有注意到”，仍为未知而非无声；本次听感也等待实际用户反馈，不由ACK推断。

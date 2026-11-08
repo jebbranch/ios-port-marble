@@ -2644,3 +2644,9 @@ M1 用 `iid=0x428f`（真实模块）+ `param=0x08001004` 走带内 `SET_CFG`，
 
 零额外开机的新证据：本地 libar-gsl.so 与设备原位 hash 同为 d4640221…，真实 EOS 为 4 B GPR payload、日志 28 B、直接 async_send，旧 XNU 的 44 B 多了 APM 头。旧“没有 EOS 事件所以 AP 原因全排除”解释撤回，原始零事件观测保留。本轮未改 EOS 代码/未开 EOS 枪。
 详见 `audio-descsep-live-2026-11-08.md`、`audio-eos-wire-2026-11-08.md`，文本 ring 与独立评分均归档。
+
+## 2026-11-08 R1 免费听测：一次原配置重放，预算仍66/120
+
+用户说前轮未留意，要求再放一次且不计预算，再试push。只复制第66枪隔离镜像并更新sweettime，所有配置/图/固件/ADT/音幅/长度保持相同；先提交 R1 事前判据和镜像身份，再启动。
+R1 sweettime=1794104883，raw total/解码=100838/100838；唯一dec-cnv图，open/start=0，descsep witness on=1 off=0x4000 len=856，120tone/121DONE，dblat 5/8/10ms timeout=0，无回落/无EOS/无panic，done+PSCI_RESET正常，设备回Android、电量98%。
+只重放一次，记录真实R1流水但本次扣除=0，预算66/120不变。前轮未留意及本轮尚未反馈都记为听感未知，不由ACK认定无声。原始ring与独立评分已归档，接着重试推送。
