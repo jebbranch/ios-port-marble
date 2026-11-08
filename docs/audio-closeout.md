@@ -6356,4 +6356,30 @@ D22AP_ADT=../xnu/research/ipsw-x/d22ap.adt bash scripts/mkimage.sh \
 已执行一次。sweettime=1794104883，raw total=100838、解码字节=100838，独立身份/窗口门通过；唯一 dec-cnv 图、open/start=0，descsep witness 恰 1 行 on=1 off=0x4000 len=856，120 tone / 121 DONE，dblat min/avg/max=5/8/10 ms、timeout=0；无回落、无 EOS，done+PSCI_RESET 正常、panic 0。
 设备恢复 Android，末次电量98%、boot_completed=1。完整记录为 `logs/ring-r1-descsep-listen-free-0289.txt` 与 `verify/r1-descsep-listen-free-0289-result.json`。
 **预算扣除=0，前后仍66/120**；保留 R1 真实流水，没有将本次删除或误编号成计费第67枪。
-前轮用户明确说“没有注意到”，仍为未知而非无声；本次听感也等待实际用户反馈，不由ACK推断。
+前轮用户明确说“没有注意到”，仍为未知而非无声。用户随后对 R1 明确报告“没听到”；R1 全部日志门已通过，因此记为**隔离生效后仍无声的有效负读数**。
+该结果说明单独隔离描述符不足以出声，不否认已复现并修正的 AP 覆盖缺陷，也不证明 DSP 渲染/硬件故障。人类观测单独保存在 `verify/r1-descsep-listen-free-0289-hearing.json`。
+本次更新只记录反馈，不再开机、不修改 EOS 代码，预算仍66/120。
+
+## 2026-11-08：0290 功放状态保护，第67枪事前判据（未开）
+
+用户要求“先修功放”。本轮仅修正 AP 功放探测的诊断副作用：正常路径默认跳过位操作，扫描失败不再拉低 RESET，显式诊断退出恢复 SCL/SDA/SPKSW 引脚状态；GENI 初始化后增加一次启动前只读回查。
+不改图、DEC/CNV/MFC配置、EOS、音量/长度或GPU。内核合成音直接走GPR/AudioReach，不经过AudioQueue或Android AudioTrack。
+
+- 本地11条路径的真实函数stub编译与行为检查通过，旧代码“profile成功后RESET=0/0”对照复现；新默认路径不扫描、RESET=1/1，失败路径不会落入诊断，显式诊断不会拉低RESET且恢复引脚。
+- `-Wall -Wextra -Wformat=2 -Werror`、语法检查、ASan/UBSan、6-hunk纯基线apply与逐字节比较通过。
+- I2C全链 applied=264 / 历史skip=16，post-image==HEAD；GLINK链 applied=231 / 历史skip=49，post-image==HEAD。没有把历史skip藏为0。
+- 必须取含完整 `SWEET MARK: ampguard v1 pass=%u skip=%d init=%d profiles=%d rstA=%d rstB=%d` 的新0290内核；旧0290以前内核不得测试本修复。新旧关键marker与CNTP/digest门同时验证。
+- 配置沿用R1：vgraph7=1、descsep=1、sweetbufs=120、sweetvol=16、sweettdmvendor=7、sweetrxlog=1，EOS/四包/新格式都不开。真实cmdline预期582 B，打包实测≤590、唯一sweettime；保留同一ADT随机seed，不能加入额外语义变量。
+- 最多一枪，正常计入预算：起点66/120，执行后67/120。R1的免费例外不延伸到本轮；任何设备安全门失败即停，不自动再重放。
+
+| 门/观察 | 判据与边界 |
+|---|---|
+| 身份与镜像 | 目标serial、电量>50%、新marker、CNTP修补、实际cmdline、ring sweettime/raw窗口全部匹配；事前表已commit |
+| 早期保护 | pass=1 skip=1 init=0 profiles=0；不要求早期RESET读数为1，不做GPIO恢复猜测 |
+| 播放前保护 | 恰1条 pass=2 skip=1 init=1 profiles=2 rstA=1 rstB=1；两颗ID=0x2032、profile44/44；位操作扫描/复位诊断输出0行 |
+| 实际回查 | `ampread post-init` 两地址各4寄存器、共8条；r必须为0且reg0=0x2032。r非0是读回失败，不将哨兵当功放值 |
+| 工作位 | PID2032 reg4的PWDN(bit0)/AMPPD(bit1)、reg5的HMUTE(bit4)逐位记录；若仍1，只说明初始化后未进入工作态，不能归咎DSP图。不得看到44/44就认定功放已播放 |
+| 图与数据回归 | 唯一dec-cnv图，open/start=0、120tone/121DONE、timeout=0；无回落、无EOS，done+PSCI_RESET、panic0 |
+| 听感 | 前述路径成立后记录真实用户反馈；未反馈为未知。若工作位不就绪，应单独报告功放状态，不能把无声当图被否 |
+
+本轮只判默认诊断是否不再破坏功放，以及初始化后实际可读状态；不宣称已完成全部PA启动/PLL/I2S流程或iOS应用音频桥。

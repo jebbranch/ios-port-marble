@@ -1,0 +1,13 @@
+{
+  "round": "r1-descsep-listen-free-0289",
+  "sweettime": "1794104883",
+  "user_report": "没听到",
+  "user_heard_test_sound": false,
+  "observation_scope": "R1 free listening replay only; earlier unattended rounds remain unknown",
+  "image_and_ring_gates_passed": true,
+  "verdict": "valid negative listening result; descriptor separation alone is insufficient for audible output",
+  "budget_charge": 0,
+  "budget_after": 66,
+  "dsp_rendering_verified": false,
+  "new_boots_in_this_update": 0
+}

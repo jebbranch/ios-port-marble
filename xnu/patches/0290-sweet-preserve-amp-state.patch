@@ -1,0 +1,138 @@
+diff --git a/bsd/dev/sweet_i2c.c b/bsd/dev/sweet_i2c.c
+index a0e8a9e..d983a8c 100644
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -826,11 +826,15 @@ void
+ sweet_i2c_probe_amps(void)
+ {
+ 	static const uint8_t addrs[2] = { 0x34, 0x35 };
+-	int on = 1, amp_on = 1;
+-	uint32_t cfg_scl, cfg_sda;
++	int on = 1, amp_on = 1, nobb = 1;
++	int init_ok = 0, profiles = 0;
++	vm_offset_t spksw = 0;
++	uint32_t cfg_scl, cfg_sda, io_scl, io_sda;
++	uint32_t spksw_cfg = 0, spksw_io = 0;
+ 
+ 	(void)PE_parse_boot_argn("sweeti2c", &on, sizeof(on));
+ 	(void)PE_parse_boot_argn("sweetamp", &amp_on, sizeof(amp_on));
++	(void)PE_parse_boot_argn("sweetnobb", &nobb, sizeof(nobb));
+ 	if (!on) {
+ 		printf("SWEET I2C: disabled (sweeti2c=0)\n");
+ 		return;
+@@ -851,6 +855,7 @@ sweet_i2c_probe_amps(void)
+ 	 * audio pass, after the disk and GLINK are up. */
+ 	if (se15_probe_calls++ > 0) {
+ 		if (se15_init()) {
++			init_ok = 1;
+ 			se15_tdm_pins();
+ 			for (int i = 0; i < 2; i++) {
+ 				uint16_t id = 0;
+@@ -859,7 +864,9 @@ sweet_i2c_probe_amps(void)
+ 				printf("SWEET I2C: geni amp %#x r=%d id=%#x\n",
+ 				    addrs[i], r, id);
+ 				if (r == 0 && id == 0x2032) {
+-					(void)se15_aw_init(addrs[i]);
++					if (se15_aw_init(addrs[i]) == 0) {
++						profiles++;
++					}
+ 				}
+ 			}
+ 		/*
+@@ -885,38 +892,33 @@ sweet_i2c_probe_amps(void)
+ 			}
+ 		}
+ 
+-		/*
+-		 * 0241: sweetnobb=1 returns before the bit-bang phase.  The anchor3 boot
+-		 * settled what removes the amplifier from the bus: the pads were re-applied
+-		 * to the QUP function (pin 56 cfg=0x87, the same value they held when the
+-		 * reads worked, logs/ring-anchor3.txt:1632), and the identical read that
+-		 * answered r=0 at :1586 returns r=-2 at :1636 - r=-2 is se15_msg()'s NACK
+-		 * branch, so the transfer does reach the bus and the chip declines to
+-		 * acknowledge.  The bit-bang scans say the same thing from inside that
+-		 * phase ("0 amplifier(s) answered", :1631).  Two instruments, one
+-		 * conclusion: it is the device that left the bus, not our pins.
+-		 *
+-		 * Skipping that phase costs no evidence we were using - it has been a known
+-		 * bad instrument since the 0235 census - and buys a stream that runs while
+-		 * the PA is still addressable.  What stops printing, stated so nobody has
+-		 * to rediscover it: the levels/floating/driven GPIO lines, both address
+-		 * scans, the bit-by-bit probe results, the final "N amplifier(s) answered"
+-		 * count, and sw_i2c_pins_down() at the end.  Nothing is unmapped on this
+-		 * path and pins_down only restores two saved TLMM cfg registers, so
+-		 * returning early neither leaks nor leaves the pads worse off - it leaves
+-		 * them exactly where se15_pins() put them, on the QUP.
+-		 */
+-		{
+-			int nobb = 0;
+-
+-			(void)PE_parse_boot_argn("sweetnobb", &nobb, sizeof(nobb));
+-			if (nobb) {
+-				printf("SWEET MARK: bitbang skipped\n");
+-				sweet_log_sync();
+-				return;
+-			}
+ 		}
++	}
++
++	/* Normal playback must not change control pins after the PA setup. */
++	printf("SWEET MARK: ampguard v1 pass=%u skip=%d init=%d profiles=%d rstA=%d rstB=%d\n",
++	    (unsigned)se15_probe_calls, nobb, init_ok, profiles,
++	    sw_gpio_read_level(SW_AMP_RST_A_PA),
++	    sw_gpio_read_level(SW_AMP_RST_B_PA));
++	sweet_log_sync();
++	if (nobb) {
++		if (init_ok) {
++			sweet_i2c_amp_readback("post-init");
+ 		}
++		printf("SWEET MARK: bitbang skipped\n");
++		sweet_log_sync();
++		return;
++	}
++
++	/* The opt-in diagnostic must restore the bus and speaker-switch pads. */
++	cfg_scl = sw_rd(SW_GPIO_CFG(SW_I2C_SCL));
++	cfg_sda = sw_rd(SW_GPIO_CFG(SW_I2C_SDA));
++	io_scl = sw_rd(SW_GPIO_IO(SW_I2C_SCL));
++	io_sda = sw_rd(SW_GPIO_IO(SW_I2C_SDA));
++	spksw = sw_pad_map(SW_AMP_SPKSW_PA);
++	if (spksw) {
++		spksw_cfg = *(volatile uint32_t *)spksw;
++		spksw_io = *(volatile uint32_t *)(spksw + 4);
+ 	}
+ 
+ 	/* Leave the bus alone and look at what the bootloader handed us.  The
+@@ -1008,15 +1010,7 @@ sweet_i2c_probe_amps(void)
+ 		found = sw_i2c_scan("spksw-high");
+ 	}
+ 
+-	if (found == 0) {
+-		/* Diagnostic: with reset asserted, nothing should answer. */
+-		sw_i2c_pins_down();
+-		sw_gpio_drive(SW_AMP_RST_A_PA, false);
+-		sw_gpio_drive(SW_AMP_RST_B_PA, false);
+-		delay(5);
+-		sw_i2c_pins_up();
+-		(void)sw_i2c_scan("asserted");
+-	}
++	/* A failed address scan is not a reason to assert amplifier reset. */
+ 
+ 	for (int i = 0; i < 2; i++) {
+ 		uint16_t id = 0, sysst = 0, sysctrl = 0;
+@@ -1041,6 +1035,15 @@ sweet_i2c_probe_amps(void)
+ 	}
+ 
+ 	sw_i2c_pins_down();
++	sw_wr(SW_GPIO_IO(SW_I2C_SCL), io_scl);
++	sw_wr(SW_GPIO_IO(SW_I2C_SDA), io_sda);
++	sw_wr(SW_GPIO_CFG(SW_I2C_SCL), cfg_scl);
++	sw_wr(SW_GPIO_CFG(SW_I2C_SDA), cfg_sda);
++	if (spksw) {
++		*(volatile uint32_t *)(spksw + 4) = spksw_io;
++		*(volatile uint32_t *)spksw = spksw_cfg;
++	}
++	__asm__ volatile("dsb osh" ::: "memory");
+ 	printf("SWEET I2C: %d amplifier(s) answered 0x2032\n", sw_i2c_ok);
+ }
+ #endif /* ARM64_BOARD_CONFIG_SWEET */

@@ -185,6 +185,7 @@ jobs:
                    "pre-bitbang" \
                    "SWEET MARK: ampread pins re-applied" \
                    "SWEET MARK: bitbang skipped" \
+                   "SWEET MARK: ampguard v1 pass=%u skip=%d init=%d profiles=%d rstA=%d rstB=%d" \
                    "SWEET MARK: ibat " \
                    "SWEET MARK: ibat sweep sid=" \
                    "SWEET AUDPROBE: gate flag=" \

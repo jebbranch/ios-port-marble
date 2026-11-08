@@ -55,7 +55,8 @@
     "no_panic": true
   },
   "ring_valid": true,
-  "audible_sound": "unknown; requires human observation",
+  "audible_sound": "not heard; explicit user report for R1",
+  "human_observation_file": "verify/r1-descsep-listen-free-0289-hearing.json",
   "valid": true,
   "budget_before": 66,
   "budget_charge": 0,
