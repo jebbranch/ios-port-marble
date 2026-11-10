@@ -1,0 +1,15 @@
+/Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/userland/audio/out/MarbleAudio.driver/MarbleAudio: Mach-O 64-bit bundle arm64
+/Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/userland/audio/out/MarbleAudio.driver/MarbleAudio:
+Mach header
+      magic  cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags
+MH_MAGIC_64    ARM64        ALL  0x00      BUNDLE    17       1440   NOUNDEFS DYLDLINK TWOLEVEL
+/Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/userland/audio/out/MarbleAudio.driver/Info.plist: OK
+perl: warning: Setting locale failed.
+perl: warning: Please check that your locale settings:
+	LC_ALL = "C.UTF-8",
+	LC_CTYPE = "C.UTF-8",
+	LANG = "C.UTF-8"
+    are supported and installed on your system.
+perl: warning: Falling back to the standard locale ("C").
+-rw-r--r--  1 huxiaoshi  staff   1.0K Nov 10 17:57 /Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/userland/audio/out/MarbleAudio.driver/Info.plist
+-rwxr-xr-x  1 huxiaoshi  staff    85K Nov 10 17:57 /Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/userland/audio/out/MarbleAudio.driver/MarbleAudio

@@ -15,3 +15,4 @@ logs/harvest*.txt
 logs/arm-*.txt
 logs/boot-*.txt
 verify/*/trees/
+userland/audio/out/

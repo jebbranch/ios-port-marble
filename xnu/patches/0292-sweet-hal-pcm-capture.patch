@@ -1,0 +1,355 @@
+diff --git a/bsd/dev/sweet_audio_bridge.c b/bsd/dev/sweet_audio_bridge.c
+new file mode 100644
+index 0000000..ccc1ea0
+--- /dev/null
++++ b/bsd/dev/sweet_audio_bridge.c
+@@ -0,0 +1,317 @@
++/*
++ * Marble HAL bridge, stage 1: receive and measure iOS CoreAudio PCM.
++ *
++ * This file deliberately has NO connection to AudioReach, TDM, I2C, an
++ * amplifier, an earpiece, or any gain register.  The first device round only
++ * answers whether mediaserverd's AudioServerPlugIn supplies 48 kHz signed
++ * 16-bit stereo frames through /dev/marble-audio.
++ *
++ * Hardware safety is a hard boundary:
++ *   - the volume ioctl is recorded and clamped, never applied to hardware;
++ *   - no positive digital gain exists in this file;
++ *   - future speaker and earpiece sinks must be separate, opt-in stages.
++ */
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <sys/conf.h>
++#include <sys/errno.h>
++#include <sys/ioccom.h>
++#include <sys/proc.h>
++#include <sys/uio.h>
++#include <kern/locks.h>
++#include <libkern/libkern.h>
++#include <miscfs/devfs/devfs.h>
++#include <pexpert/pexpert.h>
++
++extern void sweet_log_append(const char *c, int size);
++
++#define MARBLE_AUDIO_RATE       48000u
++#define MARBLE_AUDIO_CHANNELS   2u
++#define MARBLE_AUDIO_FRAME      4u
++#define MARBLE_AUDIO_CHUNK      1024u
++#define MARBLE_AUDIO_RING       65536u
++#define MARBLE_AUDIO_BELOW_MAX  (90u * 8u)
++#define MARBLE_AUDIO_SILENCE    8
++
++uint32_t sweet_audio_bridge_consume(int16_t *out, uint32_t count);
++void sweet_audio_bridge_init(void);
++
++struct marble_audio_volume {
++	uint32_t below;
++	uint32_t muted;
++};
++
++struct marble_audio_stats {
++	uint64_t opens;
++	uint64_t closes;
++	uint64_t writes;
++	uint64_t frames;
++	uint64_t sound_frames;
++	uint64_t overwritten_frames;
++	uint64_t consumed_frames;
++	uint32_t peak;
++	uint32_t queued_frames;
++	uint32_t volume_below;
++	uint32_t volume_muted;
++	uint32_t volume_generation;
++};
++
++#define MARBLE_AUDIO_SET_VOLUME _IOW('m', 1, struct marble_audio_volume)
++#define MARBLE_AUDIO_GET_STATS  _IOR('m', 2, struct marble_audio_stats)
++
++static LCK_GRP_DECLARE(bridge_lck_grp, "sweet-halbridge");
++static LCK_MTX_DECLARE(bridge_lock, &bridge_lck_grp);
++
++static int16_t bridge_ring[MARBLE_AUDIO_RING * MARBLE_AUDIO_CHANNELS];
++static uint64_t bridge_head;
++static uint64_t bridge_tail;
++static struct marble_audio_stats bridge_stats;
++static int bridge_enabled;
++
++static void
++bridge_log(const char *format, ...)
++{
++	char line[224];
++	va_list args;
++	int length;
++
++	va_start(args, format);
++	length = vsnprintf(line, sizeof(line), format, args);
++	va_end(args);
++	if (length > 0) {
++		if (length >= (int)sizeof(line)) {
++			length = (int)sizeof(line) - 1;
++		}
++		sweet_log_append(line, length);
++	}
++}
++
++/* Called with bridge_lock held. The caller has already validated count. */
++static uint32_t
++bridge_accept_locked(const int16_t *frames, uint32_t count, uint32_t peak,
++    uint32_t sound)
++{
++	uint64_t queued = bridge_head - bridge_tail;
++	uint32_t skip = 0;
++
++	if (count > MARBLE_AUDIO_RING) {
++		skip = count - MARBLE_AUDIO_RING;
++		frames += skip * MARBLE_AUDIO_CHANNELS;
++		count = MARBLE_AUDIO_RING;
++		bridge_stats.overwritten_frames += skip;
++	}
++	if (queued + count > MARBLE_AUDIO_RING) {
++		uint64_t overwritten = queued + count - MARBLE_AUDIO_RING;
++
++		bridge_tail += overwritten;
++		bridge_stats.overwritten_frames += overwritten;
++	}
++	for (uint32_t i = 0; i < count; i++) {
++		uint32_t at = (uint32_t)((bridge_head + i) % MARBLE_AUDIO_RING);
++
++		bridge_ring[2 * at] = frames[2 * i];
++		bridge_ring[2 * at + 1] = frames[2 * i + 1];
++	}
++	bridge_head += count;
++	bridge_stats.writes++;
++	bridge_stats.frames += count;
++	bridge_stats.sound_frames += sound > skip ? sound - skip : 0;
++	if (peak > bridge_stats.peak) {
++		bridge_stats.peak = peak;
++	}
++	bridge_stats.queued_frames = (uint32_t)(bridge_head - bridge_tail);
++	return count;
++}
++
++/*
++ * Future AudioReach feeder API. Stage 1 has no caller: retaining it here lets
++ * host tests prove ring ownership before any hardware path is connected.
++ * Missing frames are zero-filled; no gain or format conversion happens.
++ */
++uint32_t
++sweet_audio_bridge_consume(int16_t *out, uint32_t count)
++{
++	uint32_t taken;
++
++	if (out == NULL || count == 0) {
++		return 0;
++	}
++	lck_mtx_lock(&bridge_lock);
++	taken = (uint32_t)MIN((uint64_t)count, bridge_head - bridge_tail);
++	for (uint32_t i = 0; i < taken; i++) {
++		uint32_t at = (uint32_t)((bridge_tail + i) % MARBLE_AUDIO_RING);
++
++		out[2 * i] = bridge_ring[2 * at];
++		out[2 * i + 1] = bridge_ring[2 * at + 1];
++	}
++	bridge_tail += taken;
++	bridge_stats.consumed_frames += taken;
++	bridge_stats.queued_frames = (uint32_t)(bridge_head - bridge_tail);
++	lck_mtx_unlock(&bridge_lock);
++	bzero(out + 2 * taken,
++	    (size_t)(count - taken) * MARBLE_AUDIO_FRAME);
++	return taken;
++}
++
++static int
++bridge_open(__unused dev_t dev, __unused int flags,
++    __unused int devtype, __unused struct proc *p)
++{
++	lck_mtx_lock(&bridge_lock);
++	bridge_stats.opens++;
++	uint64_t opens = bridge_stats.opens;
++	lck_mtx_unlock(&bridge_lock);
++	if (opens <= 4) {
++		bridge_log("SWEET HAL: open=%llu\n", opens);
++	}
++	return 0;
++}
++
++static int
++bridge_close(__unused dev_t dev, __unused int flags,
++    __unused int devtype, __unused struct proc *p)
++{
++	lck_mtx_lock(&bridge_lock);
++	bridge_stats.closes++;
++	uint64_t closes = bridge_stats.closes;
++	uint64_t frames = bridge_stats.frames;
++	uint64_t writes = bridge_stats.writes;
++	uint32_t peak = bridge_stats.peak;
++	uint32_t queued = bridge_stats.queued_frames;
++	lck_mtx_unlock(&bridge_lock);
++	bridge_log("SWEET HAL: close=%llu writes=%llu frames=%llu peak=%u queued=%u\n",
++	    closes, writes, frames, peak, queued);
++	return 0;
++}
++
++static int
++bridge_write(__unused dev_t dev, struct uio *uio, __unused int ioflag)
++{
++	int16_t frames[MARBLE_AUDIO_CHUNK * MARBLE_AUDIO_CHANNELS];
++	int error = 0;
++
++	if ((uio_resid(uio) % MARBLE_AUDIO_FRAME) != 0) {
++		return EINVAL;
++	}
++	while (uio_resid(uio) != 0) {
++		user_ssize_t bytes = MIN(uio_resid(uio),
++		    (user_ssize_t)sizeof(frames));
++		uint32_t count, peak = 0, sound = 0;
++
++		error = uiomove((caddr_t)frames, (int)bytes, uio);
++		if (error != 0) {
++			break;
++		}
++		count = (uint32_t)bytes / MARBLE_AUDIO_FRAME;
++		for (uint32_t i = 0; i < count; i++) {
++			int32_t left = frames[2 * i];
++			int32_t right = frames[2 * i + 1];
++			uint32_t la = (uint32_t)(left < 0 ? -left : left);
++			uint32_t ra = (uint32_t)(right < 0 ? -right : right);
++			uint32_t value = MAX(la, ra);
++
++			if (value > peak) {
++				peak = value;
++			}
++			if (value > MARBLE_AUDIO_SILENCE) {
++				sound++;
++			}
++		}
++		lck_mtx_lock(&bridge_lock);
++		(void)bridge_accept_locked(frames, count, peak, sound);
++		uint64_t writes = bridge_stats.writes;
++		uint64_t total = bridge_stats.frames;
++		uint64_t audible = bridge_stats.sound_frames;
++		uint64_t overwritten = bridge_stats.overwritten_frames;
++		uint32_t high = bridge_stats.peak;
++		uint32_t queued = bridge_stats.queued_frames;
++		lck_mtx_unlock(&bridge_lock);
++		if (writes <= 8 || (writes % 256) == 0) {
++			bridge_log("SWEET HAL: pcm write=%llu frames=%llu sound=%llu peak=%u queued=%u overwritten=%llu\n",
++			    writes, total, audible, high, queued, overwritten);
++		}
++	}
++	return error;
++}
++
++static int
++bridge_ioctl(__unused dev_t dev, u_long command, caddr_t data,
++    __unused int flags, __unused struct proc *p)
++{
++	if (command == MARBLE_AUDIO_SET_VOLUME) {
++		const struct marble_audio_volume *volume =
++		    (const struct marble_audio_volume *)data;
++		uint32_t below = MIN(volume->below, MARBLE_AUDIO_BELOW_MAX);
++
++		lck_mtx_lock(&bridge_lock);
++		bridge_stats.volume_below = below;
++		bridge_stats.volume_muted = volume->muted != 0;
++		bridge_stats.volume_generation++;
++		uint32_t generation = bridge_stats.volume_generation;
++		uint32_t muted = bridge_stats.volume_muted;
++		lck_mtx_unlock(&bridge_lock);
++		if (generation <= 8) {
++			bridge_log("SWEET HAL: volume generation=%u below=%u muted=%u (record only)\n",
++			    generation, below, muted);
++		}
++		return 0;
++	}
++	if (command == MARBLE_AUDIO_GET_STATS) {
++		lck_mtx_lock(&bridge_lock);
++		memcpy(data, &bridge_stats, sizeof(bridge_stats));
++		lck_mtx_unlock(&bridge_lock);
++		return 0;
++	}
++	return ENOTTY;
++}
++
++static const struct cdevsw bridge_cdevsw = {
++	.d_open       = bridge_open,
++	.d_close      = bridge_close,
++	.d_read       = eno_rdwrt,
++	.d_write      = bridge_write,
++	.d_ioctl      = bridge_ioctl,
++	.d_stop       = eno_stop,
++	.d_reset      = eno_reset,
++	.d_ttys       = NULL,
++	.d_select     = eno_select,
++	.d_mmap       = eno_mmap,
++	.d_strategy   = eno_strat,
++	.d_reserved_1 = eno_getc,
++	.d_reserved_2 = eno_putc,
++	.d_type       = 0,
++};
++
++void
++sweet_audio_bridge_init(void)
++{
++	int major;
++	void *node;
++	int enabled = 0;
++
++	if (bridge_enabled) {
++		return;
++	}
++	(void)PE_parse_boot_argn("sweethalbridge", &enabled, sizeof(enabled));
++	if (!enabled) {
++		return;
++	}
++	major = cdevsw_add(-1, &bridge_cdevsw);
++	if (major < 0) {
++		printf("SWEET HAL: cdevsw_add failed\n");
++		return;
++	}
++	node = devfs_make_node(makedev(major, 0), DEVFS_CHAR,
++	    UID_ROOT, GID_WHEEL, 0666, "marble-audio");
++	if (node == NULL) {
++		printf("SWEET HAL: devfs_make_node failed\n");
++		return;
++	}
++	bridge_enabled = 1;
++	printf("SWEET MARK: halbridge v1 node=/dev/marble-audio ring=65536 capture-only\n");
++	bridge_log("SWEET MARK: halbridge v1 node=/dev/marble-audio ring=65536 capture-only\n");
++}
++
++#endif /* ARM64_BOARD_CONFIG_SWEET */
+diff --git a/bsd/conf/files b/bsd/conf/files
+index eb67679..df3d486 100644
+--- a/bsd/conf/files
++++ b/bsd/conf/files
+@@ -114,6 +114,7 @@ bsd/dev/sweet_spmi.c			standard
+ bsd/dev/sweet_usb.c			standard
+ bsd/dev/sweet_audio.c			standard
+ bsd/dev/sweet_adsp.c			standard
++bsd/dev/sweet_audio_bridge.c		standard
+ bsd/dev/sweet_glink.c			standard
+ bsd/dev/sweet_i2c.c			standard
+ bsd/dev/mem.c				standard
+diff --git a/bsd/dev/sweet_ufs.c b/bsd/dev/sweet_ufs.c
+index 251d664..7be6468 100644
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -61,6 +61,7 @@ extern void marble_touch_init(void);
+ extern void sweet_usb_probe(void);
+ extern void sweet_audio_probe(void);
+ extern void sweet_adsp_init(void);
++extern void sweet_audio_bridge_init(void);
+ 
+ #define REG_CAP         0x00
+ #define REG_IS          0x20
+@@ -713,6 +714,7 @@ sweet_ufs_init(void)
+ 	marble_touch_init();
+ 	sweet_usb_probe();
+ 	sweet_audio_probe();
++	sweet_audio_bridge_init();
+ 	sweet_adsp_init();
+ 	return 0;
+ }

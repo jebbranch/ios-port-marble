@@ -2659,3 +2659,21 @@ R1 sweettime=1794104883，raw total/解码=100838/100838；唯一dec-cnv图，op
 第68枪新marker实际bytes3、两颗各一次；窗口101520/101520，各回归与写法门通过，**两颗真实reg4=b440、reg5=05a9，PWDN/AMPPD/HMUTE均从1变0，表值真实生效**。图open/start0、120tone/121DONE、timeout0、正常PSCI复位、无panic，设备回Android99%。听感未明确反馈，不宣布已出声。
 用户要求本轮之后暂停音频，现已收尾冻结，不追加GPIO/PLL/EOS/格式或新校准实验。最终68/120，R1免费扣0。最新权威入口 **AUDIO-CLOSEOUT-2026-11-08.md**，其他方面仅从既有记录整理为 OTHER-LINES-2026-11-08.md，没有新测试。
 当前短音不经过AudioQueue/Android AudioTrack；两个真实GPIO/I2C缺陷与应用push/pull标签无关。将来iOS应用HAL桥的回调、格式、时钟仍是独立未闭工程。
+
+## 2026-11-10 音频按用户要求重开：先做 capture-only HAL，仍68/120
+
+用户要求开始音频工作，先完成离线计算；需要实机时必须先编译内核、打包镜像后通知用户连接设备。
+用户另明确提醒不得乱调增益，以免烧扬声器或听筒。
+
+因此0292只新增 `/dev/marble-audio`：AudioServerPlugIn写入的48k/S16/stereo PCM进入65536-frame ring并统计
+write/frame/non-silent/peak/overwritten，volume ioctl只记录并夹到0..720个1/8dB，不连接AudioReach、TDM、I2C、
+功放或听筒。默认关闭，只有`sweethalbridge=1`发布节点；marker为
+`SWEET MARK: halbridge v1 node=/dev/marble-audio ring=65536 capture-only`。
+
+用户态以ios-topaz/HakiOS的MIT AudioServerPlugIn为基线，发布Speaker/Hawking/Actuator/Codec，Speaker写
+`/dev/marble-audio`；增加bounded sink-open重试、NaN强制静音和短写判失败。Xcode15/iPhoneOS17 SDK按iOS16.0
+编成arm64 MH_BUNDLE并ad-hoc签名。HAL主机contract测试及内核真实ring/ioctl函数抽取测试均在ASan/UBSan下通过。
+
+HFS离线计划复用现有AppleAOPAudioPlugin的65块可执行文件allocation和1块Info.plist allocation，不建目录、不分配extent；
+本地catalog dry-run通过，安装/恢复脚本要求目标serial处于临时recovery，写前备份、写后逐字节读回。当前未操作设备。
+完整记录见 `docs/audio-hal-reopen-2026-11-10.md`。

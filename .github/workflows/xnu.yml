@@ -187,6 +187,7 @@ jobs:
                    "SWEET MARK: bitbang skipped" \
                    "SWEET MARK: ampguard v1 pass=%u skip=%d init=%d profiles=%d rstA=%d rstB=%d" \
                    "SWEET MARK: ampwrite v1 addr=%#x bytes=%u b0=%#x b1=%#x b2=%#x" \
+                   "SWEET MARK: halbridge v1 node=/dev/marble-audio ring=65536 capture-only" \
                    "SWEET MARK: ibat " \
                    "SWEET MARK: ibat sweep sid=" \
                    "SWEET AUDPROBE: gate flag=" \

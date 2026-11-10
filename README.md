@@ -4,6 +4,9 @@
 > 全部九条线的当前位置。**音频已于2026-11-08收尾暂停，预算68/120**；最新冻结状态见
 > [`docs/AUDIO-CLOSEOUT-2026-11-08.md`](docs/AUDIO-CLOSEOUT-2026-11-08.md)，不再自动执行旧待开机步骤。
 > 其他方面只整理现状，见 [`docs/OTHER-LINES-2026-11-08.md`](docs/OTHER-LINES-2026-11-08.md)。
+> **2026-11-10：用户已明确重开音频，当前只做离线 HAL PCM 捕获阶段。**
+> 0292 不连接 DSP/TDM/功放/听筒，也不改变任何硬件增益；入口为
+> [`docs/audio-hal-reopen-2026-11-10.md`](docs/audio-hal-reopen-2026-11-10.md)。
 >
 > **音频/SMMU 接手必读：** [`docs/smmu-dead-ends.md`](docs/smmu-dead-ends.md) ——
 > 已经证伪的 SMMU 做法、正确的寄存器地图、以及“别再拿 DATA_BUFFER 当探针”的纪律。
@@ -30,7 +33,7 @@ userdata、不改 GPT。测试结束内核自己复位，手机回到 TWRP/Andro
 | 触摸 / 按键 / RTC | ✅（触摸有已知限制） |
 | USB（枚举 / 部分传输） | 🟡 |
 | ADSP（PAS + GLINK + AudioReach APM） | ✅ GLINK 通、图可 open/prepare/start、TDM 参数全 status 0 |
-| 音频（TDM → 功放） | ⏸️ 已收尾暂停，68/120。0290/0291修正诊断复位与寄存器WRITE，最后真实表值b440/05a9、工作位清除生效；856 B图open/start=0、120tone/121DONE、安全复位通过。**声音/最终渲染尚未明确验证**。见 [冻结结论](docs/AUDIO-CLOSEOUT-2026-11-08.md) |
+| 音频（HAL / TDM / 功放） | 🟡 用户已重开，仍68/120。当前0292只做 AudioServerPlugIn → `/dev/marble-audio` PCM 捕获，不接硬件；0290/0291功放修复保留，声音/最终渲染仍未验证。见 [重开入口](docs/audio-hal-reopen-2026-11-10.md) |
 | 电池（pmic_glink） | 🟡 协议通、字段待校准 |
 | 震动（PM8350B） | 🟡 电源键触发已验证；UIKit/CoreHaptics 的请求被 backboardd 用户态 gate 拦下，见 [docs/haptics-abi-2026-10-30.md](docs/haptics-abi-2026-10-30.md) |
 | GPU（kgsl-smmu / GPU_CC / GMU） | 🔴 **冻结**：AP 能读写全部 GPU 寄存器、GMU 固件能装进 TCM；卡在 CX 域电源无法真正打通。reopen 门未满足（要 spin heartbeat + 活过 stall 的输出通道）；**没有用户点头不开 GPU 枪**（详见“GPU 硬件启动”） |
