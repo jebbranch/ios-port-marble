@@ -425,6 +425,10 @@ def live(args):
         result = {
             'mode': 'live-readonly-not-install-backup',
             'serial': serial, 'adb_state': state, 'disk_blocks': disk,
+            'hfs_allocation_block_size': volume.block_size,
+            'hfs_total_blocks': volume.total_blocks,
+            'hfs_free_blocks': volume.free_blocks,
+            'hfs_additional_allocation_needed': 0,
             'volume_blocks': {
                 key: plan[key + '_volume_block']
                 for key in ('executable', 'info', 'catalog')
