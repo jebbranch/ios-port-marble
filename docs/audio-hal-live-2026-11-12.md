@@ -35,4 +35,24 @@ sweettime=1794493381。进入 TWRP 和挂载处理不冒充新增 XNU 音频实�
 
 ## 执行与判决
 
-尚未安装或引导；后续按真实结果追加。
+### 安装完成，尚未引导
+
+TWRP 下的新读计划与 Android 只读计划一致。HFS 为 4194304 个 4 KiB allocation
+blocks，free=748380（约 2.85 GiB），本次 additional allocation=0，空间门通过。
+
+安装器在独立目录保存三个原始块集合和 manifest，随后写入 65 块 executable、
+1 块 Info.plist、1 块 catalog。脚本逐项读回相等后，又用独立 adb dd 再读并 cmp
+三个 pending 文件，全部相等：
+
+- executable allocation SHA256：
+  `6cd037fa90ae5faee6701844f518805d5631b2263316404504c857027b56f272`
+- Info.plist allocation SHA256：
+  `049398ce4f25fb562fb1831e8840accd515b9f125a71951c77f670c42e8bcf1f`
+- catalog block SHA256：
+  `926fd4d4cda32eac39dda4dcf1ae32c3ee9e58d90277ef44f9f030228849da65`
+
+已读取 `ring-hal-capture-boot69-pre.bin` 作为旧 ring 基线，total=101520，seq=221，
+是第 68 枪遗留数据，不得当作第 69 枪。冻结镜像 verify-only 再次通过。
+此刻未执行新 XNU 引导，预算仍 68/120。
+
+后续按真实引导和 PCM 结果追加，不将“文件已写入”当作 HAL 实机通过。

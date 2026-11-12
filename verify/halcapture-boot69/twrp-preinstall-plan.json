@@ -1,0 +1,31 @@
+{
+  "mode": "live-readonly-not-install-backup",
+  "serial": "2aa26095",
+  "adb_state": "recovery",
+  "disk_blocks": {
+    "executable": 53985490,
+    "info": 53985556,
+    "catalog": 53724020
+  },
+  "hfs_allocation_block_size": 4096,
+  "hfs_total_blocks": 4194304,
+  "hfs_free_blocks": 748380,
+  "hfs_additional_allocation_needed": 0,
+  "volume_blocks": {
+    "executable": 455890,
+    "info": 455956,
+    "catalog": 194420
+  },
+  "catalog_size_offset": 1862,
+  "old_info_size": 1172,
+  "new_info_size": 479,
+  "plugin_sha256": "0afe36f9043c4fbcace57375e2582634ee0a1955ab45065a403ecfdd9982bda0",
+  "files": {
+    "live-hfs-header.bin": "218b38fe601f97e40e02b2b7a748396950b530c5409c11f9e5acd7f68a917ebb",
+    "live-catalog-extent-0.bin": "69e78728a369eec81f9d09861d1a53b7468d6c32f9f85f968440d44548cf44b2",
+    "live-readonly-executable.blocks.bin": "fe6f0c27ba560760914236601a767c8e75e53994991a33f073a2d68508353c2e",
+    "live-readonly-info.blocks.bin": "f9bcc71d1e2bab643def697eb27986e8967e144e321a28bbaa8aa597e56fc4ce",
+    "live-readonly-catalog.blocks.bin": "e58c6a9e808cb4c024012dc208db876c5fbf39fb6f467b5829eedb45615ed5db"
+  },
+  "device_written": false
+}
