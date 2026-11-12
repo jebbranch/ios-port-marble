@@ -1,5 +1,11 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **2026-11-13：HAL capture实机门已通过，用户决定UI后修。** 第69枪有效ring取得
+> 524288帧、500234非静音帧，peak32768，ADSP/硬件隔离成立；只证明入流，不证明出声。
+> 同版HAL已按用户新授权保留到用户态，恢复备份在hfs-retain-boot69，预算仍69/120。
+> 连续period所有权/固定除32衰减核心已做离线全S16验证，但未接真实GPR、未编0293。
+> 入口 [`docs/audio-hal-stream-offline-2026-11-13.md`](docs/audio-hal-stream-offline-2026-11-13.md)。
+
 > **第 69 枪 HAL capture 已启动，待判（2026-11-12）**：用户在 TWRP 明确授权安装，
 > 并要求若可行保留到用户态。HAL 三处写入已备份/读回且独立 cmp 相等，
 > 冻结镜像一次 fastboot boot 成功，预算现 **69/120**。用户反馈启动早期铃声页

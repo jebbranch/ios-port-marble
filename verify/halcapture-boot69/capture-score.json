@@ -1,0 +1,51 @@
+{
+  "capture_gates_passed": true,
+  "gates": {
+    "identity": true,
+    "marker": true,
+    "adsp_disabled": true,
+    "hardware_isolated": true,
+    "node_open": true,
+    "pcm_progress": true,
+    "non_silent": true,
+    "no_kernel_panic": true
+  },
+  "raw_sha256": "455cf8914f6762f707ac5b01d0b396827a038f7c97213250d4b369d113db9c4d",
+  "total": 144841,
+  "sequence": 252,
+  "pcm_snapshots": 10,
+  "latest_pcm": {
+    "writes": 512,
+    "frames": 524288,
+    "sound_frames": 500234,
+    "peak": 32768,
+    "queued": 65536,
+    "overwritten": 458752
+  },
+  "forbidden_runtime_counts": {
+    "SWEET ADSP: early amp probe": 0,
+    "SWEET ADSP: Q6 released": 0,
+    "SWEET MARK: ampguard": 0,
+    "SWEET MARK: ampwrite": 0,
+    "SWEET MARK: ampfirst": 0,
+    "graph_open": 0,
+    "data_buffer send": 0,
+    "pcm tone start": 0,
+    "SWEET GMU:": 0,
+    "SWEET GPU:": 0
+  },
+  "process_crashes": {
+    "dasd": 58,
+    "MacinTalkAUSP": 6,
+    "SiriTTSSynthesiz": 6,
+    "KonaSynthesizer": 6,
+    "BooksWidgetExten": 2,
+    "Preferences": 6,
+    "assetsd": 1
+  },
+  "past_window_marker_count": 0,
+  "waveform_correctness": "not measured",
+  "realtime_frame_rate": "not measured",
+  "speaker_output": "not tested; capture-only has no hardware sink",
+  "ui_failures": "recorded separately; user deferred UI polish"
+}

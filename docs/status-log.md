@@ -2704,3 +2704,30 @@ sweetadsp/sweetglink/sweeti2c/sweetamp/sweetgpu/sweetbatt；不进硬件音频�
 **未执行HAL覆盖、设备重启或fastboot boot，预算仍68/120。**
 第69枪候选身份和事前判据写入audio-closeout入口与
 `docs/audio-hal-ready-2026-11-12.md`；临时HAL/root写入和一次捕获测试仍待用户明确授权。
+
+## 2026-11-12至13 HAL实机入流、按用户决定常驻，连续后端离线准备（69/120）
+
+用户进入TWRP明确授权安装及一次测试，若可行留到用户态。TWRP自动挂载的/data
+正常卸载后，当前卷头/目标位置核对通过；HFS free=748380块、additional allocation=0，
+无需清理空间。备份及manifest在hfs-install-boot69目录，写后三项脚本读回与独立cmp相等。
+事前补充先提交，固定镜像一次fastboot boot成功，记第69枪。
+
+用户反馈铃声类别均闪退、关于页启动早期卡住，但音量条已拖动。当前ring的
+sweettime=1794493381、total=144841、seq=252，与旧第68枪基线区分。
+完整halbridge marker、ADSP disabled、open=1，5次record-only volume，10条PCM快照；
+最后writes512、frames524288、sound500234、peak32768、queued65536、overwritten458752。
+DSP/TDM/功放/GPU路径计数均0，无kernel panic。独立capture评分8门通过；
+波形正确性、实时48k、DSP渲染和最终出声仍未证明。
+
+曾按旧UI门恢复原HAL且读回通过。用户随后明确要求UI后期完善、不要因此阻断音频；
+于是同版capture HAL重新安装到用户态，使用独立hfs-retain-boot69备份目录，
+安装器三项读回相等。没有第二次boot，budget69/120。11月13日设备不在adb，
+没有把再次独立读取未完成当成新成功证据，也没有因此停止离线工作。
+
+已从/tmp移出mayfly公共分支固定9d3c291至refs/hakios-common-mayfly，物化三份音频源码。
+不能照搬其8period/MI2S配置或正增益。现有marble发送函数共享应答槽并截断token，
+所以新模型独立校验完整token/address/handle及路由，4×4096B和0x4000图描述符互不覆盖。
+模型固定除32衰减，输出峰值≤1024；DMA-owned不覆盖、失败/超时不假释放、
+30提交上限、token不回卷。全65536个S16值及136647个断言在严格编译/ASan/UBSan下通过；
+capture评分器9项正负对照通过。**模型尚未接入内核/GPR，无0293完整构建或新设备镜像。**
+最新入口`docs/audio-hal-stream-offline-2026-11-13.md`；继续音频后端，UI停车，其他门禁不变。

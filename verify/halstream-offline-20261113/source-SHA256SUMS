@@ -1,0 +1,4 @@
+4f149077b1ce0bb7ec55af4814469ad4386469989160b5dee23c98fb00378f06  tools/audio-models/marble_periods.c
+130065081f09e6c5b3dc560c4703d1db0fcb06ea41b8db14c3718fd2f5ce5739  tools/audio-models/marble_periods.h
+0913093638cce4b18c595f58e67c8a444e6d3df59913b4f522b5fd040763b2e6  tools/audio-models/test_periods.c
+df64908465dab5c737813fd05ee868de67925cacadd53391dd0051a6fa8b23d6  tools/score_hal_capture.py

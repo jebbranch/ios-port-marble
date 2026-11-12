@@ -1,0 +1,20 @@
+{
+  "serial": "2aa26095",
+  "disk_blocks": {
+    "executable": 53985490,
+    "info": 53985556,
+    "catalog": 53724020
+  },
+  "catalog_size_offset": 1862,
+  "old_info_size": 1172,
+  "new_info_size": 479,
+  "backup_sha256": {
+    "executable": "fe6f0c27ba560760914236601a767c8e75e53994991a33f073a2d68508353c2e",
+    "info": "f9bcc71d1e2bab643def697eb27986e8967e144e321a28bbaa8aa597e56fc4ce",
+    "catalog": "e58c6a9e808cb4c024012dc208db876c5fbf39fb6f467b5829eedb45615ed5db"
+  },
+  "pending_sha256": {
+    "executable": "6cd037fa90ae5faee6701844f518805d5631b2263316404504c857027b56f272",
+    "info": "049398ce4f25fb562fb1831e8840accd515b9f125a71951c77f670c42e8bcf1f"
+  }
+}
