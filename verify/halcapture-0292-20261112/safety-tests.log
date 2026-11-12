@@ -1,0 +1,23 @@
+test_adsp_enabled_rejected (__main__.SafetyTests.test_adsp_enabled_rejected) ... ok
+test_capture_flags_positive (__main__.SafetyTests.test_capture_flags_positive) ... ok
+test_catalog_restore_preserves_neighbors (__main__.SafetyTests.test_catalog_restore_preserves_neighbors) ... ok
+test_catalog_second_block_address (__main__.SafetyTests.test_catalog_second_block_address) ... ok
+test_catalog_straddling_rejected (__main__.SafetyTests.test_catalog_straddling_rejected) ... ok
+test_duplicate_flags_rejected (__main__.SafetyTests.test_duplicate_flags_rejected) ... ok
+test_hardware_flags_rejected (__main__.SafetyTests.test_hardware_flags_rejected) ... ok
+test_installer_snapshot_matches_compatibility_path (__main__.SafetyTests.test_installer_snapshot_matches_compatibility_path) ... ok
+test_live_volume_reads_header_without_local_dump (__main__.SafetyTests.test_live_volume_reads_header_without_local_dump) ... ok
+test_long_cmdline_rejected (__main__.SafetyTests.test_long_cmdline_rejected) ... ok
+test_misaligned_write_refused (__main__.SafetyTests.test_misaligned_write_refused) ... ok
+test_mounted_userdata_write_refused (__main__.SafetyTests.test_mounted_userdata_write_refused) ... ok
+test_normal_android_write_refused (__main__.SafetyTests.test_normal_android_write_refused) ... ok
+test_partition_geometry_refused (__main__.SafetyTests.test_partition_geometry_refused) ... ok
+test_short_read_rejected (__main__.SafetyTests.test_short_read_rejected) ... ok
+test_unknown_catalog_size_rejected (__main__.SafetyTests.test_unknown_catalog_size_rejected) ... ok
+test_write_readback_mismatch_refused (__main__.SafetyTests.test_write_readback_mismatch_refused) ... ok
+test_wrong_serial_before_any_adb (__main__.SafetyTests.test_wrong_serial_before_any_adb) ... ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.003s
+
+OK

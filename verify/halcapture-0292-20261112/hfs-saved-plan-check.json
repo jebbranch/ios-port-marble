@@ -1,0 +1,13 @@
+{
+  "mode": "retained-block-evidence-only-not-current-device-geometry",
+  "source": "/Users/huxiaoshi/Desktop/marble-ios/work/iphone-x-recon/artifacts/2026-11-10-halbridge",
+  "source_plugin_sha256": "0afe36f9043c4fbcace57375e2582634ee0a1955ab45065a403ecfdd9982bda0",
+  "plugin_sha256": "0afe36f9043c4fbcace57375e2582634ee0a1955ab45065a403ecfdd9982bda0",
+  "plugin_bytes": 87264,
+  "install_plist_bytes": 479,
+  "catalog_size_offset": 1862,
+  "pending_catalog_sha256": "926fd4d4cda32eac39dda4dcf1ae32c3ee9e58d90277ef44f9f030228849da65",
+  "device_read": false,
+  "device_written": false,
+  "live_header_and_extents_required_before_install": true
+}

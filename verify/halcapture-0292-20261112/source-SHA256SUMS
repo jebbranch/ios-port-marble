@@ -1,0 +1,3 @@
+0afe36f9043c4fbcace57375e2582634ee0a1955ab45065a403ecfdd9982bda0  userland/audio/out/MarbleAudio.driver/MarbleAudio
+bb0bb457149eb89c07230e4c8930334ae12bb5869f1f0f2d2a372b4a475506af  userland/audio/Info.plist
+216ecd96bca1fb2069e93c9bab5846bcf86f61d2892e01c5b5220fdc62eae1e4  xnu/patches/0292-sweet-hal-pcm-capture.patch

@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "image": "/Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/images/hal-capture-0292-20261112.img",
+  "sha256": "13bb9272e9905f16ef58fc695432a324e2cb93228821ae799e35fa155515d533",
+  "cmdline_bytes": 448,
+  "device_access": false
+}

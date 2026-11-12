@@ -1,0 +1,5 @@
+{
+  "passed": true,
+  "tests": 18,
+  "scope": "host-only mocks; no device reads or writes"
+}

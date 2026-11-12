@@ -2677,3 +2677,30 @@ write/frame/non-silent/peak/overwritten，volume ioctl只记录并夹到0..720�
 HFS离线计划复用现有AppleAOPAudioPlugin的65块可执行文件allocation和1块Info.plist allocation，不建目录、不分配extent；
 本地catalog dry-run通过，安装/恢复脚本要求目标serial处于临时recovery，写前备份、写后逐字节读回。当前未操作设备。
 完整记录见 `docs/audio-hal-reopen-2026-11-10.md`。
+
+## 2026-11-12 HAL 捕获镜像验收、当前 HFS 只读重取（零新增开机，68/120）
+
+接续用户粘贴记录，核实 a9ae8d6 已到远端 main。11月10日 release 的完整 raw 内核
+续传下载完成，配对SHA=f4c600f1…；CNTP唯一0x4aa348 NOP后SHA=df802b82…。
+77个累积marker和6个bridge链接符号通过，默认out/kernel.adsp未覆盖。
+
+镜像 `images/hal-capture-0292-20261112.img` 51286016B，SHA=13bb9272…，
+sweettime=1794493381，真实cmdline448B，8核KEEPALIVE、日志开。
+安全核查发现不带sweetpcm仍会从ADSP/GLINK调用功放probe，因此本轮实际关闭
+sweetadsp/sweetglink/sweeti2c/sweetamp/sweetgpu/sweetbatt；不进硬件音频。
+内嵌全部kernel segment、MPIDR、参数和boot包对照通过，verify-only再次通过。
+
+用户随后明确允许读取已连接设备的HFS卷头。研究机2aa26095在Android，使用su 0 sh
+只读取得当前卷头、128MiB catalog fork和目标原文件。userdata start/size=
+24858624/470183896 sectors；exec/info/catalog相对4KiB块=
+53985490/53985556/53724020，size字段offset1862；exec仍264256B/65块，info1172B/1块。
+当前exec/info原块与11月10日归档cmp相同。只读证据保存在out，不提交专有原文件/catalog。
+
+安装器改为当前设备卷头/几何读取、固定serial、Android只读/recovery未挂载才写，
+回滚校验manifest和原块digest、仅恢复目标8B catalog size以保留邻居变化，并支持
+没有新HAL bundle时恢复。18项保护路径含正负对照通过。此前本地2.68GiB前缀已不在
+原位置，旧块计划只用于一致性复核，实机位置以本次只读取证为准。
+
+**未执行HAL覆盖、设备重启或fastboot boot，预算仍68/120。**
+第69枪候选身份和事前判据写入audio-closeout入口与
+`docs/audio-hal-ready-2026-11-12.md`；临时HAL/root写入和一次捕获测试仍待用户明确授权。

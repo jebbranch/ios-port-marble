@@ -1,5 +1,12 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **2026-11-12 HAL 捕获镜像就绪，未上机**：0292 完整产物验收并打包为
+> `images/hal-capture-0292-20261112.img`。用户已允许只读重取设备当前 HFS 卷头，
+> catalog 和原插件检查通过；未安装、未引导，仍 **68/120**。临时 HAL 替换涉及
+> 现有 root 写入，必须另获明确授权且只在 recovery + userdata 未挂载时执行。
+> 本轮镜像实际关闭 `sweetadsp/sweetglink/sweeti2c/sweetamp/sweetgpu`，不带 PCM 图实验。
+> 事前判据与身份见 [`docs/audio-hal-ready-2026-11-12.md`](docs/audio-hal-ready-2026-11-12.md)。
+
 > **音频已按用户要求重开，但当前仅做离线 HAL PCM 捕获阶段（2026-11-10）**：
 > 第一轮只验证 iOS AudioServerPlugIn 是否把 48 kHz/S16/双声道 PCM 写到
 > `/dev/marble-audio`。0292 的内核节点只入 ring、统计和覆盖旧帧，**没有**
