@@ -4,6 +4,9 @@
 > speaker-switch=0、峰值16384上限、30 DONE及播放后双关断为必需项；听感单独记录。
 > 见 [`audio-hallisten-0295-2026-11-14.md`](audio-hallisten-0295-2026-11-14.md)。
 
+> **第71枪身份已冻结、未开**：image SHA `693ee73e…cbd9`、
+> sweettime1794588906、cmdline590B。只一次短听测，不调音量/不重放；听感独立记录。
+
 > **第70枪产物门更新**：0293因guard要求`sweets1ap=1`而在开机前拒绝，未使用。
 > 候选必须是0294的v2 guard，实际参数`sweets1ap=3`，其余0293逻辑判据不变。
 > 见 [`audio-halstream-0294-2026-11-13.md`](audio-halstream-0294-2026-11-13.md)。

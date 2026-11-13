@@ -2798,3 +2798,14 @@ listen模式才divisor1并硬夹16384，仍cap30。功放只用本机第68枪已
 实际功放listen函数+精确44表10场景、实际stream/GLINK adapter41门、完整S16 136656断言
 通过；0290/0291回归、六文件apply/post-image、GLINK全链236 applied/49原skip不变通过。
 workflow更新v2 stream marker及3个listen marker。尚未推送/完整编译/打包/开机。
+
+## 2026-11-14 0295完整构建与第71枪听测镜像冻结（未开，70/120）
+
+0295 release raw SHA=b63b685e…；CNTP NOP后kernel=5b47165e…。最终8核KEEPALIVE
+`images/hallisten-0295-20261114.img` 51306496B，SHA=693ee73e…，
+sweettime1794588906，实际cmdline恰590B且无重复key。新增变量仅sweetlisten=1。
+
+87个累计marker、三个listen marker各唯一、17个bridge/stream/period/listen符号、
+所有内嵌段/ADT MPIDR/boot v4/GPU probe0通过。verify-only重跑通过。
+镜像尚未启动；听测规则固定为一次约0.64秒短音，不提高音量、不追加重放，
+用户听感单独记录，日志门仍要求双PLL/无故障/30DONE/双关断/安全teardown。

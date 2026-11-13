@@ -1,5 +1,12 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **0295第71枪听测镜像已冻结、未开（2026-11-14）**：
+> `images/hallisten-0295-20261114.img` SHA `693ee73e…cbd9`，
+> sweettime1794588906，实际参数恰590B，raw/kernel/87marker/17符号/8核门通过。
+> 只准目标机fastboot boot一次；听测约0.64秒且可能很轻，不调音量、不重复触发。
+> 功放双PLL/故障门未通过则不发PCM，结束必须双关断。仍70/120。
+> 见 [`docs/audio-hallisten-0295-2026-11-14.md`](docs/audio-hallisten-0295-2026-11-14.md)。
+
 > **0295 AW88266听测状态机离线通过，等待完整构建（2026-11-14）**：
 > 只在`sweetlisten=1`进入本机44项表、双PLL/故障门和峰值16384的30-period短听测；
 > GPIO52强制speaker=0，禁handset；任一失败不发PCM，结束/超时/DSP错误都双功放

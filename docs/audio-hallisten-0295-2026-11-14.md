@@ -58,3 +58,30 @@ HAL stream仍在图START后等待非静音PCM，拿到PCM才调用功放start，
 - 听感由用户报告：听到/没听到/不确定独立记录，不能由DONE或PLL代替。
 
 当前仍70/120，无0295完整内核或实机结果。
+
+## 0295 完整产物与第71枪身份
+
+GitHub release raw SHA：
+`b63b685e39b189c8fe533b08ea30c7d48d116d949759b4f0153f99dade706790`。
+CNTP唯一0x4aa348 NOP后kernel SHA：
+`5b47165e1b734cdcaba74a1fe998fa0ea89aa0166068198075c3e2dfa86a781e`。
+
+最终镜像：
+`images/hallisten-0295-20261114.img`，51306496 B，
+SHA=`693ee73e672f502cbba24b398227ad8a2f16ebbcb442f0d3d45361f4c077cbd9`，
+sweettime=`1794588906`。
+
+实际cmdline恰好590B、无重复key、8核KEEPALIVE、无sweetreboot。新增唯一变量
+`sweetlisten=1`；其余参数与第70枪一致。sweetshmflag仍省略，默认/guard均为4。
+87个workflow marker、新listen markers、17个bridge/stream/period/listen符号、
+全部kernel segment、8 MPIDR、boot v4和GPU probe level0验证通过。
+
+听测前固定动作：
+
+1. 再跑`build_hallisten_image.py --verify-only`与镜像SHA；
+2. 设备serial必须2aa26095，只fastboot boot一次；
+3. 用户需留意约0.64秒极短、可能很轻的系统音，并反馈听到/没听到/不确定；
+4. 不调高音量、不重复触发、不追加第二枪。功放gate不通过时按设计不会出声；
+5. 用户返回TWRP后拉日志，以sweettime唯一身份和本页判据评分。
+
+当前镜像尚未启动，预算仍70/120。
