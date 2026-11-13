@@ -30,6 +30,7 @@ struct mp_queue {
 	uint64_t wire_base;
 	uint32_t handle, src_port, dst_port, ticket, submissions;
 	uint32_t completions, rejected, fault, peak_in, peak_out;
+	uint32_t divisor, ceiling;
 	uint64_t source_frames, silence_frames;
 };
 
@@ -38,6 +39,7 @@ int mp_init(struct mp_queue *q, uint64_t wire_base, uint32_t region_bytes,
     uint32_t src_port, uint32_t dst_port, uint32_t first_ticket);
 int mp_stage(struct mp_queue *q, uint32_t p, const int16_t *samples,
     uint32_t frames, int muted);
+int mp_output(struct mp_queue *q, uint32_t divisor, uint32_t ceiling);
 int mp_packet(struct mp_queue *q, uint32_t p, uint64_t now_us,
     uint64_t timeout_us, uint8_t out[MP_PACKET_BYTES]);
 int mp_done(struct mp_queue *q, const uint8_t *packet, uint32_t bytes);

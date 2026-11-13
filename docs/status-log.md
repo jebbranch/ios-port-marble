@@ -2783,3 +2783,18 @@ peak-in700/peak-out21。stop/close/unmap均status0，teardown全0，无panic。
 独立评分器11门通过，5项负对照通过；证据SHA归档verify/halstream-boot70。
 预算记70/120。结论到“HAL PCM被AudioReach连续消费并严格归还”，不含功放、PLL、
 振膜或人耳。下一步离线做本机AW88266短时状态机和强制关断，再单独冻结听测轮。
+
+## 2026-11-14 0295本机AW88266有界听测状态机离线完成（70/120）
+
+基于第70枪30/30连续流，新增显式sweetlisten模式。默认0294仍除32/峰1024且绕功放；
+listen模式才divisor1并硬夹16384，仍cap30。功放只用本机第68枪已读回的44项表：
+初始化阶段强制PWDN/AMPPD/HMUTE/ULS_HMUTE，0x05必须仍为05a9，ID必须2032。
+
+图已START且拿到非静音PCM后，GPIO52固定低（speaker，禁止handset）。两颗先分别清PWDN
+并都验证PLLS+CLKS/无故障，再都清AMPPD并保持静音复核；全部通过才恢复I2S TXEN并
+解除双静音。任何失败不提交DATA_BUFFER。正常/错误/timeout结束均先双静音、关TXEN、
+置AMPPD/PWDN；任一I2C关断失败或SE15初始化失败时双reset拉低。
+
+实际功放listen函数+精确44表10场景、实际stream/GLINK adapter41门、完整S16 136656断言
+通过；0290/0291回归、六文件apply/post-image、GLINK全链236 applied/49原skip不变通过。
+workflow更新v2 stream marker及3个listen marker。尚未推送/完整编译/打包/开机。

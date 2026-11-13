@@ -1,0 +1,66 @@
+SWEET LISTEN: speaker-switch=0 (speaker, never handset)
+SWEET LISTEN: safe-profile addr=0x34 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: safe-profile addr=0x35 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: pll addr=0x34 status=0x11 locked=1
+SWEET LISTEN: pll addr=0x35 status=0x11 locked=1
+SWEET LISTEN: healthy-muted addr=0x34 status=0x11 ctrl=0xf540
+SWEET LISTEN: healthy-muted addr=0x35 status=0x11 ctrl=0xf540
+SWEET LISTEN: unmuted addr=0x34 status=0x11 ctrl=0xb440
+SWEET LISTEN: unmuted addr=0x35 status=0x11 ctrl=0xb440
+SWEET MARK: listen v1 started=1 peak-limit=16384 volume-reg=0x05a9
+SWEET LISTEN: powerdown normal-stop addr=0x34 ctrl=0xf543
+SWEET LISTEN: powerdown normal-stop addr=0x35 ctrl=0xf543
+SWEET MARK: listen v1 stopped=1
+SWEET LISTEN: speaker-switch=0 (speaker, never handset)
+SWEET LISTEN: safe-profile addr=0x34 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: safe-profile addr=0x35 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: pll addr=0x34 status=0 locked=0
+SWEET LISTEN: powerdown start-failed addr=0x34 ctrl=0xf543
+SWEET LISTEN: powerdown start-failed addr=0x35 ctrl=0xf543
+SWEET LISTEN: speaker-switch=0 (speaker, never handset)
+SWEET LISTEN: safe-profile addr=0x34 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: safe-profile addr=0x35 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: pll addr=0x34 status=0x11 locked=1
+SWEET LISTEN: pll addr=0x35 status=0 locked=0
+SWEET LISTEN: powerdown start-failed addr=0x34 ctrl=0xf543
+SWEET LISTEN: powerdown start-failed addr=0x35 ctrl=0xf543
+SWEET LISTEN: speaker-switch=0 (speaker, never handset)
+SWEET LISTEN: safe-profile addr=0x34 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: safe-profile addr=0x35 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: pll addr=0x34 status=0x31 locked=0
+SWEET LISTEN: powerdown start-failed addr=0x34 ctrl=0xf543
+SWEET LISTEN: powerdown start-failed addr=0x35 ctrl=0xf543
+SWEET LISTEN: speaker-switch=0 (speaker, never handset)
+SWEET LISTEN: safe-profile addr=0x34 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: safe-profile addr=0x35 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: pll addr=0x34 status=0x11 locked=1
+SWEET LISTEN: pll addr=0x35 status=0x31 locked=0
+SWEET LISTEN: powerdown start-failed addr=0x34 ctrl=0xf543
+SWEET LISTEN: powerdown start-failed addr=0x35 ctrl=0xf543
+SWEET LISTEN: speaker-switch=0 (speaker, never handset)
+SWEET LISTEN: safe-profile addr=0x34 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: powerdown prepare-failed addr=0x34 ctrl=0xf543
+SWEET LISTEN: powerdown prepare-failed addr=0x35 ctrl=0xf543
+SWEET LISTEN: SE15 init failed; both resets held low
+SWEET LISTEN: speaker-switch=0 (speaker, never handset)
+SWEET LISTEN: safe-profile addr=0x34 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: powerdown prepare-failed addr=0x34 ctrl=0xf543
+SWEET LISTEN: powerdown prepare-failed addr=0x35 ctrl=0xf543
+SWEET LISTEN: speaker-switch=0 (speaker, never handset)
+SWEET LISTEN: powerdown prepare-failed addr=0x34 ctrl=0
+SWEET LISTEN: powerdown prepare-failed addr=0x35 ctrl=0x4103
+SWEET LISTEN: powerdown I2C failed; both resets held low
+SWEET LISTEN: speaker-switch=0 (speaker, never handset)
+SWEET LISTEN: safe-profile addr=0x34 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: safe-profile addr=0x35 id=0x2032 ctrl=0xf543 vol=0x5a9
+SWEET LISTEN: pll addr=0x34 status=0x11 locked=1
+SWEET LISTEN: pll addr=0x35 status=0x11 locked=1
+SWEET LISTEN: healthy-muted addr=0x34 status=0x11 ctrl=0xf540
+SWEET LISTEN: healthy-muted addr=0x35 status=0x11 ctrl=0xf540
+SWEET LISTEN: unmuted addr=0x34 status=0x11 ctrl=0xb440
+SWEET LISTEN: unmuted addr=0x35 status=0x11 ctrl=0xb440
+SWEET MARK: listen v1 started=1 peak-limit=16384 volume-reg=0x05a9
+SWEET LISTEN: powerdown normal-stop addr=0x34 ctrl=0xf543
+SWEET LISTEN: powerdown normal-stop addr=0x35 ctrl=0xf543
+SWEET MARK: listen v1 stopped=1
+{"passed":true,"cases":10,"chip":"AW88266","speaker_switch":0,"volume_reg":"0x05a9","failure_paths_power_down_both":true}

@@ -98,6 +98,17 @@ amplitudes(void)
 	for (unsigned i = 0; i < MP_FRAMES * 2; i++) {
 		CHECK(queue.period[0].samples[i] == 0);
 	}
+	fresh(1);
+	CHECK(mp_output(&queue, 1, 16384) == MP_OK);
+	input[0] = INT16_MIN;
+	input[1] = INT16_MAX;
+	CHECK(mp_stage(&queue, 0, input, 1, 0) == MP_OK);
+	CHECK(queue.period[0].samples[0] == -16384);
+	CHECK(queue.period[0].samples[1] == 16384);
+	CHECK(mp_output(&queue, 1, 16384) == MP_BAD);
+	fresh(1);
+	CHECK(mp_output(&queue, 0, 1) == MP_BAD);
+	CHECK(mp_output(&queue, 1, 16385) == MP_BAD);
 }
 
 static void
@@ -210,6 +221,7 @@ main(void)
 	failures();
 	budgets_and_geometry();
 	printf("{\"passed\":true,\"assertions\":%u,\"s16_values_tested\":65536,"
-	    "\"peak_ceiling\":1024,\"transport\":\"mock-only; no hardware\"}\n", cases);
+	    "\"safe_default_peak\":1024,\"max_configurable_ceiling\":16384,"
+	    "\"transport\":\"mock-only; no hardware\"}\n", cases);
 	return 0;
 }

@@ -70,6 +70,7 @@ static struct message events[256];
 static unsigned event_read,event_write,wire_data,wire_controls,case_count;
 static int mode, clock_failure, ctrl_failure, muted, supply, full_fifo;
 static uint32_t fail_opcode, drop_opcode;
+static int listen_start_calls,listen_stop_calls,listen_start_failure;
 static const char *bad_flag;
 static int bad_flag_value;
 static char logs[65536];
@@ -114,6 +115,10 @@ static uint32_t g_rd(uint32_t offset) {
 static int g_prm_vote_clock(uint32_t id,uint32_t hz,uint32_t root) {
  (void)id;(void)hz;(void)root;return clock_failure?-1:0;
 }
+static int g_hal_listen_start(void) {
+ listen_start_calls++;return listen_start_failure?-1:0;
+}
+static void g_hal_listen_stop(void) {listen_stop_calls++;}
 static int g_apm_shm_map(uint32_t src) {
  assert(src==0x2002);g_shm_mapped=1;return 0;
 }
@@ -163,7 +168,9 @@ static void g_send_tx_data(uint32_t iid,const uint8_t *packet,uint32_t bytes) {
   uint64_t address=g_le32(packet+24)|(uint64_t)g_le32(packet+28)<<32;
   assert(address<0x4000 && !(address&4095));
   const int16_t *samples=(const int16_t *)(fake_memory+(uint32_t)address);
-  for(unsigned i=0;i<2048;i++)assert(samples[i]>=-1024 && samples[i]<=1024);
+  for(unsigned i=0;i<2048;i++)
+   assert(samples[i]>=-(int32_t)stream_queue.ceiling &&
+          samples[i]<=(int32_t)stream_queue.ceiling);
   assert(!memcmp(fake_memory+0x4000,g_graph_vp_wr_dec_cnv,856));
   g_put32(reply,0x60|(56u<<8));g_put32(reply+20,0x05001004);
   memcpy(reply+24,packet+24,12);
@@ -202,6 +209,7 @@ static void reset(int new_mode) {
  g_shm_pa=0x11ffd0000ull;g_shm_mapped=0;g_shm_offset_mode=1;g_shm_handle=0xb0d7f408;
  remote.in_use=0;mode=new_mode;muted=0;supply=1;clock_failure=ctrl_failure=0;
  fail_opcode=drop_opcode=0;full_fifo=0;
+ listen_start_calls=listen_stop_calls=listen_start_failure=0;
  g_hal_ctrl_pending=g_hal_ctrl_ready=0;g_rsp_ready=0;g_rsp_len=0;
  g_hal_started_once=0;
  log_length=0;logs[0]=0;bad_flag=NULL;bad_flag_value=0;g_tx_len=8192;
@@ -256,6 +264,20 @@ int main(void) {
 
  reset(0);full_fifo=1;g_hal_bringup();
  ok(wire_data==0 && wire_controls==0 && g_shm_mapped==1);
+
+ reset(0);bad_flag="sweetlisten";bad_flag_value=1;g_hal_bringup();
+ ok(wire_data==30 && listen_start_calls==1 && listen_stop_calls==1);
+ ok(stream_queue.divisor==1 && stream_queue.ceiling==16384);
+ ok(stream_queue.peak_out==16384);
+
+ reset(0);bad_flag="sweetlisten";bad_flag_value=1;listen_start_failure=1;g_hal_bringup();
+ ok(wire_data==0 && listen_start_calls==1 && listen_stop_calls==0);
+
+ reset(2);bad_flag="sweetlisten";bad_flag_value=1;g_hal_bringup();
+ ok(wire_data==1 && listen_start_calls==1 && listen_stop_calls==1);
+
+ reset(3);bad_flag="sweetlisten";bad_flag_value=1;g_hal_bringup();
+ ok(wire_data==4 && listen_start_calls==1 && listen_stop_calls==1);
 
  reset(0);clock_failure=1;g_hal_bringup();
  ok(wire_data==0 && wire_controls==0);
@@ -326,7 +348,11 @@ def main():
             "clang", "-std=gnu11", "-Wall", "-Wextra", "-Wformat=2", "-Werror",
             "-fsanitize=address,undefined", str(cfile), "-o", str(exe),
         ], check=True)
-        completed = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
+        completed = subprocess.run([str(exe)], capture_output=True, text=True)
+        if completed.returncode:
+            raise RuntimeError(
+                "adapter host failed (%d)\nstdout:\n%s\nstderr:\n%s" %
+                (completed.returncode, completed.stdout, completed.stderr))
     result = json.loads(completed.stdout.splitlines()[-1])
     result["production_core"] = json.loads(core_run.stdout)
     result["scope"] = "actual new core/runtime/adapter; old transport/clock and HAL ring mocked"

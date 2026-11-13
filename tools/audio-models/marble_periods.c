@@ -41,6 +41,20 @@ mp_init(struct mp_queue *q, uint64_t base, uint32_t region, uint32_t desc,
 	q->src_port = src;
 	q->dst_port = dst;
 	q->ticket = ticket;
+	q->divisor = MP_SAFE_DIVISOR;
+	q->ceiling = MP_SAFE_PEAK;
+	return MP_OK;
+}
+
+int
+mp_output(struct mp_queue *q, uint32_t divisor, uint32_t ceiling)
+{
+	if (q == NULL || divisor == 0u || ceiling == 0u || ceiling > 16384u ||
+	    q->submissions != 0u || q->source_frames != 0u) {
+		return MP_BAD;
+	}
+	q->divisor = divisor;
+	q->ceiling = ceiling;
 	return MP_OK;
 }
 
@@ -72,9 +86,14 @@ mp_stage(struct mp_queue *q, uint32_t p, const int16_t *input,
 	for (uint32_t i = 0; i < frames * 2u; i++) {
 		int32_t value = input[i];
 		uint32_t magnitude = (uint32_t)(value < 0 ? -value : value);
-		int32_t output = muted ? 0 : value / MP_SAFE_DIVISOR;
+		int32_t output = muted ? 0 : value / (int32_t)q->divisor;
 		uint32_t out_magnitude = (uint32_t)(output < 0 ? -output : output);
 
+		if (out_magnitude > q->ceiling) {
+			output = output < 0 ? -(int32_t)q->ceiling :
+			    (int32_t)q->ceiling;
+			out_magnitude = q->ceiling;
+		}
 		if (magnitude > peak_in) {
 			peak_in = magnitude;
 		}

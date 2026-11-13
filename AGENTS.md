@@ -1,5 +1,12 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **0295 AW88266听测状态机离线通过，等待完整构建（2026-11-14）**：
+> 只在`sweetlisten=1`进入本机44项表、双PLL/故障门和峰值16384的30-period短听测；
+> GPIO52强制speaker=0，禁handset；任一失败不发PCM，结束/超时/DSP错误都双功放
+> 静音+AMPPD/PWDN，I2C关断失败则双reset低。功放10场景、adapter41门、
+> 全S16 136656断言和六文件/全链重放通过。尚无新内核/镜像/开机，仍70/120。
+> 见 [`docs/audio-hallisten-0295-2026-11-14.md`](docs/audio-hallisten-0295-2026-11-14.md)。
+
 > **第70枪HAL→AudioReach连续流通过（2026-11-13，70/120）**：
 > `attempted/sent/done=30/30/30`、reject/fault=0、source30720、peak-in700、
 > 固定除32后peak-out21；六个open…unmap控制应答全0，安全teardown通过。

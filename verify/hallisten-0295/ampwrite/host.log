@@ -1,0 +1,13 @@
+ROW {"kind":"write","rc":0,"calls":1,"nt":3,"nr":0,"stretch":0,"tx":[4,180,64],"readback":46144}
+ROW {"kind":"read","rc":0,"calls":2,"value":8242}
+SWEET MARK: ampwrite v1 addr=0x34 bytes=3 b0=0 b1=0x55 b2=0xaa
+SWEET I2C: geni amp 0x34 profile 44/44
+ROW {"kind":"profile","rc":0,"calls":45,"sysctrl":46144,"sysctrl2":1449}
+ROW {"kind":"error","rc":-1,"calls":1,"readback":16387}
+
+--- baseline ---
+ROW {"kind":"write","rc":0,"calls":2,"nt":2,"nr":0,"stretch":0,"tx":[180,64,0],"readback":16387}
+ROW {"kind":"read","rc":0,"calls":2,"value":8242}
+SWEET I2C: geni amp 0x34 profile 44/44
+ROW {"kind":"profile","rc":0,"calls":90,"sysctrl":16387,"sysctrl2":56}
+ROW {"kind":"error","rc":-1,"calls":1,"readback":16387}
