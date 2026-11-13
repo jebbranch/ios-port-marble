@@ -7,6 +7,10 @@
 > **第70枪身份已冻结，未开**：image SHA `931181d6…fe19f`，
 > sweettime=`1794581323`，完整判据见0294文档“第70枪冻结判据”。仍69/120。
 
+> **第70枪判决：全部门通过，预算70/120。** HAL双声道S16→四period→DSP DONE
+> 30/30，reject/fault=0；STOP/CLOSE/UNMAP全部0，功放/旧tone/GPU路径0。
+> 结论不含扬声器出声。原始判决和PCM witness见0294文档。
+
 > **0293/第70枪候选事前逻辑门（2026-11-13，未开）**：
 > [`audio-halstream-0293-2026-11-13.md`](audio-halstream-0293-2026-11-13.md)
 > 已固定amp-bypass、原始PCM字节、30次严格提交/归还及STOP/CLOSE/UNMAP门；

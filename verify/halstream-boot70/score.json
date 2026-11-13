@@ -1,0 +1,68 @@
+{
+  "passed": true,
+  "gates": {
+    "identity": true,
+    "window": true,
+    "guard": true,
+    "amp_bypass": true,
+    "awcfg_bypass": true,
+    "graph": true,
+    "controls": true,
+    "stream": true,
+    "teardown": true,
+    "raw_pcm": true,
+    "hardware_isolated": true
+  },
+  "raw_sha256": "67d18af7f18ca39c408488210e8466d7aecd1286fadaeffd4b93a7b0981927d7",
+  "text_sha256": "50534954ef70fd221696d5683ed68c332a8a8123fdb94077e09ceb8862a151df",
+  "total": 142193,
+  "sequence": 167,
+  "pcm": {
+    "start_frame": 729,
+    "bytes": 512,
+    "frames": 128,
+    "left_peak": 432,
+    "right_peak": 489,
+    "nonzero_samples": 256,
+    "channel_equal_frames": 0,
+    "channel_same_sign_frames": 121
+  },
+  "controls": {
+    "open": [
+      "0"
+    ],
+    "prepare": [
+      "0"
+    ],
+    "start": [
+      "0"
+    ],
+    "stop": [
+      "0"
+    ],
+    "close": [
+      "0"
+    ],
+    "unmap": [
+      "0"
+    ]
+  },
+  "forbidden_counts": {
+    "SWEET MARK: ampwrite": 0,
+    "SWEET MARK: ampguard": 0,
+    "pcm tone start": 0,
+    "pcm tone done": 0,
+    "data_buffer send": 0,
+    "SWEET GPU:": 0,
+    "SWEET GMU:": 0,
+    "panic(cpu": 0,
+    "Debugger called:": 0
+  },
+  "claim": "HAL PCM reached AudioReach and 30 buffers were strictly returned",
+  "not_claimed": [
+    "amplifier enabled",
+    "speaker output",
+    "audibility",
+    "continuous playback beyond 30 buffers"
+  ]
+}

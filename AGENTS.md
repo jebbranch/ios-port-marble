@@ -1,5 +1,12 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **第70枪HAL→AudioReach连续流通过（2026-11-13，70/120）**：
+> `attempted/sent/done=30/30/30`、reject/fault=0、source30720、peak-in700、
+> 固定除32后peak-out21；六个open…unmap控制应答全0，安全teardown通过。
+> 原始128帧是合理双声道S16，功放路径严格为0。结论仅到DSP归还，不是出声。
+> 下一步是本机AW88266短时PLL/状态/安全关断，禁止mayfly profile、正增益和听筒复用。
+> 详见 [`docs/audio-halstream-0294-2026-11-13.md`](docs/audio-halstream-0294-2026-11-13.md)。
+
 > **0294第70枪镜像已冻结，设备尚未在线（2026-11-13）**：
 > `images/halstream-0294-20261113.img` SHA `931181d6…fe19f`，
 > sweettime `1794581323`，raw/kernel/84 marker/14符号/8核/576B参数门通过。

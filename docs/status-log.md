@@ -2767,3 +2767,19 @@ sweetshmflag省略但默认/guard均4，避免突破590B；sweets1ap明确3。
 84个累计marker、新7 marker、14个bridge/stream/period符号、全部内嵌kernel段、
 ADSP blob、8 MPIDR、boot v4结构、GPU probe level0通过。旧0293内核未上机。
 设备此时不在adb/fastboot，所以只冻结镜像/事前判据，没有设备操作或预算增加。
+
+## 2026-11-13 第70枪HAL连续流通过，安全返回TWRP（70/120）
+
+设备回连后先拉旧ring作基线并提交：sweettime1794493381/seq252。只fastboot boot一次
+0294冻结镜像，用户完成操作后回TWRP。新ring sweettime1794581323、total142193、
+seq167，raw/decoded窗口匹配。
+
+guard2 pass1/s1ap3，amp/awcfg绕过成立；旧tone/ampwrite/ampguard/GPU/GMU均0。
+856B图在0x4000，open/prepare/start成功。真实HAL片段从frame729起保存512B：
+128双声道S16帧，左右峰432/489，256样本非零，121/128帧左右同号。
+流结果attempted/sent/done=30/30/30、reject/fault=0、source30720/silence0、
+peak-in700/peak-out21。stop/close/unmap均status0，teardown全0，无panic。
+
+独立评分器11门通过，5项负对照通过；证据SHA归档verify/halstream-boot70。
+预算记70/120。结论到“HAL PCM被AudioReach连续消费并严格归还”，不含功放、PLL、
+振膜或人耳。下一步离线做本机AW88266短时状态机和强制关断，再单独冻结听测轮。

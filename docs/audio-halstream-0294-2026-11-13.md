@@ -57,3 +57,36 @@ GPU shim probe level=0。默认旧kernel及capture镜像没有覆盖。
    无panic。任何缺项即停，不追加第二枪。
 8. 本版功放绕过、不会出声；人耳不是判据。用户若暂时离席且需要手动长按，
    停在运行状态等待用户，不擅自用别的设备或额外引导。
+
+## 第70枪判决：通过（70/120）
+
+用户完成操作并自行返回TWRP；只执行一次冻结镜像。当前ring：
+sweettime=1794581323、total=142193、seq=167，raw窗口与decoded逐字节匹配，
+与开机前旧ring（sweettime=1794493381、seq=252）明确不同。
+
+所有冻结门通过：
+
+- guard v2 pass=1 s1ap=3；
+- amp-bypass/awcfg-bypass各1，ampwrite/ampguard/旧tone/GPU/GMU均0；
+- graph bytes=856 off=0x4000；
+- open/prepare/start/stop/close/unmap六项均匹配status=0；
+- end为`result=0 attempted=30 sent=30 done=30 reject=0 fault=0`；
+- source=30720、silence=0、peak-in=700、peak-out=21；
+- teardown open=1 stop=0 close=0 unmap=0，无kernel panic。
+
+原始witness从首次非静音附近frame729开始，共512B/128个双声道S16帧。
+左右峰值432/489，256个样本全非零，128帧中121帧左右同号；
+它不是单声道复制，也不像float字节误读，幅值不超过整轮peak-in=700。
+这足以支持“HAL送来合理的小幅双声道S16片段”，仍不是音乐内容鉴定。
+
+独立评分器11门全部通过；5项正负对照能拒绝旧身份、text/raw不一致、
+done=29和ampwrite污染。原始证据SHA见`verify/halstream-boot70/`。
+
+结论范围：
+
+**已证明iOS HAL真实PCM经过固定衰减，以四个共享period连续送给AudioReach；
+DSP严格归还30个buffer，且图和映射安全停止。**
+
+没有证明：功放开启、PLL锁定、扬声器振膜输出、人耳听到声音或30块以后长期稳定。
+下一阶段才允许进入本机AW88266（ID 0x2032）短时功放状态机与听测设计；
+不得把mayfly AW88261 profile、正增益或听筒配置套进来。
