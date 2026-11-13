@@ -2731,3 +2731,17 @@ DSP/TDM/功放/GPU路径计数均0，无kernel panic。独立capture评分8门�
 30提交上限、token不回卷。全65536个S16值及136647个断言在严格编译/ASan/UBSan下通过；
 capture评分器9项正负对照通过。**模型尚未接入内核/GPR，无0293完整构建或新设备镜像。**
 最新入口`docs/audio-hal-stream-offline-2026-11-13.md`；继续音频后端，UI停车，其他门禁不变。
+
+## 2026-11-13 0293真实GLINK接入完成，准备完整构建（无新开机，69/120）
+
+新补丁0293覆盖8个内核文件：独立period/stream模块、主/动态收包前置分派、locked mute、
+构建清单和PA探针硬绕过。用实际生产core/runtime/GLINK adapter执行33项mock检查，
+生产核心全S16及136647断言/ASan/UBSan通过；功放12路径与0291旧事务模型回归通过。
+8文件apply/check/post-image、GLINK全链234 applied/49原有基线skip不变，严格相等。
+
+新模式默认关闭，4×4096B/30提交/固定除32，输出峰值≤1024。输入witness保留至多512B
+用于格式/波形核查。强制跳过音频I2C/MMIO/功放表和AW cal，本版非听测；
+控制ACK/DONE互不覆盖，不使用旧tone/回落路径。STOP/CLOSE匹配成功后才UNMAP，
+缺ACK保留DMA映射、不free、不强制PAS shutdown、不自动重开。
+本地链修复均已commit，marker列表新增7条。尚无新完整内核、无新镜像、无设备读写。
+逻辑事前门见`docs/audio-halstream-0293-2026-11-13.md`；下一步push/main触发完整编译。

@@ -1,0 +1,97 @@
+SWEET MARK: halstream guard v1 pass=1
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0
+SWEET MARK: halstream ctrl v1 prepare op=0x1001001 status=0
+SWEET MARK: halstream ctrl v1 start op=0x1001002 status=0
+SWEET MARK: halstream ctrl v1 stop op=0x1001003 status=0
+SWEET MARK: halstream ctrl v1 close op=0x1001004 status=0
+SWEET MARK: halstream ctrl v1 unmap op=0x100100d status=0
+SWEET MARK: halstream teardown v1 open=1 stop=0 close=0 unmap=0
+SWEET HALSTREAM: graph already attempted; no restart
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0
+SWEET MARK: halstream ctrl v1 prepare op=0x1001001 status=0
+SWEET MARK: halstream ctrl v1 start op=0x1001002 status=0
+SWEET MARK: halstream ctrl v1 stop op=0x1001003 status=0
+SWEET MARK: halstream ctrl v1 close op=0x1001004 status=0
+SWEET MARK: halstream ctrl v1 unmap op=0x100100d status=0
+SWEET MARK: halstream teardown v1 open=1 stop=0 close=0 unmap=0
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0
+SWEET MARK: halstream ctrl v1 prepare op=0x1001001 status=0
+SWEET MARK: halstream ctrl v1 start op=0x1001002 status=0
+SWEET MARK: halstream ctrl v1 stop op=0x1001003 status=0
+SWEET MARK: halstream ctrl v1 close op=0x1001004 status=0
+SWEET MARK: halstream ctrl v1 unmap op=0x100100d status=0
+SWEET MARK: halstream teardown v1 open=1 stop=0 close=0 unmap=0
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0
+SWEET MARK: halstream ctrl v1 prepare op=0x1001001 status=0
+SWEET MARK: halstream ctrl v1 start op=0x1001002 status=0
+SWEET MARK: halstream ctrl v1 stop op=0x1001003 status=0
+SWEET MARK: halstream ctrl v1 close op=0x1001004 status=0
+SWEET MARK: halstream ctrl v1 unmap op=0x100100d status=0
+SWEET MARK: halstream teardown v1 open=1 stop=0 close=0 unmap=0
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0
+SWEET MARK: halstream ctrl v1 prepare op=0x1001001 status=0
+SWEET MARK: halstream ctrl v1 start op=0x1001002 status=0
+SWEET MARK: halstream ctrl v1 stop op=0x1001003 status=0
+SWEET MARK: halstream ctrl v1 close op=0x1001004 status=0
+SWEET MARK: halstream ctrl v1 unmap op=0x100100d status=0
+SWEET MARK: halstream teardown v1 open=1 stop=0 close=0 unmap=0
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0
+SWEET MARK: halstream ctrl v1 prepare op=0x1001001 status=0
+SWEET MARK: halstream ctrl v1 start op=0x1001002 status=0
+SWEET MARK: halstream ctrl v1 stop op=0x1001003 status=0
+SWEET MARK: halstream ctrl v1 close op=0x1001004 status=0
+SWEET MARK: halstream ctrl v1 unmap op=0x100100d status=0
+SWEET MARK: halstream teardown v1 open=1 stop=0 close=0 unmap=0
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0
+SWEET MARK: halstream ctrl v1 prepare op=0x1001001 status=0
+SWEET MARK: halstream ctrl v1 start op=0x1001002 status=0
+SWEET MARK: halstream ctrl v1 stop op=0x1001003 status=0
+SWEET MARK: halstream ctrl v1 close op=0x1001004 status=0
+SWEET MARK: halstream ctrl v1 unmap op=0x100100d status=0
+SWEET MARK: halstream teardown v1 open=1 stop=0 close=0 unmap=0
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0x3
+SWEET HALSTREAM: open not acknowledged; mapping retained
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET HALSTREAM: ctrl open timeout
+SWEET HALSTREAM: open not acknowledged; mapping retained
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0
+SWEET MARK: halstream ctrl v1 prepare op=0x1001001 status=0
+SWEET MARK: halstream ctrl v1 start op=0x1001002 status=0
+SWEET MARK: halstream ctrl v1 stop op=0x1001003 status=0x3
+SWEET MARK: halstream ctrl v1 close op=0x1001004 status=0
+SWEET MARK: halstream teardown v1 open=1 stop=-1 close=0 unmap=-1
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0
+SWEET MARK: halstream ctrl v1 prepare op=0x1001001 status=0
+SWEET MARK: halstream ctrl v1 start op=0x1001002 status=0
+SWEET MARK: halstream ctrl v1 stop op=0x1001003 status=0
+SWEET MARK: halstream ctrl v1 close op=0x1001004 status=0x3
+SWEET MARK: halstream teardown v1 open=1 stop=0 close=-1 unmap=-1
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET MARK: halstream ctrl v1 open op=0x1001000 status=0
+SWEET MARK: halstream ctrl v1 prepare op=0x1001001 status=0
+SWEET MARK: halstream ctrl v1 start op=0x1001002 status=0
+SWEET MARK: halstream ctrl v1 stop op=0x1001003 status=0
+SWEET MARK: halstream ctrl v1 close op=0x1001004 status=0
+SWEET MARK: halstream ctrl v1 unmap op=0x100100d status=0x3
+SWEET MARK: halstream teardown v1 open=1 stop=0 close=0 unmap=-1
+SWEET MARK: halstream graph v1 bytes=856 off=0x4000
+SWEET HALSTREAM: ctrl open send failed
+SWEET HALSTREAM: open not acknowledged; mapping retained
+SWEET HALSTREAM: mapping/clock preflight failed
+SWEET MARK: halstream guard v1 pass=0
+SWEET MARK: halstream guard v1 pass=0
+SWEET MARK: halstream guard v1 pass=0
+SWEET MARK: halstream guard v1 pass=0
+SWEET MARK: halstream guard v1 pass=0
+SWEET MARK: halstream guard v1 pass=0
+{"passed":true,"checks":33,"actual_adapter":true,"dsp":"mock-only"}

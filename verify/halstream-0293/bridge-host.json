@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "source": "/Users/huxiaoshi/Desktop/marble-ios/work/chain-tree-halbridge/bsd/dev/sweet_audio_bridge.c",
+  "functions": [
+    "bridge_accept_locked",
+    "sweet_audio_bridge_consume",
+    "bridge_ioctl",
+    "sweet_audio_bridge_muted"
+  ],
+  "checks": [
+    "fifo",
+    "zero-fill",
+    "overwrite accounting",
+    "volume clamp",
+    "stats ioctl"
+  ],
+  "scope": "host locks/logs mocked; no DSP, TDM, amplifier or device access"
+}

@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "files": [
+    "bsd/dev/sweet_glink.c",
+    "bsd/dev/sweet_i2c.c",
+    "bsd/conf/files",
+    "bsd/dev/sweet_audio_bridge.c",
+    "bsd/dev/sweet_audio_periods.c",
+    "bsd/dev/sweet_audio_periods.h",
+    "bsd/dev/sweet_audio_stream.c",
+    "bsd/dev/sweet_audio_stream.h"
+  ],
+  "scope": "git apply --check/apply and exact eight-file comparison"
+}

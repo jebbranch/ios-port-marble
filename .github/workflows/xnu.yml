@@ -188,6 +188,13 @@ jobs:
                    "SWEET MARK: ampguard v1 pass=%u skip=%d init=%d profiles=%d rstA=%d rstB=%d" \
                    "SWEET MARK: ampwrite v1 addr=%#x bytes=%u b0=%#x b1=%#x b2=%#x" \
                    "SWEET MARK: halbridge v1 node=/dev/marble-audio ring=65536 capture-only" \
+                   "SWEET MARK: halstream v1 periods=4 bytes=4096 divisor=32 cap=30 amp=off" \
+                   "SWEET MARK: halstream amp-bypass v1 before MMIO" \
+                   "SWEET MARK: halstream awcfg-bypass v1" \
+                   "SWEET MARK: halstream guard v1 pass=%d" \
+                   "SWEET MARK: halstream graph v1 bytes=%u off=%#x" \
+                   "SWEET MARK: halstream ctrl v1 %s op=%#x status=%#x" \
+                   "SWEET MARK: halstream teardown v1 open=%d stop=%d close=%d unmap=%d" \
                    "SWEET MARK: ibat " \
                    "SWEET MARK: ibat sweep sid=" \
                    "SWEET AUDPROBE: gate flag=" \

@@ -1,0 +1,1073 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index a739b13..0ed4814 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -33,6 +33,7 @@
+ #include <vm/pmap.h>
+ #include <arm/caches_internal.h>
+ #include <vm/vm_kern.h>
++#include "sweet_audio_stream.h"
+ 
+ extern vm_map_address_t pmap_map(vm_map_address_t virt, vm_offset_t start,
+     vm_offset_t end, vm_prot_t prot, unsigned int flags);
+@@ -153,6 +154,36 @@ static int           g_nliids;
+ 
+ /* Last assembled GPR packet. */
+ static uint8_t  g_rsp[G_INTENT_SIZE];
++static uint32_t g_hal_ctrl_token, g_hal_ctrl_source, g_hal_ctrl_opcode;
++static uint32_t g_hal_ctrl_status;
++static int g_hal_ctrl_pending, g_hal_ctrl_ready;
++static int g_hal_started_once;
++static uint32_t g_le32(const uint8_t *p);
++
++/* Matching control replies get their own mailbox, never the last-packet slot. */
++static int
++g_hal_receive(const uint8_t *packet, uint32_t bytes)
++{
++	if (sweet_audio_stream_rx(packet, bytes)) {
++		return 1;
++	}
++	if (g_hal_ctrl_pending && bytes >= 32u &&
++	    (g_le32(packet) & 255u) == 0x60u &&
++	    (g_le32(packet) >> 8) == bytes &&
++	    (g_le32(packet + 4) & 65535u) == 0x203u &&
++	    g_le32(packet + 8) == 1u &&
++	    g_le32(packet + 12) == g_hal_ctrl_source &&
++	    g_le32(packet + 16) == g_hal_ctrl_token &&
++	    g_le32(packet + 20) == 0x02001005u &&
++	    g_le32(packet + 24) == g_hal_ctrl_opcode) {
++		if (!g_hal_ctrl_ready) {
++			g_hal_ctrl_status = g_le32(packet + 28);
++			g_hal_ctrl_ready = 1;
++		}
++		return 1;
++	}
++	return 0;
++}
+ static uint32_t g_rsp_len;
+ static int      g_rsp_ready;
+ 
+@@ -786,6 +817,8 @@ g_rx_one(void)
+ 					g_dyn_liids[dyn].filled += chunk;
+ 				}
+ 				if (left == 0) {
++					(void)g_hal_receive(
++					    g_dyn_liids[dyn].buf, g_dyn_liids[dyn].filled);
+ 					/*
+ 					 * 0286: this branch consumes a whole packet
+ 					 * and breaks WITHOUT ever setting
+@@ -848,6 +881,12 @@ g_rx_one(void)
+ 				g_liids[i].filled += chunk;
+ 			}
+ 			if (left == 0) {
++				if (g_hal_receive(g_liids[i].buf, g_liids[i].filled)) {
++					g_liids[i].filled = 0;
++					g_send(CMD_RX_DONE_W_REUSE,
++					    (uint16_t)g_lcid, liid, NULL, 0);
++					break;
++				}
+ 				g_rsp_len = g_liids[i].filled;
+ 				if (g_rsp_len > sizeof(g_rsp)) {
+ 					g_rsp_len = sizeof(g_rsp);
+@@ -7777,10 +7816,20 @@ g_audio_graph_cfg_vp(uint32_t src_port)
+ 		sweet_log_sync();
+ 	}
+ 
+-	(void)g_apm_set_cfg(src_port, G_VP_AW_IID, 0x10013d2a, aw,
+-	    sizeof(aw), "vp/aw_cfg");
+-	(void)g_apm_set_cfg(src_port, G_VP_AW_IID, 0x10013d2a, aw2,
+-	    sizeof(aw2), "vp/aw_cfg2");
++	{
++		int halstream = 0;
++
++		(void)PE_parse_boot_argn("sweethalstream", &halstream, sizeof(halstream));
++		if (!halstream) {
++			(void)g_apm_set_cfg(src_port, G_VP_AW_IID, 0x10013d2a, aw,
++			    sizeof(aw), "vp/aw_cfg");
++			(void)g_apm_set_cfg(src_port, G_VP_AW_IID, 0x10013d2a, aw2,
++			    sizeof(aw2), "vp/aw_cfg2");
++		} else {
++			printf("SWEET MARK: halstream awcfg-bypass v1\n");
++			sweet_log_sync();
++		}
++	}
+ 
+ 	/*
+ 	 * 0268: the one module in OUR graph that sits on the rate boundary has
+@@ -9060,23 +9109,311 @@ sweet_smp_start(void)
+ 	sweet_log_sync();
+ }
+ 
++/* ---- Bounded HAL stream adapter: one GLINK owner, no legacy tone/fallback. ---- */
++static uint64_t
++g_hal_now_us(void)
++{
++	uint64_t ns;
++
++	absolutetime_to_nanoseconds(mach_absolute_time(), &ns);
++	return ns / 1000u;
++}
++
++static void
++g_hal_wait_ms(uint32_t ms)
++{
++	g_wait(ms);
++}
++
++static void
++g_hal_poll(void)
++{
++	(void)g_drain(0);
++	sweet_audio_stream_tick(g_hal_now_us());
++}
++
++static uint32_t
++g_hal_tx_free(void)
++{
++	uint32_t head = g_rd(g_desc_off + 4u);
++	uint32_t tail = g_rd(g_desc_off);
++	uint32_t used = head >= tail ? head - tail : g_tx_len - tail + head;
++
++	return used + 8u < g_tx_len ? g_tx_len - used - 8u : 0u;
++}
++
++static int
++g_hal_send(const uint8_t *packet, uint32_t bytes)
++{
++	struct g_riid *intent;
++	uint32_t span = (bytes + 16u + 7u) & ~7u;
++
++	if (bytes == 0u || bytes > 4096u || span + 8u >= g_tx_len) {
++		return -1;
++	}
++	if (g_gpr_riid(bytes) == NULL) {
++		if (g_hal_tx_free() < 8u) {
++			return -1;
++		}
++		g_send(CMD_RX_INTENT_REQ, (uint16_t)g_lcid, bytes, NULL, 0);
++		if (!g_wait_riid(bytes, 1000u)) {
++			return -1;
++		}
++	}
++	for (uint32_t waited = 0; g_hal_tx_free() < span && waited < 100u; waited += 2u) {
++		g_hal_poll();
++		g_wait(2u);
++	}
++	sweet_audio_stream_tick(g_hal_now_us());
++	intent = g_gpr_riid(bytes);
++	if (intent == NULL || g_hal_tx_free() < span ||
++	    (bytes >= 24u && g_le32(packet + 20) == 0x0400100au &&
++	    sweet_audio_stream_faulted())) {
++		return -1;
++	}
++	intent->in_use = 1;
++	g_send_tx_data(intent->id, packet, bytes);
++	return 0;
++}
++
++static int
++g_hal_store(uint32_t offset, const int16_t *samples, uint32_t bytes)
++{
++	volatile uint32_t *target;
++
++	if (!g_shm_mapped || !g_shm_va || samples == NULL ||
++	    bytes != 4096u || offset >= 0x4000u || (offset & 4095u) != 0u) {
++		return -1;
++	}
++	target = (volatile uint32_t *)(g_shm_va + offset);
++	for (uint32_t frame = 0; frame < 1024u; frame++) {
++		target[frame] = (uint16_t)samples[2u * frame] |
++		    ((uint32_t)(uint16_t)samples[2u * frame + 1u] << 16);
++	}
++	__asm__ volatile("dsb sy" ::: "memory");
++	return 0;
++}
++
++/* Strict control reply binding; data completions go to the separate owner. */
++static int
++g_hal_xfer(const uint8_t *packet, uint32_t bytes, uint32_t opcode,
++    uint32_t source, uint32_t token, const char *what)
++{
++	g_hal_ctrl_token = token;
++	g_hal_ctrl_source = source;
++	g_hal_ctrl_opcode = opcode;
++	g_hal_ctrl_status = 0xffffffffu;
++	g_hal_ctrl_ready = 0;
++	g_hal_ctrl_pending = 1;
++	if (g_hal_send(packet, bytes) != 0) {
++		g_hal_ctrl_pending = 0;
++		printf("SWEET HALSTREAM: ctrl %s send failed\n", what);
++		return -1;
++	}
++	for (uint32_t waited = 0; waited < 5000u; waited += 5u) {
++		g_hal_poll();
++		if (g_hal_ctrl_ready) {
++			uint32_t status = g_hal_ctrl_status;
++
++			g_hal_ctrl_pending = 0;
++			printf("SWEET MARK: halstream ctrl v1 %s op=%#x status=%#x\n",
++			    what, opcode, status);
++			sweet_log_sync();
++			return status == 0u ? 0 : -1;
++		}
++		g_wait(5u);
++	}
++	g_hal_ctrl_pending = 0;
++	printf("SWEET HALSTREAM: ctrl %s timeout\n", what);
++	sweet_log_sync();
++	return -1;
++}
++
++static int
++g_hal_graph_ctrl(uint32_t source, uint32_t opcode, const char *what)
++{
++	uint8_t packet[64];
++	uint32_t token = 0x4a000000u | (opcode & 65535u);
++
++	memset(packet, 0, sizeof(packet));
++	g_put32(packet, 0x60u | ((uint32_t)sizeof(packet) << 8));
++	g_put32(packet + 4, 0x302u);
++	g_put32(packet + 8, source);
++	g_put32(packet + 12, 1u);
++	g_put32(packet + 16, token);
++	g_put32(packet + 20, opcode);
++	g_put32(packet + 36, 24u);
++	g_put32(packet + 40, 1u);
++	g_put32(packet + 44, APM_PARAM_ID_SUB_GRAPH_LIST);
++	g_put32(packet + 48, 8u);
++	g_put32(packet + 56, 1u);
++	g_put32(packet + 60, 0xb0000002u);
++	return g_hal_xfer(packet, sizeof(packet), opcode, source, token, what);
++}
++
++static int
++g_hal_unmap(void)
++{
++	uint8_t packet[28];
++	uint32_t opcode = 0x0100100du, source = 0x2002u, token = 0x4a00100du;
++
++	memset(packet, 0, sizeof(packet));
++	g_put32(packet, 0x60u | ((uint32_t)sizeof(packet) << 8));
++	g_put32(packet + 4, 0x302u);
++	g_put32(packet + 8, source);
++	g_put32(packet + 12, 1u);
++	g_put32(packet + 16, token);
++	g_put32(packet + 20, opcode);
++	g_put32(packet + 24, g_shm_handle);
++	return g_hal_xfer(packet, sizeof(packet), opcode, source, token, "unmap");
++}
++
++static int
++g_hal_guards(void)
++{
++	static const char *const zero[] = {
++		"sweetbatt", "sweeti2c", "sweetamp", "sweetampfirst",
++		"sweetampverify", "sweetnowait", "sweetdbb", "sweetexp",
++		"sweetgpu", "sweetgmuboot", "sweethap", "sweetsmp", "sweetreboot",
++		"sweetmfc", "sweetmfcget", "sweetvcfg2", "sweetep4308", "sweettdmclk"
++	};
++	static const char *const one[] = {
++		"sweethalbridge", "sweetpcm", "sweetdescsep", "sweets1",
++		"sweets1ap", "sweetiova", "sweetshmhi"
++	};
++	int pass = 1, flag, tdmsup = 0, i2c = 1, amp = 1;
++	int shmflag = 4, region = 0;
++
++	for (uint32_t i = 0; i < sizeof(zero) / sizeof(zero[0]); i++) {
++		flag = 0;
++		(void)PE_parse_boot_argn(zero[i], &flag, sizeof(flag));
++		if (flag != 0) {
++			pass = 0;
++		}
++	}
++	for (uint32_t i = 0; i < sizeof(one) / sizeof(one[0]); i++) {
++		flag = 0;
++		(void)PE_parse_boot_argn(one[i], &flag, sizeof(flag));
++		if (flag != 1) {
++			pass = 0;
++		}
++	}
++	(void)PE_parse_boot_argn("sweettdmvendor", &tdmsup, sizeof(tdmsup));
++	(void)PE_parse_boot_argn("sweeti2c", &i2c, sizeof(i2c));
++	(void)PE_parse_boot_argn("sweetamp", &amp, sizeof(amp));
++	(void)PE_parse_boot_argn("sweetshmflag", &shmflag, sizeof(shmflag));
++	(void)PE_parse_boot_argn("sweetshmsize", &region, sizeof(region));
++	if (tdmsup != 7 || i2c != 0 || amp != 0 || shmflag != 4 ||
++	    (region != 0 && region != 0x5000)) {
++		pass = 0;
++	}
++	printf("SWEET MARK: halstream guard v1 pass=%d\n", pass);
++	sweet_log_sync();
++	return pass;
++}
++
++static void
++g_hal_bringup(void)
++{
++	static const struct sweet_audio_stream_ops ops = {
++		.now_us = g_hal_now_us, .wait_ms = g_hal_wait_ms,
++		.poll = g_hal_poll, .store = g_hal_store, .send = g_hal_send
++	};
++	uint8_t open[40];
++	uint32_t source = 0x2010u, opcode = 0x01001000u, token = 0x4a001000u;
++	int opened = 0, stopped = -1, closed = -1, unmapped = -1;
++
++	if (g_hal_started_once) {
++		printf("SWEET HALSTREAM: graph already attempted; no restart\n");
++		return;
++	}
++	g_hal_started_once = 1;
++	if (g_prm_vote_clock(0x307u, 19200000u, 2u) != 0 ||
++	    g_prm_vote_clock(0x30eu, 22579200u, 5u) != 0 ||
++	    g_apm_shm_map(0x2002u) != 0 ||
++	    g_shm_region_size() != 0x5000u || !g_shm_va ||
++	    !g_shm_mapped || !g_shm_handle) {
++		printf("SWEET HALSTREAM: mapping/clock preflight failed\n");
++		sweet_log_sync();
++		return;
++	}
++	/* Zero the four data pages, then retain the exact accepted descriptor. */
++	printf("SWEET MARK: halstream graph v1 bytes=%u off=%#x\n",
++	    (unsigned)sizeof(g_graph_vp_wr_dec_cnv), 0x4000u);
++	sweet_log_sync();
++	for (uint32_t offset = 0; offset < 0x4000u; offset += 4u) {
++		*(volatile uint32_t *)(g_shm_va + offset) = 0;
++	}
++	for (uint32_t offset = 0; offset < sizeof(g_graph_vp_wr_dec_cnv); offset += 4u) {
++		*(volatile uint32_t *)(g_shm_va + 0x4000u + offset) =
++		    g_le32(g_graph_vp_wr_dec_cnv + offset);
++	}
++	__asm__ volatile("dsb sy" ::: "memory");
++	memset(open, 0, sizeof(open));
++	g_put32(open, 0x60u | ((uint32_t)sizeof(open) << 8));
++	g_put32(open + 4, 0x302u);
++	g_put32(open + 8, source);
++	g_put32(open + 12, 1u);
++	g_put32(open + 16, token);
++	g_put32(open + 20, opcode);
++	g_put32(open + 24, 0x4000u);
++	g_put32(open + 32, g_shm_handle);
++	g_put32(open + 36, sizeof(g_graph_vp_wr_dec_cnv));
++	if (g_hal_xfer(open, sizeof(open), opcode, source, token, "open") != 0) {
++		printf("SWEET HALSTREAM: open not acknowledged; mapping retained\n");
++		sweet_log_sync();
++		return; /* timeout may mean the DSP opened it; do not unmap */
++	}
++	opened = 1;
++	g_audio_graph_cfg_vp(source); /* AW cal bypassed; no new gain records */
++	if (g_hal_graph_ctrl(source, 0x01001001u, "prepare") != 0 ||
++	    g_hal_graph_ctrl(source, 0x01001002u, "start") != 0) {
++		goto teardown;
++	}
++	(void)sweet_audio_stream_run(g_shm_offset_mode ? 0 : g_shm_pa,
++	    g_shm_region_size(), g_shm_handle, source, G_VP_WR_IID, &ops);
++teardown:
++	if (opened) {
++		stopped = g_hal_graph_ctrl(source, 0x01001003u, "stop");
++		closed = g_hal_graph_ctrl(source, 0x01001004u, "close");
++	}
++	if (stopped == 0 && closed == 0) {
++		unmapped = g_hal_unmap();
++	}
++	printf("SWEET MARK: halstream teardown v1 open=%d stop=%d close=%d unmap=%d\n",
++	    opened, stopped, closed, unmapped);
++	sweet_log_sync();
++	if (unmapped == 0 && stopped == 0 && closed == 0) {
++		g_shm_mapped = 0;
++		sweet_audio_stream_finish();
++	}
++	/* No memory free or forced PAS shutdown if an acknowledgement is absent. */
++}
++
+ void
+ sweet_glink_probe(void)
+ {
+ 	int enabled = 0;
+ 	int rc;
++	int halstream = 0;
+ 
+-	g_cmddb_dump();
+-	/* Snapshot first: everything after this may write. */
+-	g_gpu_snapshot();
+-	/* SPMI rail probe next: g_gpu_probe resets the SoC when it is done. */
+-	g_rail_probe();
+-	/* Independent of the audio stack; gated by sweetgpu=1. */
+-	g_gpu_probe();
+-	/* Kernel-side GMU bring-up; gated by sweetgmuboot=1. */
+-	g_gmu_boot();
+-	/* Independent too: gated by sweetsmp=1. */
+-	sweet_smp_start();
++	(void)PE_parse_boot_argn("sweethalstream", &halstream, sizeof(halstream));
++	if (halstream && (halstream != 1 || !g_hal_guards())) {
++		return;
++	}
++	if (!halstream) {
++		g_cmddb_dump();
++		/* Snapshot first: everything after this may write. */
++		g_gpu_snapshot();
++		/* SPMI rail probe next: g_gpu_probe resets the SoC when it is done. */
++		g_rail_probe();
++		/* Independent of the audio stack; gated by sweetgpu=1. */
++		g_gpu_probe();
++		/* Kernel-side GMU bring-up; gated by sweetgmuboot=1. */
++		g_gmu_boot();
++		/* Independent too: gated by sweetsmp=1. */
++		sweet_smp_start();
++	}
+ 
+ 	(void)PE_parse_boot_argn("sweetshmhi", &g_shm_hi, sizeof(g_shm_hi));
+ 	if (g_shm_hi) {
+@@ -9201,6 +9538,10 @@ sweet_glink_probe(void)
+ 	g_drain(100);
+ 
+ 	/* Clocks the AP needs before it may read inside those macros. */
++	if (halstream) {
++		g_hal_bringup();
++		goto out;
++	}
+ 	{
+ 		int va_clk, rx_clk, ampfirst = 0;
+ 		int tdmclk = 0;
+diff --git a/bsd/dev/sweet_i2c.c b/bsd/dev/sweet_i2c.c
+index ba33e9d..e3e9dbe 100644
+--- a/bsd/dev/sweet_i2c.c
++++ b/bsd/dev/sweet_i2c.c
+@@ -832,7 +832,13 @@ sweet_i2c_probe_amps(void)
+ 	vm_offset_t spksw = 0;
+ 	uint32_t cfg_scl, cfg_sda, io_scl, io_sda;
+ 	uint32_t spksw_cfg = 0, spksw_io = 0;
++	int halstream = 0;
+ 
++	(void)PE_parse_boot_argn("sweethalstream", &halstream, sizeof(halstream));
++	if (halstream) {
++		printf("SWEET MARK: halstream amp-bypass v1 before MMIO\n");
++		return;
++	}
+ 	(void)PE_parse_boot_argn("sweeti2c", &on, sizeof(on));
+ 	(void)PE_parse_boot_argn("sweetamp", &amp_on, sizeof(amp_on));
+ 	(void)PE_parse_boot_argn("sweetnobb", &nobb, sizeof(nobb));
+diff --git a/bsd/conf/files b/bsd/conf/files
+index df3d486..465538a 100644
+--- a/bsd/conf/files
++++ b/bsd/conf/files
+@@ -115,6 +115,8 @@ bsd/dev/sweet_usb.c			standard
+ bsd/dev/sweet_audio.c			standard
+ bsd/dev/sweet_adsp.c			standard
+ bsd/dev/sweet_audio_bridge.c		standard
++bsd/dev/sweet_audio_periods.c		standard
++bsd/dev/sweet_audio_stream.c		standard
+ bsd/dev/sweet_glink.c			standard
+ bsd/dev/sweet_i2c.c			standard
+ bsd/dev/mem.c				standard
+diff --git a/bsd/dev/sweet_audio_bridge.c b/bsd/dev/sweet_audio_bridge.c
+index ccc1ea0..b85684e 100644
+--- a/bsd/dev/sweet_audio_bridge.c
++++ b/bsd/dev/sweet_audio_bridge.c
+@@ -37,6 +37,7 @@ extern void sweet_log_append(const char *c, int size);
+ 
+ uint32_t sweet_audio_bridge_consume(int16_t *out, uint32_t count);
+ void sweet_audio_bridge_init(void);
++uint32_t sweet_audio_bridge_muted(void);
+ 
+ struct marble_audio_volume {
+ 	uint32_t below;
+@@ -169,6 +170,17 @@ bridge_open(__unused dev_t dev, __unused int flags,
+ 	return 0;
+ }
+ 
++uint32_t
++sweet_audio_bridge_muted(void)
++{
++	uint32_t muted;
++
++	lck_mtx_lock(&bridge_lock);
++	muted = bridge_stats.volume_muted;
++	lck_mtx_unlock(&bridge_lock);
++	return muted;
++}
++
+ static int
+ bridge_close(__unused dev_t dev, __unused int flags,
+     __unused int devtype, __unused struct proc *p)
+diff --git a/bsd/dev/sweet_audio_periods.c b/bsd/dev/sweet_audio_periods.c
+new file mode 100644
+index 0000000..1654e42
+--- /dev/null
++++ b/bsd/dev/sweet_audio_periods.c
+@@ -0,0 +1,207 @@
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++#include <sys/param.h>
++#include <libkern/libkern.h>
++#include "sweet_audio_periods.h"
++
++#define MARBLE_PCM_WRITE_V2 0x0400100au
++#define MARBLE_PCM_DONE_V2 0x05001004u
++#define MARBLE_PCM_APPS 3u
++#define MARBLE_PCM_ADSP 2u
++#define MARBLE_PCM_TOKEN 0x80000000u
++#define MARBLE_PCM_TICKET_MAX 0x1fffffffu
++
++static uint32_t
++le32(const uint8_t *p)
++{
++	return (uint32_t)p[0] | (uint32_t)p[1] << 8 |
++	       (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
++}
++
++static void
++put32(uint8_t *p, uint32_t v)
++{
++	p[0] = (uint8_t)v;
++	p[1] = (uint8_t)(v >> 8);
++	p[2] = (uint8_t)(v >> 16);
++	p[3] = (uint8_t)(v >> 24);
++}
++
++int
++marble_pcm_init(struct marble_pcm_queue *q, uint64_t base, uint32_t region, uint32_t desc,
++    uint32_t desc_bytes, uint32_t handle, uint32_t src, uint32_t dst,
++    uint32_t ticket)
++{
++	if (q == NULL || !handle || !src || !dst || !ticket ||
++	    ticket > MARBLE_PCM_TICKET_MAX || region < MARBLE_PCM_PERIODS * MARBLE_PCM_BYTES ||
++	    desc < MARBLE_PCM_PERIODS * MARBLE_PCM_BYTES || desc > region ||
++	    desc_bytes > region - desc || base > ((uint64_t)-1) - region) {
++		return MARBLE_PCM_BAD;
++	}
++	memset(q, 0, sizeof(*q));
++	q->wire_base = base;
++	q->handle = handle;
++	q->src_port = src;
++	q->dst_port = dst;
++	q->ticket = ticket;
++	return MARBLE_PCM_OK;
++}
++
++int
++marble_pcm_stage(struct marble_pcm_queue *q, uint32_t p, const int16_t *input,
++    uint32_t frames, int muted)
++{
++	uint32_t peak_in = 0, peak_out = 0;
++	struct marble_pcm_period *period;
++
++	if (q == NULL || p >= MARBLE_PCM_PERIODS || frames > MARBLE_PCM_FRAMES ||
++	    (frames != 0 && input == NULL)) {
++		return MARBLE_PCM_BAD;
++	}
++	if (q->fault) {
++		return MARBLE_PCM_FAULT;
++	}
++	if (q->submissions >= MARBLE_PCM_MAX_SUBMISSIONS) {
++		return MARBLE_PCM_BUDGET;
++	}
++	period = &q->period[p];
++	if (period->owner != MARBLE_PCM_FREE) {
++		return MARBLE_PCM_BUSY;
++	}
++	if (q->ticket > MARBLE_PCM_TICKET_MAX) {
++		q->fault = 1;
++		return MARBLE_PCM_FAULT; /* no token wrap/reuse */
++	}
++	for (uint32_t i = 0; i < frames * 2u; i++) {
++		int32_t value = input[i];
++		uint32_t magnitude = (uint32_t)(value < 0 ? -value : value);
++		int32_t output = muted ? 0 : value / MARBLE_PCM_SAFE_DIVISOR;
++		uint32_t out_magnitude = (uint32_t)(output < 0 ? -output : output);
++
++		if (magnitude > peak_in) {
++			peak_in = magnitude;
++		}
++		if (out_magnitude > peak_out) {
++			peak_out = out_magnitude;
++		}
++		period->samples[i] = (int16_t)output;
++	}
++	memset(period->samples + frames * 2u, 0, (MARBLE_PCM_FRAMES - frames) * 4u);
++	period->token = MARBLE_PCM_TOKEN | (q->ticket++ << 2) | p;
++	period->owner = MARBLE_PCM_STAGED;
++	if (peak_in > q->peak_in) {
++		q->peak_in = peak_in;
++	}
++	if (peak_out > q->peak_out) {
++		q->peak_out = peak_out;
++	}
++	q->source_frames += frames;
++	q->silence_frames += MARBLE_PCM_FRAMES - frames;
++	return MARBLE_PCM_OK;
++}
++
++int
++marble_pcm_packet(struct marble_pcm_queue *q, uint32_t p, uint64_t now,
++    uint64_t timeout, uint8_t out[MARBLE_PCM_PACKET_BYTES])
++{
++	struct marble_pcm_period *period;
++	uint64_t address;
++
++	if (q == NULL || p >= MARBLE_PCM_PERIODS || out == NULL || timeout == 0 ||
++	    now > ((uint64_t)-1) - timeout) {
++		return MARBLE_PCM_BAD;
++	}
++	if (q->fault) {
++		return MARBLE_PCM_FAULT;
++	}
++	if (q->submissions >= MARBLE_PCM_MAX_SUBMISSIONS) {
++		return MARBLE_PCM_BUDGET;
++	}
++	period = &q->period[p];
++	if (period->owner != MARBLE_PCM_STAGED) {
++		return MARBLE_PCM_BUSY;
++	}
++	address = q->wire_base + p * MARBLE_PCM_BYTES;
++	memset(out, 0, MARBLE_PCM_PACKET_BYTES);
++	put32(out, (6u << 4) | (MARBLE_PCM_PACKET_BYTES << 8));
++	put32(out + 4, MARBLE_PCM_ADSP | MARBLE_PCM_APPS << 8);
++	put32(out + 8, q->src_port);
++	put32(out + 12, q->dst_port);
++	put32(out + 16, period->token); /* full token, never old low-16 truncation */
++	put32(out + 20, MARBLE_PCM_WRITE_V2);
++	put32(out + 24, (uint32_t)address);
++	put32(out + 28, (uint32_t)(address >> 32));
++	put32(out + 32, q->handle);
++	put32(out + 36, MARBLE_PCM_BYTES);
++	period->deadline = now + timeout;
++	period->owner = MARBLE_PCM_INFLIGHT; /* BEFORE caller hands packet to transport */
++	q->submissions++;
++	return MARBLE_PCM_OK;
++}
++
++int
++marble_pcm_done(struct marble_pcm_queue *q, const uint8_t *packet, uint32_t bytes)
++{
++	uint32_t token, p;
++	struct marble_pcm_period *period;
++	uint64_t address, expected;
++
++	if (q == NULL || packet == NULL || bytes < 40 ||
++	    (le32(packet) & 0xffu) != 0x60u || (le32(packet) >> 8) != bytes) {
++		return MARBLE_PCM_BAD;
++	}
++	if (q->fault) {
++		return MARBLE_PCM_FAULT;
++	}
++	if (le32(packet + 4) != (MARBLE_PCM_APPS | MARBLE_PCM_ADSP << 8) ||
++	    le32(packet + 8) != q->dst_port ||
++	    le32(packet + 12) != q->src_port ||
++	    le32(packet + 20) != MARBLE_PCM_DONE_V2) {
++		q->rejected++;
++		return MARBLE_PCM_STALE;
++	}
++	token = le32(packet + 16);
++	p = token & 3u;
++	period = &q->period[p];
++	address = le32(packet + 24) | (uint64_t)le32(packet + 28) << 32;
++	expected = q->wire_base + p * MARBLE_PCM_BYTES;
++	if (period->owner != MARBLE_PCM_INFLIGHT || token != period->token ||
++	    address != expected || le32(packet + 32) != q->handle) {
++		q->rejected++;
++		return MARBLE_PCM_STALE;
++	}
++	if (le32(packet + 36) != 0) {
++		q->fault = 1;
++		return MARBLE_PCM_FAULT; /* keep DMA-owned memory pinned on error */
++	}
++	period->owner = MARBLE_PCM_FREE;
++	q->completions++;
++	return MARBLE_PCM_OK;
++}
++
++int
++marble_pcm_expire(struct marble_pcm_queue *q, uint64_t now)
++{
++	if (q == NULL) {
++		return MARBLE_PCM_BAD;
++	}
++	if (q->fault) {
++		return MARBLE_PCM_FAULT;
++	}
++	for (uint32_t p = 0; p < MARBLE_PCM_PERIODS; p++) {
++		if (q->period[p].owner == MARBLE_PCM_INFLIGHT && now >= q->period[p].deadline) {
++			q->fault = 1;
++			return MARBLE_PCM_FAULT;
++		}
++	}
++	return MARBLE_PCM_OK;
++}
++
++void
++marble_pcm_abort(struct marble_pcm_queue *q)
++{
++	if (q != NULL) {
++		q->fault = 1;
++	}
++	/* Never free/rewrite outstanding DMA. Owner must STOP/unmap first. */
++}
++#endif
+diff --git a/bsd/dev/sweet_audio_periods.h b/bsd/dev/sweet_audio_periods.h
+new file mode 100644
+index 0000000..95fb9f3
+--- /dev/null
++++ b/bsd/dev/sweet_audio_periods.h
+@@ -0,0 +1,47 @@
++/*
++ * Portable, offline-verified candidate for the marble PCM feeder.
++ * Caller serializes access; no transport/hardware calls inside this core.
++ */
++#ifndef SWEET_AUDIO_PERIODS_H
++#define SWEET_AUDIO_PERIODS_H
++#include <sys/types.h>
++
++#define MARBLE_PCM_PERIODS 4u
++#define MARBLE_PCM_FRAMES 1024u
++#define MARBLE_PCM_BYTES 4096u
++#define MARBLE_PCM_PACKET_BYTES 68u
++#define MARBLE_PCM_MAX_SUBMISSIONS 30u
++#define MARBLE_PCM_SAFE_DIVISOR 32
++#define MARBLE_PCM_SAFE_PEAK 1024u
++
++enum marble_pcm_result {
++	MARBLE_PCM_OK = 0, MARBLE_PCM_BAD = -1, MARBLE_PCM_BUSY = -2, MARBLE_PCM_STALE = -3,
++	MARBLE_PCM_FAULT = -4, MARBLE_PCM_BUDGET = -5
++};
++enum marble_pcm_owner { MARBLE_PCM_FREE, MARBLE_PCM_STAGED, MARBLE_PCM_INFLIGHT };
++
++struct marble_pcm_period {
++	int16_t samples[MARBLE_PCM_FRAMES * 2];
++	uint32_t owner, token;
++	uint64_t deadline;
++};
++struct marble_pcm_queue {
++	struct marble_pcm_period period[MARBLE_PCM_PERIODS];
++	uint64_t wire_base;
++	uint32_t handle, src_port, dst_port, ticket, submissions;
++	uint32_t completions, rejected, fault, peak_in, peak_out;
++	uint64_t source_frames, silence_frames;
++};
++
++int marble_pcm_init(struct marble_pcm_queue *q, uint64_t wire_base, uint32_t region_bytes,
++    uint32_t descriptor_offset, uint32_t descriptor_bytes, uint32_t handle,
++    uint32_t src_port, uint32_t dst_port, uint32_t first_ticket);
++int marble_pcm_stage(struct marble_pcm_queue *q, uint32_t p, const int16_t *samples,
++    uint32_t frames, int muted);
++int marble_pcm_packet(struct marble_pcm_queue *q, uint32_t p, uint64_t now_us,
++    uint64_t timeout_us, uint8_t out[MARBLE_PCM_PACKET_BYTES]);
++int marble_pcm_done(struct marble_pcm_queue *q, const uint8_t *packet, uint32_t bytes);
++int marble_pcm_expire(struct marble_pcm_queue *q, uint64_t now_us);
++void marble_pcm_abort(struct marble_pcm_queue *q);
++
++#endif
+diff --git a/bsd/dev/sweet_audio_stream.c b/bsd/dev/sweet_audio_stream.c
+new file mode 100644
+index 0000000..cceac10
+--- /dev/null
++++ b/bsd/dev/sweet_audio_stream.c
+@@ -0,0 +1,278 @@
++/*
++ * Bounded HAL -> AudioReach feeder, first hardware-adapter stage.
++ * No amplifier/I2C/gain calls. Constant /32 attenuation and <=30 submissions.
++ */
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <libkern/libkern.h>
++#include "sweet_audio_stream.h"
++
++extern void sweet_log_append(const char *c, int size);
++extern uint32_t sweet_audio_bridge_consume(int16_t *out, uint32_t count);
++
++static struct marble_pcm_queue stream_queue;
++static int16_t stream_input[MARBLE_PCM_FRAMES * 2u];
++static int stream_active;
++static int stream_once;
++static uint32_t stream_sent;
++static void stream_log(const char *format, ...)
++    __attribute__((format(printf, 1, 2)));
++
++static void
++stream_log(const char *format, ...)
++{
++	char line[220];
++	va_list ap;
++	int length;
++
++	va_start(ap, format);
++	length = vsnprintf(line, sizeof(line), format, ap);
++	va_end(ap);
++	if (length > 0) {
++		if (length >= (int)sizeof(line)) {
++			length = (int)sizeof(line) - 1;
++		}
++		sweet_log_append(line, length);
++	}
++}
++
++static uint32_t
++stream_word(const uint8_t *p)
++{
++	return (uint32_t)p[0] | (uint32_t)p[1] << 8 |
++	    (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
++}
++
++static uint32_t
++stream_peak(const int16_t *samples, uint32_t frames)
++{
++	uint32_t peak = 0;
++
++	for (uint32_t i = 0; i < frames * 2u; i++) {
++		int32_t value = samples[i];
++		uint32_t magnitude = (uint32_t)(value < 0 ? -value : value);
++
++		if (magnitude > peak) {
++			peak = magnitude;
++		}
++	}
++	return peak;
++}
++
++/* Preserve 128 first input frames for offline S16/F32/shape inspection. */
++static void
++stream_raw_witness(uint32_t frames)
++{
++	uint32_t first = 0, start, bytes;
++	const uint8_t *raw;
++	static const char digits[] = "0123456789abcdef";
++	char hex[129];
++
++	while (first < frames &&
++	    stream_peak(stream_input + 2u * first, 1u) < 32u) {
++		first++;
++	}
++	start = first > 8u ? first - 8u : 0u;
++	bytes = MIN((frames - start) * 4u, 512u);
++	raw = (const uint8_t *)(stream_input + 2u * start);
++	for (uint32_t offset = 0; offset < bytes; offset += 64u) {
++		uint32_t count = MIN(64u, bytes - offset);
++
++		for (uint32_t i = 0; i < count; i++) {
++			hex[2u * i] = digits[raw[offset + i] >> 4];
++			hex[2u * i + 1u] = digits[raw[offset + i] & 15u];
++		}
++		hex[2u * count] = 0;
++		stream_log("SWEET HALSTREAM: raw frame=%u off=%u bytes=%u %s\n",
++		    start, offset, count, hex);
++	}
++}
++
++/*
++ * Called on BOTH GLINK completed-packet paths, before the control rsp slot.
++ * A matching data/basic packet is consumed here, even if malformed/stale.
++ */
++int
++sweet_audio_stream_rx(const uint8_t *packet, uint32_t bytes)
++{
++	uint32_t opcode, token;
++	int result;
++
++	if (!stream_active || packet == NULL || bytes < 24u) {
++		return 0;
++	}
++	opcode = stream_word(packet + 20);
++	token = stream_word(packet + 16);
++	if (opcode != 0x05001004u &&
++	    !(opcode == 0x02001005u && (token & 0x80000000u))) {
++		return 0;
++	}
++	if (opcode == 0x02001005u) {
++		uint32_t period = token & 3u;
++
++		if (bytes < 32u || (stream_word(packet) & 255u) != 0x60u ||
++		    (stream_word(packet) >> 8) != bytes ||
++		    stream_word(packet + 4) != 0x203u ||
++		    stream_word(packet + 8) != stream_queue.dst_port ||
++		    stream_word(packet + 12) != stream_queue.src_port ||
++		    stream_word(packet + 24) != 0x0400100au ||
++		    stream_queue.period[period].owner != MARBLE_PCM_INFLIGHT ||
++		    stream_queue.period[period].token != token) {
++			stream_queue.rejected++;
++			return 1;
++		}
++		stream_log("SWEET HALSTREAM: basic rsp token=%#x len=%u -> abort\n",
++		    token, bytes);
++		marble_pcm_abort(&stream_queue);
++		return 1; /* ACK/error is never a buffer ownership witness */
++	}
++	result = marble_pcm_done(&stream_queue, packet, bytes);
++	if (result == MARBLE_PCM_OK) {
++		if (stream_queue.completions <= 4u ||
++		    stream_queue.completions == MARBLE_PCM_MAX_SUBMISSIONS) {
++			stream_log("SWEET HALSTREAM: done=%u token=%#x attempted=%u\n",
++			    stream_queue.completions, token, stream_queue.submissions);
++		}
++	} else if (stream_queue.rejected <= 4u) {
++		stream_log("SWEET HALSTREAM: rejected result=%d token=%#x len=%u\n",
++		    result, token, bytes);
++	}
++	return 1;
++}
++
++static int
++stream_submit(uint32_t period, uint32_t frames,
++    const struct sweet_audio_stream_ops *ops)
++{
++	uint8_t packet[MARBLE_PCM_PACKET_BYTES];
++	uint32_t muted = sweet_audio_bridge_muted();
++	int result;
++
++	result = marble_pcm_stage(&stream_queue, period, stream_input, frames, muted != 0);
++	if (result != MARBLE_PCM_OK) {
++		return -1;
++	}
++	if (ops->store(period * MARBLE_PCM_BYTES,
++	    stream_queue.period[period].samples, MARBLE_PCM_BYTES) != 0) {
++		marble_pcm_abort(&stream_queue);
++		return -1;
++	}
++	result = marble_pcm_packet(&stream_queue, period, ops->now_us(), 1000000u, packet);
++	if (result != MARBLE_PCM_OK || ops->send(packet, sizeof(packet)) != 0) {
++		marble_pcm_abort(&stream_queue);
++		return -1;
++	}
++	stream_sent++;
++	if (stream_sent <= 4u || stream_sent == MARBLE_PCM_MAX_SUBMISSIONS) {
++		stream_log("SWEET HALSTREAM: sent=%u period=%u source=%llu peak-in=%u peak-out=%u\n",
++		    stream_sent, period, stream_queue.source_frames,
++		    stream_queue.peak_in, stream_queue.peak_out);
++	}
++	return 0;
++}
++
++int
++sweet_audio_stream_run(uint64_t base, uint32_t region, uint32_t handle,
++    uint32_t src, uint32_t dst, const struct sweet_audio_stream_ops *ops)
++{
++	uint32_t first_frames = 0;
++	int result = -1;
++
++	if (stream_once || ops == NULL || ops->now_us == NULL ||
++	    ops->wait_ms == NULL || ops->poll == NULL || ops->store == NULL ||
++	    ops->send == NULL ||
++	    marble_pcm_init(&stream_queue, base, region, 0x4000u, 856u,
++	    handle, src, dst, 1u) != MARBLE_PCM_OK) {
++		return -1;
++	}
++	stream_once = 1;
++	stream_active = 1;
++	stream_sent = 0;
++	stream_log("SWEET MARK: halstream v1 periods=4 bytes=4096 divisor=32 cap=30 amp=off\n");
++	stream_log("SWEET HALSTREAM: ready src=%#x dst=%#x handle=%#x base=%#llx wait-ms=120000\n",
++	    src, dst, handle, base);
++
++	/* A finite wait, not synthetic tone playback and not a raw timer spin. */
++	for (uint32_t attempt = 0; attempt < 12000u; attempt++) {
++		ops->poll();
++		first_frames = sweet_audio_bridge_consume(stream_input, MARBLE_PCM_FRAMES);
++		if (!sweet_audio_bridge_muted() &&
++		    stream_peak(stream_input, first_frames) >= 32u) {
++			stream_raw_witness(first_frames);
++			break;
++		}
++		first_frames = 0;
++		ops->wait_ms(10u);
++	}
++	if (first_frames == 0u) {
++		stream_log("SWEET HALSTREAM: no non-silent HAL frames before deadline\n");
++		goto out;
++	}
++	if (stream_submit(0, first_frames, ops) != 0) {
++		goto out;
++	}
++	for (uint32_t period = 1; period < MARBLE_PCM_PERIODS; period++) {
++		uint32_t frames = sweet_audio_bridge_consume(stream_input, MARBLE_PCM_FRAMES);
++
++		if (stream_submit(period, frames, ops) != 0) {
++			goto out;
++		}
++	}
++	for (uint32_t attempt = 0; attempt < 6000u; attempt++) {
++		ops->poll();
++		if (marble_pcm_expire(&stream_queue, ops->now_us()) != MARBLE_PCM_OK) {
++			break;
++		}
++		for (uint32_t period = 0; period < MARBLE_PCM_PERIODS; period++) {
++			if (stream_queue.submissions >= MARBLE_PCM_MAX_SUBMISSIONS) {
++				break;
++			}
++			if (stream_queue.period[period].owner == MARBLE_PCM_FREE) {
++				uint32_t frames = sweet_audio_bridge_consume(
++				    stream_input, MARBLE_PCM_FRAMES);
++
++				if (stream_submit(period, frames, ops) != 0) {
++					goto out;
++				}
++			}
++		}
++		if (stream_queue.completions == MARBLE_PCM_MAX_SUBMISSIONS &&
++		    stream_sent == MARBLE_PCM_MAX_SUBMISSIONS) {
++			result = 0;
++			break;
++		}
++		ops->wait_ms(2u);
++	}
++out:
++	stream_log("SWEET HALSTREAM: end result=%d attempted=%u sent=%u done=%u reject=%u fault=%u source=%llu silence=%llu peak-in=%u peak-out=%u\n",
++	    result, stream_queue.submissions, stream_sent, stream_queue.completions,
++	    stream_queue.rejected, stream_queue.fault,
++	    stream_queue.source_frames, stream_queue.silence_frames,
++	    stream_queue.peak_in, stream_queue.peak_out);
++	/* Remain active while caller STOP/CLOSE/UNMAP waits: isolate late DONE. */
++	return result;
++}
++
++void
++sweet_audio_stream_finish(void)
++{
++	stream_active = 0;
++	marble_pcm_abort(&stream_queue);
++	/* No restart and no DMA memory free here. */
++}
++
++int
++sweet_audio_stream_faulted(void)
++{
++	return stream_active && stream_queue.fault != 0;
++}
++
++void
++sweet_audio_stream_tick(uint64_t now_us)
++{
++	if (stream_active) {
++		(void)marble_pcm_expire(&stream_queue, now_us);
++	}
++}
++#endif
+diff --git a/bsd/dev/sweet_audio_stream.h b/bsd/dev/sweet_audio_stream.h
+new file mode 100644
+index 0000000..56d5ec4
+--- /dev/null
++++ b/bsd/dev/sweet_audio_stream.h
+@@ -0,0 +1,26 @@
++#ifndef SWEET_AUDIO_STREAM_H
++#define SWEET_AUDIO_STREAM_H
++#include <sys/types.h>
++#include "sweet_audio_periods.h"
++
++/*
++ * The ADSP/GLINK thread alone runs these callbacks and the completion handler.
++ * Battery polling must remain disabled so no second consumer drains the FIFO.
++ */
++struct sweet_audio_stream_ops {
++	uint64_t (*now_us)(void);
++	void (*wait_ms)(uint32_t ms);
++	void (*poll)(void);
++	int (*store)(uint32_t offset, const int16_t *samples, uint32_t bytes);
++	int (*send)(const uint8_t *packet, uint32_t bytes);
++};
++
++int sweet_audio_stream_run(uint64_t base, uint32_t region, uint32_t handle,
++    uint32_t src, uint32_t dst, const struct sweet_audio_stream_ops *ops);
++int sweet_audio_stream_rx(const uint8_t *packet, uint32_t bytes);
++void sweet_audio_stream_finish(void);
++int sweet_audio_stream_faulted(void);
++void sweet_audio_stream_tick(uint64_t now_us);
++uint32_t sweet_audio_bridge_muted(void);
++
++#endif

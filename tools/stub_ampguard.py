@@ -56,16 +56,17 @@ static uint32_t pins[1026], spksw_pad[2];
 static int se15_probe_calls, sw_i2c_ok;
 static int rst_a, rst_b, boot_nobb, disabled, map_fail, init_fail, bad_id, profile_fail;
 static int scans, drive_low_after_profile, profile_attempts, init_calls, snapshots;
-static int scan_success;
+static int scan_success, halstream, maps;
 int PE_parse_boot_argn(const char *name, void *out, unsigned long len) {
     int value;
-    if(!strcmp(name,"sweetnobb") && boot_nobb >= 0) value=boot_nobb;
+    if(!strcmp(name,"sweethalstream") && halstream) value=halstream;
+    else if(!strcmp(name,"sweetnobb") && boot_nobb >= 0) value=boot_nobb;
     else if(!strcmp(name,"sweeti2c") && disabled) value=0;
     else return 0;
     if(len!=sizeof(value)) abort(); memcpy(out,&value,len); return 1;
 }
 vm_offset_t ml_io_map(vm_offset_t address, unsigned long size) {
-    (void)address; (void)size; return map_fail ? 0 : (vm_offset_t)pins;
+    (void)address; (void)size; maps++; return map_fail ? 0 : (vm_offset_t)pins;
 }
 vm_offset_t sw_pad_map(uint32_t address) {
     return address == SW_AMP_SPKSW_PA ? (vm_offset_t)spksw_pad : 0;
@@ -130,14 +131,15 @@ void reset_case(void) {
     rst_a=rst_b=0; boot_nobb=-1; disabled=map_fail=init_fail=bad_id=profile_fail=0;
     scans=drive_low_after_profile=profile_attempts=init_calls=snapshots=0;
     se15_probe_calls=1; sw_i2c_ok=0; scan_success=0;
+    halstream=maps=0;
 }
 void report(const char *label) {
     printf("CASE {\"label\":\"%s\",\"scans\":%d,\"post_profile_reset_low\":%d,"
         "\"rst_a\":%d,\"rst_b\":%d,\"profile_attempts\":%d,\"init_calls\":%d,"
-        "\"snapshots\":%d,\"scl_cfg\":%u,\"sda_cfg\":%u,\"scl_io\":%u,"
+        "\"snapshots\":%d,\"maps\":%d,\"scl_cfg\":%u,\"sda_cfg\":%u,\"scl_io\":%u,"
         "\"sda_io\":%u,\"spksw_cfg\":%u,\"spksw_io\":%u}\n",label,
         scans,drive_low_after_profile,rst_a,rst_b,profile_attempts,init_calls,
-        snapshots,pins[0],pins[1024],pins[1],pins[1025],spksw_pad[0],spksw_pad[1]);
+        snapshots,maps,pins[0],pins[1024],pins[1],pins[1025],spksw_pad[0],spksw_pad[1]);
 }
 int main(void) {
     reset_case(); sweet_i2c_probe_amps(); report("default_late");
@@ -151,6 +153,7 @@ int main(void) {
     reset_case(); boot_nobb=0; se15_probe_calls=0; sweet_i2c_probe_amps(); report("diagnostic_early");
     reset_case(); disabled=1; sweet_i2c_probe_amps(); report("disabled");
     reset_case(); map_fail=1; sweet_i2c_probe_amps(); report("mapping_failure");
+    reset_case(); halstream=1; sweet_i2c_probe_amps(); report("halstream_bypass");
     return 0;
 }
 '''
@@ -181,12 +184,17 @@ def execute(source, directory, label):
             row['guard'] = guard
             rows.append(row)
             guard = None
-    if len(rows) != 11:
+    if len(rows) != 12:
         raise ValueError('not all probe paths were exercised')
     return code, run.stdout, {row['label']: row for row in rows}
 
 
 def check(new, old):
+    bypass = new['halstream_bypass']
+    assert bypass['maps'] == bypass['profile_attempts'] == bypass['init_calls'] == 0
+    assert bypass['scans'] == bypass['snapshots'] == 0
+    assert (bypass['rst_a'], bypass['rst_b']) == (0, 0)
+    assert bypass['guard'] is None
     assert old['default_late']['post_profile_reset_low'] == 2
     assert (old['default_late']['rst_a'], old['default_late']['rst_b']) == (0, 0)
     for name in ('default_late', 'explicit_skip', 'wrong_chip_id', 'profile_failure'):
@@ -230,7 +238,7 @@ def main():
         new_code, new_log, new_rows = execute(current, folder, 'new')
         old_code, old_log, old_rows = execute(old, folder, 'old')
         check(new_rows, old_rows)
-        result = {'passed': True, 'cases': 11, 'old_default_late': old_rows['default_late'],
+        result = {'passed': True, 'cases': len(new_rows), 'old_default_late': old_rows['default_late'],
                   'new': list(new_rows.values()),
                   'scope': 'Host GPIO/controller mocks only; no real PA state or sound claim.'}
         if args.output_dir:

@@ -94,6 +94,7 @@ int main(void) {
  assert(bridge_ioctl(0,MARBLE_AUDIO_SET_VOLUME,(caddr_t)&v,0,NULL)==0);
  assert(bridge_stats.volume_below==MARBLE_AUDIO_BELOW_MAX);
  assert(bridge_stats.volume_muted==1 && bridge_stats.volume_generation==1);
+ assert(sweet_audio_bridge_muted()==1);
  struct marble_audio_stats s; memset(&s,0,sizeof(s));
  assert(bridge_ioctl(0,MARBLE_AUDIO_GET_STATS,(caddr_t)&s,0,NULL)==0);
  assert(s.volume_below==MARBLE_AUDIO_BELOW_MAX && s.overwritten_frames==10);
@@ -108,6 +109,7 @@ def main():
     code = (SUPPORT + '\n' +
             function(source, 'bridge_accept_locked') + '\n' +
             function(source, 'sweet_audio_bridge_consume') + '\n' +
+            function(source, 'sweet_audio_bridge_muted') + '\n' +
             function(source, 'bridge_ioctl') + '\n' + MAIN)
     with tempfile.TemporaryDirectory(prefix='halbridge-host-') as name:
         folder = Path(name)
@@ -123,7 +125,7 @@ def main():
         'passed': True,
         'source': str(SOURCE),
         'functions': ['bridge_accept_locked', 'sweet_audio_bridge_consume',
-                      'bridge_ioctl'],
+                      'bridge_ioctl', 'sweet_audio_bridge_muted'],
         'checks': ['fifo', 'zero-fill', 'overwrite accounting',
                    'volume clamp', 'stats ioctl'],
         'scope': 'host locks/logs mocked; no DSP, TDM, amplifier or device access',
