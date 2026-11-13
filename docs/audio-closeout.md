@@ -4,6 +4,9 @@
 > 候选必须是0294的v2 guard，实际参数`sweets1ap=3`，其余0293逻辑判据不变。
 > 见 [`audio-halstream-0294-2026-11-13.md`](audio-halstream-0294-2026-11-13.md)。
 
+> **第70枪身份已冻结，未开**：image SHA `931181d6…fe19f`，
+> sweettime=`1794581323`，完整判据见0294文档“第70枪冻结判据”。仍69/120。
+
 > **0293/第70枪候选事前逻辑门（2026-11-13，未开）**：
 > [`audio-halstream-0293-2026-11-13.md`](audio-halstream-0293-2026-11-13.md)
 > 已固定amp-bypass、原始PCM字节、30次严格提交/归还及STOP/CLOSE/UNMAP门；

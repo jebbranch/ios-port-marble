@@ -1,5 +1,12 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **0294第70枪镜像已冻结，设备尚未在线（2026-11-13）**：
+> `images/halstream-0294-20261113.img` SHA `931181d6…fe19f`，
+> sweettime `1794581323`，raw/kernel/84 marker/14符号/8核/576B参数门通过。
+> 本版功放硬绕过、只验证30个HAL period的DSP归还与安全STOP/CLOSE/UNMAP，
+> 不是听测。设备回来后只准一轮；若需手动长按而用户离席则等待。
+> 冻结门见 [`docs/audio-halstream-0294-2026-11-13.md`](docs/audio-halstream-0294-2026-11-13.md)。
+
 > **0294等待完整构建（2026-11-13）**：开机前发现0293 guard错误要求
 > `sweets1ap=1`，而当前数据面已验证基线是`=3`（S1 leaf AP=11），所以0293内核
 > 明确禁用、未上机。0294只修该门并升级v2 marker；实际adapter 35项正负对照通过。

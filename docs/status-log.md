@@ -2756,3 +2756,14 @@ capture评分器9项正负对照通过。**模型尚未接入内核/GPR，无029
 `halstream guard v2 pass=%d s1ap=%d`，workflow同步替换。实际adapter检查从33增至35，
 覆盖3通过、1/0拒绝，其余生产核心/stream/GPR/功放安全逻辑不变。
 设备当时已不在adb/fastboot，不影响离线修复；没有设备操作，预算保持69/120。
+
+## 2026-11-13 0294完整构建与第70枪镜像冻结（尚未开，69/120）
+
+0294新release raw配对SHA=53923310…；CNTP唯一0x4aa348 NOP后kernel=
+4899c24c…。专用脚本打包8核KEEPALIVE `images/halstream-0294-20261113.img`，
+51302400B，SHA=931181d6…，sweettime=1794581323，实际cmdline576B、无重复key。
+sweetshmflag省略但默认/guard均4，避免突破590B；sweets1ap明确3。
+
+84个累计marker、新7 marker、14个bridge/stream/period符号、全部内嵌kernel段、
+ADSP blob、8 MPIDR、boot v4结构、GPU probe level0通过。旧0293内核未上机。
+设备此时不在adb/fastboot，所以只冻结镜像/事前判据，没有设备操作或预算增加。

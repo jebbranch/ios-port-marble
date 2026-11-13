@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "image": "/Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/images/halstream-0294-20261113.img",
+  "sha256": "931181d6b3e0b327b2a190f4efad9b693e77fbafcce6bfdc98b89d5f774fe19f",
+  "cmdline_bytes": 576,
+  "device_access": false
+}

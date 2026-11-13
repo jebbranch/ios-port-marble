@@ -12,5 +12,48 @@ workflow同步更新。不改SMMU配置实现、不新增权限实验、不改�
 新35项实际adapter主机测试含1/0拒绝、3通过；已有核心全S16测试不变。
 
 第70枪候选其余逻辑判据不变，只采用v2 guard/已验证s1ap3。
-用户当前设备在Android，尚未重启或引导。预算仍69/120。
-必须取得0294完整新产物并冻结镜像身份后才测试，不因用户离席绕过产物门。
+
+## 0294 完整产物与镜像身份
+
+GitHub release新raw配对SHA：
+`53923310ce90c6b5b90bc778512644a838ef9c11a9a87f1e2e214e5305c8b02e`。
+CNTP唯一`0x4aa348` NOP后kernel SHA：
+`4899c24cd04ee8d7f9067f646b4d01eac364314a200304f59c4a73984ce8897b`。
+
+最终候选镜像：
+`images/halstream-0294-20261113.img`，51302400 B，
+SHA=`931181d6b3e0b327b2a190f4efad9b693e77fbafcce6bfdc98b89d5f774fe19f`，
+sweettime=`1794581323`。
+
+实际cmdline=576B、无重复key，8核KEEPALIVE。`sweetbatt=0`在基线位置，
+无sweetreboot。关键参数：
+
+```text
+sweethalbridge=1 sweethalstream=1 sweetpcm=1 sweetdescsep=1
+sweets1=1 sweets1ap=3 sweetiova=1 sweets1va=0x1FFE8000 sweetshmhi=1
+sweettdmvendor=7 sweeti2c=0 sweetamp=0 sweetgpu=0 sweetbatt=0
+```
+
+`sweetshmflag`故意省略，代码及guard默认均为4，以满足590B预算；不以重复key覆盖。
+84个workflow累计marker、新7个stream marker、14个bridge/stream/period符号、
+所有kernel segment、ADSP blob、boot v4包体、8个MPIDR逐项通过。
+GPU shim probe level=0。默认旧kernel及capture镜像没有覆盖。
+
+本地`build_halstream_image.py --verify-only`必须在开机前再次通过。
+
+## 第70枪冻结判据
+
+设备当前离线，尚未启动，预算仍69/120。设备回来后只允许一次：
+
+1. 核serial=2aa26095、镜像SHA和verify-only；只能fastboot boot，禁flash。
+2. 有效ring唯一sweettime=1794581323，raw窗口/decoded长度成立。
+3. `halstream guard v2 pass=1 s1ap=3`，amp-bypass和awcfg-bypass各出现；
+   禁旧tone、ampwrite/ampguard、GPU/GMU及fallback数据路径。
+4. open/prepare/start的v1控制reply均status0，graph bytes=856/off=0x4000。
+5. 必须有非静音HAL输入和8条以内raw witness；离线核其是否合理S16。
+6. end必须`result=0 attempted=30 sent=30 done=30 reject=0 fault=0`，
+   `source>0`且`0<peak-out<=1024`。
+7. stop/close/unmap控制reply均status0，teardown open=1 stop=0 close=0 unmap=0；
+   无panic。任何缺项即停，不追加第二枪。
+8. 本版功放绕过、不会出声；人耳不是判据。用户若暂时离席且需要手动长按，
+   停在运行状态等待用户，不擅自用别的设备或额外引导。
