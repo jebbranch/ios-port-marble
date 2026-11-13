@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "baseline": "a3d5127",
+  "file": "bsd/dev/sweet_glink.c",
+  "scope": "single patch apply/check and exact post-image comparison"
+}

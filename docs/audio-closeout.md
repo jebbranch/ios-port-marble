@@ -1,5 +1,9 @@
 # 音频收尾（2026-10-27）
 
+> **第70枪产物门更新**：0293因guard要求`sweets1ap=1`而在开机前拒绝，未使用。
+> 候选必须是0294的v2 guard，实际参数`sweets1ap=3`，其余0293逻辑判据不变。
+> 见 [`audio-halstream-0294-2026-11-13.md`](audio-halstream-0294-2026-11-13.md)。
+
 > **0293/第70枪候选事前逻辑门（2026-11-13，未开）**：
 > [`audio-halstream-0293-2026-11-13.md`](audio-halstream-0293-2026-11-13.md)
 > 已固定amp-bypass、原始PCM字节、30次严格提交/归还及STOP/CLOSE/UNMAP门；

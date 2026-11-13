@@ -191,7 +191,7 @@ jobs:
                    "SWEET MARK: halstream v1 periods=4 bytes=4096 divisor=32 cap=30 amp=off" \
                    "SWEET MARK: halstream amp-bypass v1 before MMIO" \
                    "SWEET MARK: halstream awcfg-bypass v1" \
-                   "SWEET MARK: halstream guard v1 pass=%d" \
+                   "SWEET MARK: halstream guard v2 pass=%d s1ap=%d" \
                    "SWEET MARK: halstream graph v1 bytes=%u off=%#x" \
                    "SWEET MARK: halstream ctrl v1 %s op=%#x status=%#x" \
                    "SWEET MARK: halstream teardown v1 open=%d stop=%d close=%d unmap=%d" \

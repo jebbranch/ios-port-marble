@@ -2745,3 +2745,14 @@ capture评分器9项正负对照通过。**模型尚未接入内核/GPR，无029
 缺ACK保留DMA映射、不free、不强制PAS shutdown、不自动重开。
 本地链修复均已commit，marker列表新增7条。尚无新完整内核、无新镜像、无设备读写。
 逻辑事前门见`docs/audio-halstream-0293-2026-11-13.md`；下一步push/main触发完整编译。
+
+## 2026-11-13 0293产物开机前拒绝，0294恢复S1已验证基线（69/120）
+
+0293完整raw已发布，配对SHA=fb0644b5…，但在打包前逐项对照第68枪和START-HERE时
+发现新guard将`sweets1ap`错误列入“必须为1”。当前已付费验证的数据面基线为
+`sweets1ap=3`，leaf AP=11；所以0293未打包、未boot，不拿设备试参数漂移。
+
+0294只改sweet_glink guard：从通用ones移出sweets1ap，单独要求3，marker升级为
+`halstream guard v2 pass=%d s1ap=%d`，workflow同步替换。实际adapter检查从33增至35，
+覆盖3通过、1/0拒绝，其余生产核心/stream/GPR/功放安全逻辑不变。
+设备当时已不在adb/fastboot，不影响离线修复；没有设备操作，预算保持69/120。

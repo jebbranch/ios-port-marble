@@ -1,5 +1,11 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **0294等待完整构建（2026-11-13）**：开机前发现0293 guard错误要求
+> `sweets1ap=1`，而当前数据面已验证基线是`=3`（S1 leaf AP=11），所以0293内核
+> 明确禁用、未上机。0294只修该门并升级v2 marker；实际adapter 35项正负对照通过。
+> 仍69/120，必须取得0294新摘要/marker/镜像身份后才允许第70枪。
+> 见 [`docs/audio-halstream-0294-2026-11-13.md`](docs/audio-halstream-0294-2026-11-13.md)。
+
 > **0293离线接入已完成，等待完整构建（2026-11-13）**：真实GLINK两条收包路径已
 > 分派独立控制ACK/period DONE；默认关闭的`sweethalstream=1`只做4×4096B、除32、
 > cap30的有界HAL→AudioReach流。该阶段**强制绕过功放/I2C与AW cal，不是听测**；

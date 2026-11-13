@@ -121,11 +121,12 @@ static uint32_t g_shm_region_size(void) {return 0x5000;}
 static void g_audio_graph_cfg_vp(uint32_t source) {assert(source==0x2010);}
 static void g_send_tx_data(uint32_t iid,const uint8_t *packet,uint32_t bytes);
 static int PE_parse_boot_argn(const char *name,void *out,int size) {
- static const char *ones[]={"sweethalbridge","sweetpcm","sweetdescsep","sweets1","sweets1ap","sweetiova","sweetshmhi"};
+ static const char *ones[]={"sweethalbridge","sweetpcm","sweetdescsep","sweets1","sweetiova","sweetshmhi"};
  int value=0;assert(size==4);
  for(unsigned i=0;i<sizeof(ones)/sizeof(ones[0]);i++) if(!strcmp(name,ones[i]))value=1;
  if(!strcmp(name,"sweettdmvendor"))value=7;
  if(!strcmp(name,"sweetshmflag"))value=4;
+ if(!strcmp(name,"sweets1ap"))value=3;
  if(bad_flag && !strcmp(name,bad_flag))value=bad_flag_value;
  memcpy(out,&value,4);return 1;
 }
@@ -270,6 +271,8 @@ int main(void) {
  bad_flag="sweetshmflag";bad_flag_value=0;ok(g_hal_guards()==0);
  bad_flag="sweetshmsize";bad_flag_value=0x8000;ok(g_hal_guards()==0);
  bad_flag="sweetgmuboot";bad_flag_value=1;ok(g_hal_guards()==0);
+ bad_flag="sweets1ap";bad_flag_value=1;ok(g_hal_guards()==0);
+ bad_flag_value=0;ok(g_hal_guards()==0);
  printf("{\"passed\":true,\"checks\":%u,\"actual_adapter\":true,\"dsp\":\"mock-only\"}\n",case_count);
  return 0;
 }

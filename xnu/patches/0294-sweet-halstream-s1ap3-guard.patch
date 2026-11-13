@@ -1,0 +1,32 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 0ed4814..fb2e04a 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -9279,10 +9279,10 @@ g_hal_guards(void)
+ 	};
+ 	static const char *const one[] = {
+ 		"sweethalbridge", "sweetpcm", "sweetdescsep", "sweets1",
+-		"sweets1ap", "sweetiova", "sweetshmhi"
++		"sweetiova", "sweetshmhi"
+ 	};
+ 	int pass = 1, flag, tdmsup = 0, i2c = 1, amp = 1;
+-	int shmflag = 4, region = 0;
++	int shmflag = 4, region = 0, s1ap = 0;
+ 
+ 	for (uint32_t i = 0; i < sizeof(zero) / sizeof(zero[0]); i++) {
+ 		flag = 0;
+@@ -9303,11 +9303,12 @@ g_hal_guards(void)
+ 	(void)PE_parse_boot_argn("sweetamp", &amp, sizeof(amp));
+ 	(void)PE_parse_boot_argn("sweetshmflag", &shmflag, sizeof(shmflag));
+ 	(void)PE_parse_boot_argn("sweetshmsize", &region, sizeof(region));
++	(void)PE_parse_boot_argn("sweets1ap", &s1ap, sizeof(s1ap));
+ 	if (tdmsup != 7 || i2c != 0 || amp != 0 || shmflag != 4 ||
+-	    (region != 0 && region != 0x5000)) {
++	    (region != 0 && region != 0x5000) || s1ap != 3) {
+ 		pass = 0;
+ 	}
+-	printf("SWEET MARK: halstream guard v1 pass=%d\n", pass);
++	printf("SWEET MARK: halstream guard v2 pass=%d s1ap=%d\n", pass, s1ap);
+ 	sweet_log_sync();
+ 	return pass;
+ }
