@@ -6498,3 +6498,13 @@ PRM reply纳入严格route/token/opcode/status mailbox。默认listen=0不投票
 image `images/hallisten-0297-20261114.img` SHA `bf1f84c0…211e1`，
 sweettime1794627872、cmdline590B、90累计marker、17符号和8核门通过。
 只准目标serial执行一次；执行后预算73/120。触发一次声音，不提高、不重放。
+
+### 第73枪判决：无声，PRM专用回包未被0297识别（73/120）
+
+用户确认没声音；身份/窗口成立且HAL非静音及时出现。0x204 request发出后，
+0297等待5秒timeout，安全门没有OPEN图、没有功放访问、没有period，UNMAP=0。
+
+该timeout不能命名为PRM拒绝：第64枪全量RX已经证明PRM时钟应答是
+`op=0x02001002 src=2 dst=7 payload={0x0800102c,status}`，而0297 mailbox只认
+APM `0x02001005 payload={原命令opcode,status}`。所以本轮没有取得0x204 status，
+也没有进入PLL判据。0298只能修应答类型解析；wire request、厂商顺序及所有安全门不变。

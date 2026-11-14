@@ -1,0 +1,51 @@
+{
+  "passed": true,
+  "budget": "73/120",
+  "identity": {
+    "sweettime": 1794627872,
+    "ring_total": 131677,
+    "ring_sequence": 96,
+    "window_match": true
+  },
+  "hearing": "confirmed no sound",
+  "hal": {
+    "non_silent_present": true,
+    "first_non_silent_write": 3,
+    "frames_at_trigger": 3072,
+    "sound_frames_at_trigger": 709,
+    "peak_at_trigger": 32767
+  },
+  "tdm_clock": {
+    "request_sent": true,
+    "client_result": -1,
+    "client_timeout": true,
+    "actual_prm_status": "unknown because the mailbox expected the wrong response opcode",
+    "expected_by_0297": "APM BASIC_RSP 0x02001005",
+    "documented_prm_response": "PRM request done 0x02001002 with payload {0x0800102c,status}"
+  },
+  "graph": {
+    "opened": false,
+    "started": false
+  },
+  "amplifier": {
+    "touched": false,
+    "pll_checked": false,
+    "unmuted": false
+  },
+  "stream": {
+    "attempted": 0,
+    "sent": 0,
+    "done": 0
+  },
+  "safety": {
+    "shm_unmap_status": 0,
+    "graph_or_amplifier_started_after_timeout": false
+  },
+  "claim": "The 0297 safety gate prevented playback after its PRM mailbox timed out.",
+  "not_claimed": [
+    "PRM rejected clock 0x204",
+    "PRM accepted clock 0x204",
+    "AW88266 PLL remained unlocked",
+    "PCM reached the TDM endpoint"
+  ]
+}

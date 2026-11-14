@@ -2871,3 +2871,15 @@ sweettime1794627872，实际cmdline恰590B且无重复key。
 listen符号、全部内嵌段、ADT MPIDR、boot v4和GPU probe0通过；verify-only重跑通过。
 镜像尚未启动。只允许目标serial一次fastboot boot，执行后预算73/120；五分钟内触发
 一次声音，不提高音量、不重放。
+
+## 2026-11-15 第73枪：确认无声，0297 PRM mailbox类型错误（73/120）
+
+用户确认没声音。ring身份sweettime1794627872、raw total131677/seq96、窗口匹配。
+HAL第3次write已有709个非静音帧、peak32767。精确0x204 request发出后，0297
+`tdmclk-request`等待5秒timeout，安全门不OPEN图、不碰功放、不发period，UNMAP status0。
+
+历史第64枪全量收包明确：PRM request done是opcode `0x02001002`、src2/dst7，
+payload `{0x0800102c,status}`；0297却只接受APM BASIC_RSP `0x02001005`及
+`{原命令opcode,status}`。因此timeout是控制应答解析器失配，不能判PRM接受或拒绝，
+也没有测试AW PLL。下一补丁只修PRM专用回包识别，不改request bytes、顺序、峰值或功放。
+证据在`verify/hallisten-boot73/`，预算73/120。

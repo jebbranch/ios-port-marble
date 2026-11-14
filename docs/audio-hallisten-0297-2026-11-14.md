@@ -137,3 +137,43 @@ fastboot boot images/hallisten-0297-20261114.img
 
 执行即记第73枪，预算73/120。进入iOS后五分钟内触发一次声音；不要重复点击来制造
 第二次听测，不提高音量。若听到或没有，均回TWRP后以本文件已冻结判据拉原始ring。
+
+## 第73枪判决（2026-11-15）：确认无声，PRM回包解析器失配
+
+用户明确“确认没声音”。身份与窗口成立：
+
+- sweettime=`1794627872`
+- raw total=`131677`、seq=`96`
+- raw窗口与解码文本长度一致
+- image SHA=`bf1f84c0f6bed68f104a4f4c9f75008a3e6d982ae42c78651e3dc6eba6c211e1`
+
+HAL非静音输入已出现：第3次write时3072帧、709个非静音帧、peak32767。
+0297发送了精确的`0x204` request，但`g_hal_xfer`等待5秒后timeout，随即按安全门：
+
+```text
+request rc=-1
+no graph or amplifier start
+unmap status=0
+```
+
+因此本轮没有GRAPH_OPEN/START，没有safe-profile/PLL读取/解除静音，也没有PCM period。
+无声是真实反馈，但只证明安全门停止后没有播放。
+
+事后用已归档的第64枪全量收包交叉核实，PRM时钟应答不是APM BASIC_RSP：
+
+```text
+opcode = 0x02001002
+src=2 dst=7
+payload = {0x0800102c, status}
+```
+
+0297严格mailbox错误地只接受`0x02001005`和`payload={原命令opcode,status}`。
+历史第64枪恰有5条PRM request done；旧`g_prm_vote_clock_ex`也正是按共享槽读取
+`g_rsp+28`，所以T1曾能得到`0x204 ok`。因此本轮timeout属于解析器失配：
+
+- 不能写成PRM拒绝；
+- 不能写成PRM接受；
+- 没有进入功放PLL主判据；
+- 下一版只修PRM专用应答识别，request wire bytes和时序保持不变。
+
+证据归档：`verify/hallisten-boot73/`。预算固定73/120。

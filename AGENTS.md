@@ -1,5 +1,12 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **第73枪确认无声，但判为PRM回包解析失配（2026-11-15，73/120）**：
+> 身份/窗口成立，HAL非静音及时到达；精确0x204 request发出后，0297只等待APM
+> BASIC_RSP `0x02001005`，而历史全量收包证明PRM专用应答是`0x02001002`
+> `{param=0x0800102c,status}`。故5秒timeout后安全门不OPEN、不碰功放、不发PCM，
+> UNMAP=0。不能判PRM接受/拒绝，也未测试PLL。见
+> [`docs/audio-hallisten-0297-2026-11-14.md`](docs/audio-hallisten-0297-2026-11-14.md)。
+
 > **0297第73枪镜像已冻结、尚未启动（2026-11-14，72/120）**：
 > `images/hallisten-0297-20261114.img` SHA `bf1f84c0…211e1`，
 > raw `e06d4770…8927`，kernel `d8f29c6a…0994`，sweettime1794627872，

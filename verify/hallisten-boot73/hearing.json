@@ -1,0 +1,10 @@
+{
+  "date": "2026-11-15",
+  "run": "hallisten-boot73",
+  "budget_charge": 1,
+  "budget_after": "73/120",
+  "user_report": "ok 了，确认没声音",
+  "normalized": "confirmed no sound",
+  "valid_negative": true,
+  "scope": "No audible output; the guarded path stopped before graph open, amplifier access, or PCM submission because the PRM response parser timed out."
+}
