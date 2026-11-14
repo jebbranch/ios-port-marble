@@ -220,6 +220,11 @@ def main():
         "device_booted": False, "budget_used": 70,
         "stage": "guarded HAL to DSP to AW88266, bounded listening test",
     }
+    if LABEL == "hallisten-0297-20261114":
+        manifest["budget_used"] = 72
+        manifest["stage"] = (
+            "guarded HAL to DSP to AW88266 with vendor TDM clock vote"
+        )
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps(manifest, indent=2))
 
