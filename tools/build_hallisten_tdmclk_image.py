@@ -18,8 +18,8 @@ builder.MARKERS = tuple(
 ) + (
     "SWEET MARK: halstream teardown v2 open=%d stop=%d close=%d "
     "tdmrel=%d unmap=%d",
-    "SWEET MARK: listen tdmclk v1 request rc=%d",
-    "SWEET MARK: listen tdmclk v1 release rc=%d",
+    "SWEET MARK: listen tdmclk v2 request rc=%d",
+    "SWEET MARK: listen tdmclk v2 release rc=%d",
 )
 
 if __name__ == "__main__":

@@ -6508,3 +6508,10 @@ sweettime1794627872、cmdline590B、90累计marker、17符号和8核门通过。
 `op=0x02001002 src=2 dst=7 payload={0x0800102c,status}`，而0297 mailbox只认
 APM `0x02001005 payload={原命令opcode,status}`。所以本轮没有取得0x204 status，
 也没有进入PLL判据。0298只能修应答类型解析；wire request、厂商顺序及所有安全门不变。
+
+### 0298/第74枪事前逻辑门（未完整构建、未开）
+
+APM reply继续严格绑定`0x02001005+命令opcode`；PRM时钟reply改为第64枪已实测的
+`0x02001002+0x0800102c`，route/full token/status仍必检。adapter56项、AW10场景、
+全S16 136656断言和全链applied239/历史skip49通过。完整构建及最终身份未冻结前
+禁止第74枪。主判据仍是request status0后双AW PLL locked；不加音量或重放。

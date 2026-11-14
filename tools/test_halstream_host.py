@@ -64,7 +64,7 @@ static uint8_t g_rsp[4096];
 static uint32_t g_rsp_len;
 static int g_rsp_ready;
 static uint32_t g_hal_ctrl_token, g_hal_ctrl_source, g_hal_ctrl_remote;
-static uint32_t g_hal_ctrl_opcode, g_hal_ctrl_status;
+static uint32_t g_hal_ctrl_rsp_opcode,g_hal_ctrl_rsp_key,g_hal_ctrl_status;
 static int g_hal_ctrl_pending, g_hal_ctrl_ready;
 static int g_hal_started_once;
 struct g_riid { uint32_t id; int in_use; };
@@ -74,6 +74,7 @@ static struct message events[256];
 static unsigned event_read,event_write,wire_data,wire_controls,case_count;
 static int mode, clock_failure, ctrl_failure, muted, supply, full_fifo;
 static int tdm_request_failure,tdm_release_failure;
+static int tdm_wrong_reply;
 static unsigned tdm_requests,tdm_releases;
 static uint32_t fail_opcode, drop_opcode;
 static int listen_start_calls,listen_stop_calls,listen_start_failure;
@@ -202,8 +203,9 @@ static void g_send_tx_data(uint32_t iid,const uint8_t *packet,uint32_t bytes) {
   } else {
    tdm_releases++;assert(bytes==64);
   }
-  g_put32(reply,0x60|(32u<<8));g_put32(reply+20,0x02001005);
-  g_put32(reply+24,op);
+  g_put32(reply,0x60|(32u<<8));
+  g_put32(reply+20,tdm_wrong_reply==1?0x02001005:0x02001002);
+  g_put32(reply+24,tdm_wrong_reply==2?0x08001032:PARAM_ID_RSC_AUDIO_HW_CLK);
   g_put32(reply+28,(op==0x0100100f?tdm_request_failure:tdm_release_failure)?3:0);
   enqueue(reply,32);
  } else {
@@ -232,7 +234,8 @@ static void reset(int new_mode) {
  g_shm_va=(vm_offset_t)(uintptr_t)fake_memory;
  g_shm_pa=0x11ffd0000ull;g_shm_mapped=0;g_shm_offset_mode=1;g_shm_handle=0xb0d7f408;
  remote.in_use=0;mode=new_mode;muted=0;supply=1;clock_failure=ctrl_failure=0;
- tdm_request_failure=tdm_release_failure=0;tdm_requests=tdm_releases=0;
+ tdm_request_failure=tdm_release_failure=tdm_wrong_reply=0;
+ tdm_requests=tdm_releases=0;
  fail_opcode=drop_opcode=0;full_fifo=0;
  listen_start_calls=listen_stop_calls=listen_start_failure=0;
  g_hal_ctrl_pending=g_hal_ctrl_ready=0;g_rsp_ready=0;g_rsp_len=0;g_hal_ctrl_remote=0;
@@ -312,6 +315,14 @@ int main(void) {
  ok(tdm_requests==1 && tdm_releases==0 && wire_controls==1 && wire_data==0);
  ok(listen_start_calls==0 && g_shm_mapped==0);
 
+ reset(0);bad_flag="sweetlisten";bad_flag_value=1;tdm_wrong_reply=1;g_hal_bringup();
+ ok(tdm_requests==1 && tdm_releases==0 && listen_start_calls==0);
+ ok(g_shm_mapped==0 && virtual_us>=5000000);
+
+ reset(0);bad_flag="sweetlisten";bad_flag_value=1;tdm_wrong_reply=2;g_hal_bringup();
+ ok(tdm_requests==1 && tdm_releases==0 && listen_start_calls==0);
+ ok(g_shm_mapped==0 && virtual_us>=5000000);
+
  reset(0);bad_flag="sweetlisten";bad_flag_value=1;fail_opcode=0x01001002;g_hal_bringup();
  ok(tdm_requests==1 && tdm_releases==1 && wire_data==0);
  ok(listen_start_calls==0 && g_shm_mapped==0);
@@ -359,7 +370,8 @@ def main():
         raise ValueError("actual 856B graph declaration missing")
     names = [
         "g_hal_receive", "g_hal_now_us", "g_hal_wait_ms", "g_hal_poll",
-        "g_hal_tx_free", "g_hal_send", "g_hal_store", "g_hal_xfer",
+        "g_hal_tx_free", "g_hal_send", "g_hal_store", "g_hal_xfer_reply",
+        "g_hal_xfer",
         "g_hal_graph_ctrl", "g_hal_unmap", "g_hal_tdm_clock",
         "g_hal_guards", "g_hal_bringup",
     ]

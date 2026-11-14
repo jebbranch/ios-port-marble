@@ -1,5 +1,12 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **0298修复PRM专用回包绑定，离线通过（2026-11-15，仍73/120）**：
+> APM继续严格认`0x02001005+原命令opcode`；PRM时钟改认历史实测的
+> `0x02001002+param0x0800102c`，route/full token仍严格匹配，DATA DONE不变。
+> adapter56项含错opcode/错param负对照、功放10场景、全S16 136656断言、全链
+> applied239/历史skip49通过。尚无完整内核/镜像/开机。见
+> [`docs/audio-hallisten-0298-2026-11-15.md`](docs/audio-hallisten-0298-2026-11-15.md)。
+
 > **第73枪确认无声，但判为PRM回包解析失配（2026-11-15，73/120）**：
 > 身份/窗口成立，HAL非静音及时到达；精确0x204 request发出后，0297只等待APM
 > BASIC_RSP `0x02001005`，而历史全量收包证明PRM专用应答是`0x02001002`

@@ -2883,3 +2883,15 @@ payload `{0x0800102c,status}`；0297却只接受APM BASIC_RSP `0x02001005`及
 `{原命令opcode,status}`。因此timeout是控制应答解析器失配，不能判PRM接受或拒绝，
 也没有测试AW PLL。下一补丁只修PRM专用回包识别，不改request bytes、顺序、峰值或功放。
 证据在`verify/hallisten-boot73/`，预算73/120。
+
+## 2026-11-15 0298 PRM专用回包绑定离线完成（仍73/120）
+
+0298只修第73枪证实的mailbox类型错误。APM控制仍严格匹配
+`0x02001005+原命令opcode`；PRM TDM request/release改为匹配历史实测的
+`0x02001002+PARAM_ID_RSC_AUDIO_HW_CLK(0x0800102c)`。两者仍要求GPR domain、
+远端src、本地dst和完整token一致，DATA DONE独立owner不变。
+
+实际adapter56门，包含正确PRM应答、status拒绝、错误response opcode和错误param id；
+生产core全S16/136656断言、AW状态机10场景、单补丁和GLINK全链applied239/历史skip49
+均通过。request bytes、厂商顺序、图、PCM、功放、峰值均未改。尚未完整构建/打包/
+开机，预算73/120。第74枪逻辑门见`docs/audio-hallisten-0298-2026-11-15.md`。

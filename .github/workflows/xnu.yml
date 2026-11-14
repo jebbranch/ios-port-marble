@@ -198,8 +198,8 @@ jobs:
                    "SWEET MARK: listen v1 awcfg-sent=1" \
                    "SWEET MARK: listen v1 started=1 peak-limit=16384 volume-reg=0x05a9" \
                    "SWEET MARK: listen v1 stopped=1" \
-                   "SWEET MARK: listen tdmclk v1 request rc=%d" \
-                   "SWEET MARK: listen tdmclk v1 release rc=%d" \
+                   "SWEET MARK: listen tdmclk v2 request rc=%d" \
+                   "SWEET MARK: listen tdmclk v2 release rc=%d" \
                    "SWEET HALSTREAM: ready src=%#x dst=%#x handle=%#x base=%#llx wait-ms=300000" \
                    "SWEET MARK: ibat " \
                    "SWEET MARK: ibat sweep sid=" \

@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "baseline": "bde3028",
+  "file": "bsd/dev/sweet_glink.c",
+  "scope": "APM and PRM control replies retain distinct strict identities"
+}

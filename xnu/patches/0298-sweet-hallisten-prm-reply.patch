@@ -1,0 +1,75 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 7502964..f2c3940 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -157,7 +157,7 @@ static int           g_nliids;
+ /* Last assembled GPR packet. */
+ static uint8_t  g_rsp[G_INTENT_SIZE];
+ static uint32_t g_hal_ctrl_token, g_hal_ctrl_source, g_hal_ctrl_remote;
+-static uint32_t g_hal_ctrl_opcode;
++static uint32_t g_hal_ctrl_rsp_opcode, g_hal_ctrl_rsp_key;
+ static uint32_t g_hal_ctrl_status;
+ static int g_hal_ctrl_pending, g_hal_ctrl_ready;
+ static int g_hal_started_once;
+@@ -177,8 +177,8 @@ g_hal_receive(const uint8_t *packet, uint32_t bytes)
+ 	    g_le32(packet + 8) == g_hal_ctrl_remote &&
+ 	    g_le32(packet + 12) == g_hal_ctrl_source &&
+ 	    g_le32(packet + 16) == g_hal_ctrl_token &&
+-	    g_le32(packet + 20) == 0x02001005u &&
+-	    g_le32(packet + 24) == g_hal_ctrl_opcode) {
++	    g_le32(packet + 20) == g_hal_ctrl_rsp_opcode &&
++	    g_le32(packet + 24) == g_hal_ctrl_rsp_key) {
+ 		if (!g_hal_ctrl_ready) {
+ 			g_hal_ctrl_status = g_le32(packet + 28);
+ 			g_hal_ctrl_ready = 1;
+@@ -9216,13 +9216,15 @@ g_hal_listen_stop(void)
+ 
+ /* Strict control reply binding; data completions go to the separate owner. */
+ static int
+-g_hal_xfer(const uint8_t *packet, uint32_t bytes, uint32_t opcode,
+-    uint32_t source, uint32_t token, const char *what)
++g_hal_xfer_reply(const uint8_t *packet, uint32_t bytes, uint32_t opcode,
++    uint32_t source, uint32_t token, uint32_t rsp_opcode, uint32_t rsp_key,
++    const char *what)
+ {
+ 	g_hal_ctrl_token = token;
+ 	g_hal_ctrl_source = source;
+ 	g_hal_ctrl_remote = g_le32(packet + 12);
+-	g_hal_ctrl_opcode = opcode;
++	g_hal_ctrl_rsp_opcode = rsp_opcode;
++	g_hal_ctrl_rsp_key = rsp_key;
+ 	g_hal_ctrl_status = 0xffffffffu;
+ 	g_hal_ctrl_ready = 0;
+ 	g_hal_ctrl_pending = 1;
+@@ -9250,6 +9252,14 @@ g_hal_xfer(const uint8_t *packet, uint32_t bytes, uint32_t opcode,
+ 	return -1;
+ }
+ 
++static int
++g_hal_xfer(const uint8_t *packet, uint32_t bytes, uint32_t opcode,
++    uint32_t source, uint32_t token, const char *what)
++{
++	return g_hal_xfer_reply(packet, bytes, opcode, source, token,
++	    0x02001005u, opcode, what);
++}
++
+ static int
+ g_hal_graph_ctrl(uint32_t source, uint32_t opcode, const char *what)
+ {
+@@ -9322,12 +9332,13 @@ g_hal_tdm_clock(int request)
+ 		g_put32(packet + 68, 4u);
+ 		g_put32(packet + 72, 0u);
+ 	}
+-	rc = g_hal_xfer(packet, bytes, opcode, GPR_PRM_SERVICE, token,
++	rc = g_hal_xfer_reply(packet, bytes, opcode, GPR_PRM_SERVICE, token,
++	    0x02001002u, PARAM_ID_RSC_AUDIO_HW_CLK,
+ 	    request ? "tdmclk-request" : "tdmclk-release");
+ 	if (request) {
+-		printf("SWEET MARK: listen tdmclk v1 request rc=%d\n", rc);
++		printf("SWEET MARK: listen tdmclk v2 request rc=%d\n", rc);
+ 	} else {
+-		printf("SWEET MARK: listen tdmclk v1 release rc=%d\n", rc);
++		printf("SWEET MARK: listen tdmclk v2 release rc=%d\n", rc);
+ 	}
+ 	sweet_log_sync();
+ 	return rc;
