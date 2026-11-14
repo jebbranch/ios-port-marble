@@ -2830,3 +2830,17 @@ stop/close/unmap全0。功放pre_play未调用，所以没有safe-profile/PLL/un
 
 结论：人类“没听到”真实，但不是功放/电声链有效负读数；旧镜像安全超时。
 下一版只把功放关闭状态的HAL等待延至300秒，其他状态机/峰值/cap不变，需新构建。
+
+## 2026-11-14 第72枪：有效无声，AW88266未见TDM时钟（72/120）
+
+0296身份成立：sweettime1794624169、raw total145822/seq174，窗口与文本长度一致。
+HAL在300秒内触发，第3次write已有3072帧、701个非静音帧、peak17372。GPIO52=0，
+两颗AW88266均为ID2032，安全profile读回ctrl=f543、vol=05a9。
+
+第一颗清PWDN后SYSST=0，PLLS/CLKS均0；安全门拒绝pre-play，period
+attempted/sent/done=0/0/0。两颗均重新powerdown为f543，未解除静音。用户明确反馈
+“没有”，因此这是有效的“无TDM bit clock所以未播放”负读数，不是HAL未触发或音量小。
+
+当前单变量改为厂商已经接受的PRM `0x204 @ 12.288MHz / attr4 / root0`：
+图OPEN前request，STOP/CLOSE后release；request拒绝不启功放、不发PCM。预算固定72/120。
+证据归档在`verify/hallisten-boot72/`。

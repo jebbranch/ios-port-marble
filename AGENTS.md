@@ -1,5 +1,12 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **第72枪有效无声，已定位到功放无TDM时钟（2026-11-14，72/120）**：
+> HAL非静音及时到达，两颗AW88266安全profile/ID/vol均正确；第一颗清PWDN后
+> `SYSST=0`，PLLS/CLKS均0，安全门在任何period提交前拒绝并双关断。用户明确“没有”。
+> 下一单变量只能是厂商精确PRM票`0x204@12.288MHz attr4 root0`，图OPEN前request、
+> STOP/CLOSE后release；禁止加音量绕过。见
+> [`docs/audio-hallisten-0296-2026-11-14.md`](docs/audio-hallisten-0296-2026-11-14.md)。
+
 > **0296第72枪镜像就绪（2026-11-14）**：
 > `images/hallisten-0296-20261114.img` SHA `9d7fcf7a…6843`，
 > sweettime1794624169，590B/88marker/17符号门通过。只把功放关闭时HAL等待从120s

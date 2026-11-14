@@ -1,0 +1,10 @@
+{
+  "date": "2026-11-14",
+  "run": "hallisten-boot72",
+  "budget_charge": 1,
+  "budget_after": "72/120",
+  "user_report": "没有",
+  "normalized": "no sound",
+  "valid_negative": true,
+  "scope": "No audible output; logs independently show the pre-play safety gate refused before any PCM period was submitted."
+}

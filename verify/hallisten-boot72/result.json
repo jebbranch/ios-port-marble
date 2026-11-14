@@ -1,0 +1,57 @@
+{
+  "passed": true,
+  "budget": "72/120",
+  "identity": {
+    "sweettime": 1794624169,
+    "ring_total": 145822,
+    "ring_sequence": 174,
+    "window_match": true
+  },
+  "hal": {
+    "non_silent_before_deadline": true,
+    "first_non_silent_write": 3,
+    "frames_at_trigger": 3072,
+    "sound_frames_at_trigger": 701,
+    "peak_at_trigger": 17372
+  },
+  "speaker_path": {
+    "speaker_switch": 0,
+    "handset_used": false,
+    "chip_ids": [
+      "0x2032",
+      "0x2032"
+    ],
+    "safe_ctrl": [
+      "0xf543",
+      "0xf543"
+    ],
+    "volume_reg": [
+      "0x05a9",
+      "0x05a9"
+    ]
+  },
+  "pll_gate": {
+    "address": "0x34",
+    "sysst": "0x0000",
+    "locked": false,
+    "pre_play_refused": true
+  },
+  "stream": {
+    "attempted": 0,
+    "sent": 0,
+    "done": 0,
+    "fault": 0
+  },
+  "safety": {
+    "powerdown_0x34": "0xf543",
+    "powerdown_0x35": "0xf543",
+    "unmuted": false
+  },
+  "hearing": "no sound",
+  "claim": "The guarded listen reached both AW88266 devices but refused playback because PLLS and CLKS were absent.",
+  "not_claimed": [
+    "PCM reached the physical TDM pins",
+    "amplifier output was enabled",
+    "speaker transducers were tested"
+  ]
+}

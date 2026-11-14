@@ -6465,3 +6465,17 @@ P2 sweettime=1794114102，raw total/解码=101520/101520。新marker两颗各一
 **实际寄存器从第67枪4003/38变为b440/05a9，PWDN/AMPPD/HMUTE均1→0，匹配寄存器表。** 这确认单消息写事务使初始化真实生效，不仅是ACK变好。
 通用回归全部通过：唯一dec-cnv图、OPEN/START=0、120tone/121DONE、timeout0、正常done+PSCI_RESET、panic0。末次Android boot_completed=1，电量99%。第68枪听感未明确反馈，保持未知；启动前工作位不能推广为PLL/I2S/电声输出已证明。
 用户明确要求这一轮后暂停音频。据此本轮结束，不加任何GPIO、功放、EOS或格式测试；最终预算68/120（R1免费扣0）。完整冻结状态见 **AUDIO-CLOSEOUT-2026-11-08.md**，其他方面入口见 OTHER-LINES-2026-11-08.md。
+
+## 2026-11-14 第72枪判决：PLL/CLKS门拒绝（72/120）
+
+0296有效窗口身份为`sweettime=1794624169`、raw total145822、seq174；用户反馈
+“没有”。300秒窗口内HAL非静音输入及时出现，两颗AW88266均完成安全profile并读回
+ID2032、ctrl=f543、vol=05a9，speaker-switch=0。
+
+第一颗功放清PWDN后`SYSST=0`，即PLLS=0且CLKS=0。预登记的安全门正确拒绝继续：
+没有解除双静音，没有DATA_BUFFER，attempted/sent/done=0/0/0；两颗均回到f543。
+因此本轮只判“当前halstream未产生功放可见的TDM时钟”，不能判输出级或振膜失败。
+
+下一轮只允许新增厂商精确PRM票`clk=0x204/freq=12288000/attr=4/root=0`：
+必须在GRAPH_OPEN前取得status0，STOP/CLOSE后成对release；任何request失败不得进入
+功放或PCM路径，release失败不得重开。不得提高峰值、硬件增益或切handset。
