@@ -2844,3 +2844,19 @@ attempted/sent/done=0/0/0。两颗均重新powerdown为f543，未解除静音。
 当前单变量改为厂商已经接受的PRM `0x204 @ 12.288MHz / attr4 / root0`：
 图OPEN前request，STOP/CLOSE后release；request拒绝不启功放、不发PCM。预算固定72/120。
 证据归档在`verify/hallisten-boot72/`。
+
+## 2026-11-14 0297厂商TDM位时钟票离线完成（仍72/120）
+
+0297只在sweetlisten路径按厂商逐字段包型，在GRAPH_OPEN前请求
+`clock 0x204/rate12288000/attr4/root0`，STOP/CLOSE均确认后释放；默认HAL流不投票，
+legacy sweettdmclk仍由guard强制为0。PRM应答新增远端src、本地dst、完整token、原opcode
+和status严格匹配。
+
+失败生命周期固定：request拒绝不OPEN/不启功放；OPEN不确定只释放独立时钟票但不假
+teardown图；STOP/CLOSE缺ACK时不撤时钟、不UNMAP；release拒绝不UNMAP、不自动重开。
+图、PCM格式、300秒等待、峰值16384、30period、Music表和硬件增益均不变。
+
+实际adapter52门、生产core全S16/136656断言、AW状态机10场景、单补丁post-image及GLINK
+全链applied238/历史skip49不增加均通过。补丁0297和三条唯一marker已加入workflow。
+尚未推送、完整构建、打包或开机；预算仍72/120。第73枪事前逻辑门见
+`docs/audio-hallisten-0297-2026-11-14.md`。

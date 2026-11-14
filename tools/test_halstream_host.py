@@ -50,6 +50,9 @@ SUPPORT = r'''
 #define CMD_RX_INTENT_REQ 7u
 #define G_VP_WR_IID 0x40bdu
 #define APM_PARAM_ID_SUB_GRAPH_LIST 0x08001005u
+#define GPR_PRM_SERVICE 7u
+#define GPR_PRM_MODULE 2u
+#define PARAM_ID_RSC_AUDIO_HW_CLK 0x0800102cu
 typedef uintptr_t vm_offset_t;
 static uint64_t virtual_us;
 static uint8_t fake_memory[0x5000] __attribute__((aligned(16)));
@@ -60,7 +63,8 @@ static uint32_t g_shm_handle, g_tx_len=8192, g_desc_off, g_lcid=4;
 static uint8_t g_rsp[4096];
 static uint32_t g_rsp_len;
 static int g_rsp_ready;
-static uint32_t g_hal_ctrl_token, g_hal_ctrl_source, g_hal_ctrl_opcode, g_hal_ctrl_status;
+static uint32_t g_hal_ctrl_token, g_hal_ctrl_source, g_hal_ctrl_remote;
+static uint32_t g_hal_ctrl_opcode, g_hal_ctrl_status;
 static int g_hal_ctrl_pending, g_hal_ctrl_ready;
 static int g_hal_started_once;
 struct g_riid { uint32_t id; int in_use; };
@@ -69,6 +73,8 @@ struct message { uint32_t bytes; uint8_t packet[68]; };
 static struct message events[256];
 static unsigned event_read,event_write,wire_data,wire_controls,case_count;
 static int mode, clock_failure, ctrl_failure, muted, supply, full_fifo;
+static int tdm_request_failure,tdm_release_failure;
+static unsigned tdm_requests,tdm_releases;
 static uint32_t fail_opcode, drop_opcode;
 static int listen_start_calls,listen_stop_calls,listen_start_failure;
 static const char *bad_flag;
@@ -182,6 +188,24 @@ static void g_send_tx_data(uint32_t iid,const uint8_t *packet,uint32_t bytes) {
    enqueue(wrong,56);
   }
   enqueue(reply,56);
+ } else if(op==0x0100100f || op==0x01001010) {
+  assert(src==GPR_PRM_SERVICE && dst==GPR_PRM_MODULE);
+  assert(g_le32(packet+36)==(op==0x0100100f?36u:24u));
+  assert(g_le32(packet+40)==GPR_PRM_MODULE);
+  assert(g_le32(packet+44)==PARAM_ID_RSC_AUDIO_HW_CLK);
+  assert(g_le32(packet+48)==(op==0x0100100f?20u:8u));
+  assert(g_le32(packet+56)==1 && g_le32(packet+60)==0x204);
+  if(op==0x0100100f) {
+   tdm_requests++;
+   assert(bytes==76 && g_le32(packet+64)==12288000);
+   assert(g_le32(packet+68)==4 && g_le32(packet+72)==0);
+  } else {
+   tdm_releases++;assert(bytes==64);
+  }
+  g_put32(reply,0x60|(32u<<8));g_put32(reply+20,0x02001005);
+  g_put32(reply+24,op);
+  g_put32(reply+28,(op==0x0100100f?tdm_request_failure:tdm_release_failure)?3:0);
+  enqueue(reply,32);
  } else {
   wire_controls++;
   assert(dst==1);
@@ -208,9 +232,10 @@ static void reset(int new_mode) {
  g_shm_va=(vm_offset_t)(uintptr_t)fake_memory;
  g_shm_pa=0x11ffd0000ull;g_shm_mapped=0;g_shm_offset_mode=1;g_shm_handle=0xb0d7f408;
  remote.in_use=0;mode=new_mode;muted=0;supply=1;clock_failure=ctrl_failure=0;
+ tdm_request_failure=tdm_release_failure=0;tdm_requests=tdm_releases=0;
  fail_opcode=drop_opcode=0;full_fifo=0;
  listen_start_calls=listen_stop_calls=listen_start_failure=0;
- g_hal_ctrl_pending=g_hal_ctrl_ready=0;g_rsp_ready=0;g_rsp_len=0;
+ g_hal_ctrl_pending=g_hal_ctrl_ready=0;g_rsp_ready=0;g_rsp_len=0;g_hal_ctrl_remote=0;
  g_hal_started_once=0;
  log_length=0;logs[0]=0;bad_flag=NULL;bad_flag_value=0;g_tx_len=8192;
  memset(fake_memory,0xa5,sizeof(fake_memory));
@@ -267,17 +292,38 @@ int main(void) {
 
  reset(0);bad_flag="sweetlisten";bad_flag_value=1;g_hal_bringup();
  ok(wire_data==30 && listen_start_calls==1 && listen_stop_calls==1);
+ ok(tdm_requests==1 && tdm_releases==1);
  ok(stream_queue.divisor==1 && stream_queue.ceiling==16384);
  ok(stream_queue.peak_out==16384);
 
  reset(0);bad_flag="sweetlisten";bad_flag_value=1;listen_start_failure=1;g_hal_bringup();
  ok(wire_data==0 && listen_start_calls==1 && listen_stop_calls==0);
+ ok(tdm_requests==1 && tdm_releases==1 && g_shm_mapped==0);
 
  reset(2);bad_flag="sweetlisten";bad_flag_value=1;g_hal_bringup();
  ok(wire_data==1 && listen_start_calls==1 && listen_stop_calls==1);
+ ok(tdm_requests==1 && tdm_releases==1);
 
  reset(3);bad_flag="sweetlisten";bad_flag_value=1;g_hal_bringup();
  ok(wire_data==4 && listen_start_calls==1 && listen_stop_calls==1);
+ ok(tdm_requests==1 && tdm_releases==1);
+
+ reset(0);bad_flag="sweetlisten";bad_flag_value=1;tdm_request_failure=1;g_hal_bringup();
+ ok(tdm_requests==1 && tdm_releases==0 && wire_controls==1 && wire_data==0);
+ ok(listen_start_calls==0 && g_shm_mapped==0);
+
+ reset(0);bad_flag="sweetlisten";bad_flag_value=1;fail_opcode=0x01001002;g_hal_bringup();
+ ok(tdm_requests==1 && tdm_releases==1 && wire_data==0);
+ ok(listen_start_calls==0 && g_shm_mapped==0);
+
+ reset(0);bad_flag="sweetlisten";bad_flag_value=1;fail_opcode=0x01001003;g_hal_bringup();
+ ok(tdm_requests==1 && tdm_releases==0 && g_shm_mapped==1 && stream_active);
+
+ reset(0);bad_flag="sweetlisten";bad_flag_value=1;fail_opcode=0x01001004;g_hal_bringup();
+ ok(tdm_requests==1 && tdm_releases==0 && g_shm_mapped==1 && stream_active);
+
+ reset(0);bad_flag="sweetlisten";bad_flag_value=1;tdm_release_failure=1;g_hal_bringup();
+ ok(tdm_requests==1 && tdm_releases==1 && g_shm_mapped==1 && stream_active);
 
  reset(0);clock_failure=1;g_hal_bringup();
  ok(wire_data==0 && wire_controls==0);
@@ -314,7 +360,8 @@ def main():
     names = [
         "g_hal_receive", "g_hal_now_us", "g_hal_wait_ms", "g_hal_poll",
         "g_hal_tx_free", "g_hal_send", "g_hal_store", "g_hal_xfer",
-        "g_hal_graph_ctrl", "g_hal_unmap", "g_hal_guards", "g_hal_bringup",
+        "g_hal_graph_ctrl", "g_hal_unmap", "g_hal_tdm_clock",
+        "g_hal_guards", "g_hal_bringup",
     ]
     code = SUPPORT + "\n"
     code += body((STREAM / "sweet_audio_periods.h").read_text()) + "\n"

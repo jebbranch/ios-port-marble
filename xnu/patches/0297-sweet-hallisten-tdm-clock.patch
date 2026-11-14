@@ -1,0 +1,169 @@
+diff --git a/bsd/dev/sweet_glink.c b/bsd/dev/sweet_glink.c
+index 38eb6c2..7502964 100644
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -156,7 +156,8 @@ static int           g_nliids;
+ 
+ /* Last assembled GPR packet. */
+ static uint8_t  g_rsp[G_INTENT_SIZE];
+-static uint32_t g_hal_ctrl_token, g_hal_ctrl_source, g_hal_ctrl_opcode;
++static uint32_t g_hal_ctrl_token, g_hal_ctrl_source, g_hal_ctrl_remote;
++static uint32_t g_hal_ctrl_opcode;
+ static uint32_t g_hal_ctrl_status;
+ static int g_hal_ctrl_pending, g_hal_ctrl_ready;
+ static int g_hal_started_once;
+@@ -173,7 +174,7 @@ g_hal_receive(const uint8_t *packet, uint32_t bytes)
+ 	    (g_le32(packet) & 255u) == 0x60u &&
+ 	    (g_le32(packet) >> 8) == bytes &&
+ 	    (g_le32(packet + 4) & 65535u) == 0x203u &&
+-	    g_le32(packet + 8) == 1u &&
++	    g_le32(packet + 8) == g_hal_ctrl_remote &&
+ 	    g_le32(packet + 12) == g_hal_ctrl_source &&
+ 	    g_le32(packet + 16) == g_hal_ctrl_token &&
+ 	    g_le32(packet + 20) == 0x02001005u &&
+@@ -9220,6 +9221,7 @@ g_hal_xfer(const uint8_t *packet, uint32_t bytes, uint32_t opcode,
+ {
+ 	g_hal_ctrl_token = token;
+ 	g_hal_ctrl_source = source;
++	g_hal_ctrl_remote = g_le32(packet + 12);
+ 	g_hal_ctrl_opcode = opcode;
+ 	g_hal_ctrl_status = 0xffffffffu;
+ 	g_hal_ctrl_ready = 0;
+@@ -9287,6 +9289,50 @@ g_hal_unmap(void)
+ 	return g_hal_xfer(packet, sizeof(packet), opcode, source, token, "unmap");
+ }
+ 
++/*
++ * The marble vendor requests this exact TDM/I2S bit-clock resource before
++ * opening the speaker graph, then releases it after STOP/CLOSE.  Keep it in
++ * the bounded listen path instead of reviving the legacy sweettdmclk knob:
++ * that path has a different graph/lifetime and is forbidden by the guards.
++ */
++static int
++g_hal_tdm_clock(int request)
++{
++	uint8_t packet[76];
++	uint32_t opcode = request ? 0x0100100fu : 0x01001010u;
++	uint32_t bytes = request ? 76u : 64u;
++	uint32_t token = request ? 0x4a00204fu : 0x4a002040u;
++	int rc;
++
++	memset(packet, 0, sizeof(packet));
++	g_put32(packet, 0x60u | (bytes << 8));
++	g_put32(packet + 4, 0x302u);
++	g_put32(packet + 8, GPR_PRM_SERVICE);
++	g_put32(packet + 12, GPR_PRM_MODULE);
++	g_put32(packet + 16, token);
++	g_put32(packet + 20, opcode);
++	g_put32(packet + 36, request ? 36u : 24u);
++	g_put32(packet + 40, GPR_PRM_MODULE);
++	g_put32(packet + 44, PARAM_ID_RSC_AUDIO_HW_CLK);
++	g_put32(packet + 48, request ? 20u : 8u);
++	g_put32(packet + 56, 1u);
++	g_put32(packet + 60, 0x204u);
++	if (request) {
++		g_put32(packet + 64, 12288000u);
++		g_put32(packet + 68, 4u);
++		g_put32(packet + 72, 0u);
++	}
++	rc = g_hal_xfer(packet, bytes, opcode, GPR_PRM_SERVICE, token,
++	    request ? "tdmclk-request" : "tdmclk-release");
++	if (request) {
++		printf("SWEET MARK: listen tdmclk v1 request rc=%d\n", rc);
++	} else {
++		printf("SWEET MARK: listen tdmclk v1 release rc=%d\n", rc);
++	}
++	sweet_log_sync();
++	return rc;
++}
++
+ static int
+ g_hal_guards(void)
+ {
+@@ -9344,6 +9390,7 @@ g_hal_bringup(void)
+ 	struct sweet_audio_stream_ops run_ops = ops;
+ 	uint8_t open[40];
+ 	uint32_t source = 0x2010u, opcode = 0x01001000u, token = 0x4a001000u;
++	int listen = 0, tdm_clock = 0, released = -1;
+ 	int opened = 0, stopped = -1, closed = -1, unmapped = -1;
+ 
+ 	if (g_hal_started_once) {
+@@ -9351,16 +9398,12 @@ g_hal_bringup(void)
+ 		return;
+ 	}
+ 	g_hal_started_once = 1;
+-	{
+-		int listen = 0;
+-
+-		(void)PE_parse_boot_argn("sweetlisten", &listen, sizeof(listen));
+-		if (listen) {
+-			run_ops.pre_play = g_hal_listen_start;
+-			run_ops.post_play = g_hal_listen_stop;
+-			run_ops.divisor = 1;
+-			run_ops.ceiling = 16384;
+-		}
++	(void)PE_parse_boot_argn("sweetlisten", &listen, sizeof(listen));
++	if (listen) {
++		run_ops.pre_play = g_hal_listen_start;
++		run_ops.post_play = g_hal_listen_stop;
++		run_ops.divisor = 1;
++		run_ops.ceiling = 16384;
+ 	}
+ 	if (g_prm_vote_clock(0x307u, 19200000u, 2u) != 0 ||
+ 	    g_prm_vote_clock(0x30eu, 22579200u, 5u) != 0 ||
+@@ -9371,6 +9414,23 @@ g_hal_bringup(void)
+ 		sweet_log_sync();
+ 		return;
+ 	}
++	/* Vendor ordering: the exact 0x204 vote precedes GRAPH_OPEN. */
++	if (listen) {
++		if (g_hal_tdm_clock(1) != 0) {
++			int unmap_rc;
++
++			printf("SWEET HALSTREAM: TDM clock request refused; "
++			    "no graph or amplifier start\n");
++			sweet_log_sync();
++			unmap_rc = g_hal_unmap();
++			if (unmap_rc == 0) {
++				g_shm_mapped = 0;
++				sweet_audio_stream_finish();
++			}
++			return;
++		}
++		tdm_clock = 1;
++	}
+ 	/* Zero the four data pages, then retain the exact accepted descriptor. */
+ 	printf("SWEET MARK: halstream graph v1 bytes=%u off=%#x\n",
+ 	    (unsigned)sizeof(g_graph_vp_wr_dec_cnv), 0x4000u);
+@@ -9396,7 +9456,7 @@ g_hal_bringup(void)
+ 	if (g_hal_xfer(open, sizeof(open), opcode, source, token, "open") != 0) {
+ 		printf("SWEET HALSTREAM: open not acknowledged; mapping retained\n");
+ 		sweet_log_sync();
+-		return; /* timeout may mean the DSP opened it; do not unmap */
++		goto teardown; /* do not unmap an uncertain graph */
+ 	}
+ 	opened = 1;
+ 	g_audio_graph_cfg_vp(source); /* AW cal bypassed; no new gain records */
+@@ -9411,13 +9471,18 @@ teardown:
+ 		stopped = g_hal_graph_ctrl(source, 0x01001003u, "stop");
+ 		closed = g_hal_graph_ctrl(source, 0x01001004u, "close");
+ 	}
+-	if (stopped == 0 && closed == 0) {
++	if (tdm_clock && (!opened || (stopped == 0 && closed == 0))) {
++		released = g_hal_tdm_clock(0);
++	}
++	if (stopped == 0 && closed == 0 &&
++	    (!tdm_clock || released == 0)) {
+ 		unmapped = g_hal_unmap();
+ 	}
+-	printf("SWEET MARK: halstream teardown v1 open=%d stop=%d close=%d unmap=%d\n",
+-	    opened, stopped, closed, unmapped);
++	printf("SWEET MARK: halstream teardown v2 open=%d stop=%d close=%d "
++	    "tdmrel=%d unmap=%d\n", opened, stopped, closed, released, unmapped);
+ 	sweet_log_sync();
+-	if (unmapped == 0 && stopped == 0 && closed == 0) {
++	if (unmapped == 0 && stopped == 0 && closed == 0 &&
++	    (!tdm_clock || released == 0)) {
+ 		g_shm_mapped = 0;
+ 		sweet_audio_stream_finish();
+ 	}

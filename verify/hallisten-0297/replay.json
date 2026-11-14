@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "baseline": "016bd75",
+  "file": "bsd/dev/sweet_glink.c",
+  "scope": "vendor request/release packet, strict reply binding and teardown"
+}

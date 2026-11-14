@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "baseline": "5ab596d",
+  "file": "bsd/dev/sweet_audio_stream.c",
+  "scope": "only wait string and loop bound"
+}

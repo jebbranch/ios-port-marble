@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "checks": 52,
+  "actual_adapter": true,
+  "dsp": "mock-only",
+  "production_core": {
+    "passed": true,
+    "assertions": 136656,
+    "s16_values_tested": 65536,
+    "safe_default_peak": 1024,
+    "max_configurable_ceiling": 16384,
+    "transport": "mock-only; no hardware"
+  },
+  "scope": "actual new core/runtime/adapter; old transport/clock and HAL ring mocked",
+  "functions": [
+    "g_hal_receive",
+    "g_hal_now_us",
+    "g_hal_wait_ms",
+    "g_hal_poll",
+    "g_hal_tx_free",
+    "g_hal_send",
+    "g_hal_store",
+    "g_hal_xfer",
+    "g_hal_graph_ctrl",
+    "g_hal_unmap",
+    "g_hal_tdm_clock",
+    "g_hal_guards",
+    "g_hal_bringup"
+  ]
+}

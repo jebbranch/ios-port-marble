@@ -6479,3 +6479,15 @@ ID2032、ctrl=f543、vol=05a9，speaker-switch=0。
 下一轮只允许新增厂商精确PRM票`clk=0x204/freq=12288000/attr=4/root=0`：
 必须在GRAPH_OPEN前取得status0，STOP/CLOSE后成对release；任何request失败不得进入
 功放或PCM路径，release失败不得重开。不得提高峰值、硬件增益或切handset。
+
+## 2026-11-14 0297/第73枪事前逻辑门（未完整构建、未开）
+
+0297已按厂商真实顺序实现：现有preflight/SHM_MAP后、GRAPH_OPEN前请求
+`0x204@12288000 attr4 root0`；只有STOP/CLOSE均确认才release，release确认才UNMAP。
+PRM reply纳入严格route/token/opcode/status mailbox。默认listen=0不投票，旧sweettdmclk
+继续必须为0。
+
+离线52项adapter、10场景AW、全S16 136656断言、单补丁与全链重放通过。完整构建、
+最终SHA/sweettime/cmdline/marker/符号门未完成前禁止第73枪。实机主判据是request status0
+之后两颗AW PLL `locked=1`；仍为0则不得解除静音或发period。详见
+[`audio-hallisten-0297-2026-11-14.md`](audio-hallisten-0297-2026-11-14.md)。

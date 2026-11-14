@@ -1,5 +1,12 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **0297厂商TDM时钟票离线通过，等待完整构建（2026-11-14，仍72/120）**：
+> 只在`sweetlisten=1`按厂商顺序于图OPEN前request
+> `0x204@12.288MHz attr4 root0`，STOP/CLOSE确认后release；旧`sweettdmclk`仍必须0。
+> request失败不OPEN/不启功放，STOP/CLOSE或release缺ACK不假释放DMA。实际adapter52项、
+> 功放10场景、全S16 136656断言和全链重放通过。尚无新内核/镜像/开机。
+> 见 [`docs/audio-hallisten-0297-2026-11-14.md`](docs/audio-hallisten-0297-2026-11-14.md)。
+
 > **第72枪有效无声，已定位到功放无TDM时钟（2026-11-14，72/120）**：
 > HAL非静音及时到达，两颗AW88266安全profile/ID/vol均正确；第一颗清PWDN后
 > `SYSST=0`，PLLS/CLKS均0，安全门在任何period提交前拒绝并双关断。用户明确“没有”。
