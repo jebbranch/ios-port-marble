@@ -1,0 +1,18 @@
+diff --git a/bsd/dev/sweet_audio_stream.c b/bsd/dev/sweet_audio_stream.c
+index 8975e1d..0604d5d 100644
+--- a/bsd/dev/sweet_audio_stream.c
++++ b/bsd/dev/sweet_audio_stream.c
+@@ -197,11 +197,11 @@ sweet_audio_stream_run(uint64_t base, uint32_t region, uint32_t handle,
+ 	}
+ 	stream_log("SWEET MARK: halstream v2 periods=4 bytes=4096 divisor=%u ceiling=%u cap=30 listen=%u\n",
+ 	    stream_queue.divisor, stream_queue.ceiling, ops->pre_play != NULL);
+-	stream_log("SWEET HALSTREAM: ready src=%#x dst=%#x handle=%#x base=%#llx wait-ms=120000\n",
++	stream_log("SWEET HALSTREAM: ready src=%#x dst=%#x handle=%#x base=%#llx wait-ms=300000\n",
+ 	    src, dst, handle, base);
+ 
+ 	/* A finite wait, not synthetic tone playback and not a raw timer spin. */
+-	for (uint32_t attempt = 0; attempt < 12000u; attempt++) {
++	for (uint32_t attempt = 0; attempt < 30000u; attempt++) {
+ 		ops->poll();
+ 		first_frames = sweet_audio_bridge_consume(stream_input, MARBLE_PCM_FRAMES);
+ 		if (!sweet_audio_bridge_muted() &&

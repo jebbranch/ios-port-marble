@@ -226,7 +226,7 @@ int main(void) {
  g_hal_bringup();ok(wire_data==30 && wire_controls==6); /* no hidden restart */
 
  reset(1);supply=0;g_hal_bringup();
- ok(wire_data==0 && virtual_us>=120000000 && virtual_us<121000000);
+ ok(wire_data==0 && virtual_us>=300000000 && virtual_us<301000000);
  ok(strstr(logs,"no non-silent")!=NULL && g_shm_mapped==0);
 
  reset(2);g_hal_bringup();

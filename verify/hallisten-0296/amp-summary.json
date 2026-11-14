@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "cases": 10,
+  "chip": "AW88266",
+  "speaker_switch": 0,
+  "volume_reg": "0x05a9",
+  "failure_paths_power_down_both": true,
+  "scope": "actual listen state functions and exact 44-register table; I2C/MMIO mocked"
+}

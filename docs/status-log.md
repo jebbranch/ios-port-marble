@@ -2809,3 +2809,16 @@ sweettime1794588906，实际cmdline恰590B且无重复key。新增变量仅sweet
 所有内嵌段/ADT MPIDR/boot v4/GPU probe0通过。verify-only重跑通过。
 镜像尚未启动；听测规则固定为一次约0.64秒短音，不提高音量、不追加重放，
 用户听感单独记录，日志门仍要求双PLL/无故障/30DONE/双关断/安全teardown。
+
+## 2026-11-14 第71枪免费R1：用户无声反馈，但触发晚于120s窗口（仍71/120）
+
+用户因首轮睡着明确授权免费重放。R1镜像只改sweettime=1794620381，原配置不变，
+扣除0。用户反馈没声音并回TWRP。ring total140574/seq181/identity/窗口成立。
+
+图open/prepare/start成功，stream进入listen=1，但120秒内无非静音HAL帧，
+明确打印no non-silent，end attempted/sent/done=0/0/0、fault0；随后
+stop/close/unmap全0。功放pre_play未调用，所以没有safe-profile/PLL/unmute/start/stop。
+用户操作对应的volume和非静音PCM发生在ADSP/图teardown之后。
+
+结论：人类“没听到”真实，但不是功放/电声链有效负读数；旧镜像安全超时。
+下一版只把功放关闭状态的HAL等待延至300秒，其他状态机/峰值/cap不变，需新构建。

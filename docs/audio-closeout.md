@@ -1,5 +1,10 @@
 # 音频收尾（2026-10-27）
 
+> **R1判决：用户没听到，但本轮未触发，扣0，仍71/120。** 120s窗口内无非静音，
+> attempted/sent/done=0；安全teardown后才出现PCM。无功放start/PLL/unmute证据，
+> 所以不是扬声器负读数。详见
+> [`audio-hallisten-r1-result-2026-11-14.md`](audio-hallisten-r1-result-2026-11-14.md)。
+
 > **第71枪免费重放R1事前身份（未开）**：用户因睡着未能听测，明确要求再启动且
 > 不计预算。R1只更新sweettime=1794620381，image SHA `530b750f…0324c`，
 > 与原图仅身份数字6字节实际变化；预算仍71/120。见

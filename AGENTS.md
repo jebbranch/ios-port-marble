@@ -1,5 +1,11 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **免费听测R1无声但未触发（2026-11-14，仍71/120）**：R1身份成立，但120s内
+> HAL全静音，流以0/0/0安全teardown；用户操作和非静音PCM发生在图关闭之后。
+> 功放pre_play从未调用，无PLL/unmute/period，故不是电声负读数。下一版只把功放关闭
+> 状态下的HAL等待延至300s，其余0295不动，须新构建。见
+> [`docs/audio-hallisten-r1-result-2026-11-14.md`](docs/audio-hallisten-r1-result-2026-11-14.md)。
+
 > **0295第71枪听测镜像已冻结、未开（2026-11-14）**：
 > `images/hallisten-0295-20261114.img` SHA `693ee73e…cbd9`，
 > sweettime1794588906，实际参数恰590B，raw/kernel/87marker/17符号/8核门通过。
