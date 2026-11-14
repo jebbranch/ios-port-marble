@@ -220,8 +220,8 @@ def main():
         "device_booted": False, "budget_used": 70,
         "stage": "guarded HAL to DSP to AW88266, bounded listening test",
     }
-    if LABEL == "hallisten-0297-20261114":
-        manifest["budget_used"] = 72
+    if LABEL in ("hallisten-0297-20261114", "hallisten-0298-20261115"):
+        manifest["budget_used"] = 73 if "0298" in LABEL else 72
         manifest["stage"] = (
             "guarded HAL to DSP to AW88266 with vendor TDM clock vote"
         )

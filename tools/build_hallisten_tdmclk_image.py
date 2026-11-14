@@ -9,7 +9,7 @@ spec = importlib.util.spec_from_file_location("hallisten_0296_builder", SOURCE)
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
 
-builder.LABEL = "hallisten-0297-20261114"
+builder.LABEL = "hallisten-0298-20261115"
 builder.IMAGE = ROOT / "images" / (builder.LABEL + ".img")
 builder.OUT = ROOT / "out" / builder.LABEL
 builder.MARKERS = tuple(
