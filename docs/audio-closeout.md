@@ -6491,3 +6491,10 @@ PRM reply纳入严格route/token/opcode/status mailbox。默认listen=0不投票
 最终SHA/sweettime/cmdline/marker/符号门未完成前禁止第73枪。实机主判据是request status0
 之后两颗AW PLL `locked=1`；仍为0则不得解除静音或发period。详见
 [`audio-hallisten-0297-2026-11-14.md`](audio-hallisten-0297-2026-11-14.md)。
+
+### 第73枪冻结身份（未开）
+
+0297 raw SHA `e06d4770…8927`、patched kernel `d8f29c6a…0994`；
+image `images/hallisten-0297-20261114.img` SHA `bf1f84c0…211e1`，
+sweettime1794627872、cmdline590B、90累计marker、17符号和8核门通过。
+只准目标serial执行一次；执行后预算73/120。触发一次声音，不提高、不重放。

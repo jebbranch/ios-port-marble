@@ -1,0 +1,17 @@
+fffffe0007512954 S _sweet_audio_bridge_consume
+fffffe0007512ae8 S _sweet_audio_bridge_muted
+fffffe0007512b24 S _sweet_audio_bridge_init
+fffffe0007513328 S _marble_pcm_init
+fffffe00075133ec S _marble_pcm_output
+fffffe0007513434 S _marble_pcm_stage
+fffffe0007513608 S _marble_pcm_packet
+fffffe0007513770 S _marble_pcm_done
+fffffe0007513898 S _marble_pcm_expire
+fffffe0007513934 S _marble_pcm_abort
+fffffe0007513948 S _sweet_audio_stream_rx
+fffffe0007513bb0 S _sweet_audio_stream_run
+fffffe0007514448 S _sweet_audio_stream_finish
+fffffe000751445c S _sweet_audio_stream_faulted
+fffffe0007514478 S _sweet_audio_stream_tick
+fffffe0007524a38 S _sweet_i2c_listen_start
+fffffe0007526224 S _sweet_i2c_listen_stop

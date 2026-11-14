@@ -1,5 +1,12 @@
 # marble / iOS-on-Android 项目工作守则
 
+> **0297第73枪镜像已冻结、尚未启动（2026-11-14，72/120）**：
+> `images/hallisten-0297-20261114.img` SHA `bf1f84c0…211e1`，
+> raw `e06d4770…8927`，kernel `d8f29c6a…0994`，sweettime1794627872，
+> 590B/90marker/17符号/8核门通过。只准目标机fastboot boot一次，执行后73/120；
+> 五分钟内触发一次声音，不提高/不重放。见
+> [`docs/audio-hallisten-0297-2026-11-14.md`](docs/audio-hallisten-0297-2026-11-14.md)。
+
 > **0297厂商TDM时钟票离线通过，等待完整构建（2026-11-14，仍72/120）**：
 > 只在`sweetlisten=1`按厂商顺序于图OPEN前request
 > `0x204@12.288MHz attr4 root0`，STOP/CLOSE确认后release；旧`sweettdmclk`仍必须0。

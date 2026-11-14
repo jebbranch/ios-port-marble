@@ -107,3 +107,33 @@ SWEET MARK: halstream teardown v2 open=%d stop=%d close=%d tdmrel=%d unmap=%d
 - 双PLL锁定但无声：必须结合是否真正发送/归还30 period及功放最终状态，
   才进入功放输出级/振膜链定位。
 - 听到声音：只宣称本次有界应用PCM→扬声器链闭合，不自动扩大时长、响度或常驻播放。
+
+## 第73枪冻结身份
+
+完整构建与最终打包已通过：
+
+- release raw SHA：
+  `e06d4770f137caf3fecfe99e57ab96107461a99fce3b7c86bbd70498f4678927`
+- CNTP修补后kernel SHA：
+  `d8f29c6aabf4bc7fc1362dd2ebdb219a3ae9c868d408fac76e2d32098daa0994`
+- image：`images/hallisten-0297-20261114.img`
+- image SHA：
+  `bf1f84c0f6bed68f104a4f4c9f75008a3e6d982ae42c78651e3dc6eba6c211e1`
+- sweettime：`1794627872`
+- cmdline：590B，无重复key，8核KEEPALIVE
+- workflow累计marker：90
+- bridge/period/stream/listen符号：17
+- CNTP原指令：raw恰1处；最终kernel为0处
+- kernel全部Mach-O段、ADT MPIDR、boot v4和GPU probe level0：通过
+
+三条0297 marker在raw/final kernel中各恰一处，旧teardown v1为0。`--verify-only`
+独立复跑通过。证据在`verify/hallisten-0297-image/`。
+
+因此只准对serial `2aa26095`执行一次：
+
+```bash
+fastboot boot images/hallisten-0297-20261114.img
+```
+
+执行即记第73枪，预算73/120。进入iOS后五分钟内触发一次声音；不要重复点击来制造
+第二次听测，不提高音量。若听到或没有，均回TWRP后以本文件已冻结判据拉原始ring。

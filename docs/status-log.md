@@ -2860,3 +2860,14 @@ teardown图；STOP/CLOSE缺ACK时不撤时钟、不UNMAP；release拒绝不UNMAP
 全链applied238/历史skip49不增加均通过。补丁0297和三条唯一marker已加入workflow。
 尚未推送、完整构建、打包或开机；预算仍72/120。第73枪事前逻辑门见
 `docs/audio-hallisten-0297-2026-11-14.md`。
+
+## 2026-11-14 0297完整构建与第73枪镜像冻结（尚未开，72/120）
+
+release raw SHA=e06d4770…，CNTP修补后kernel=d8f29c6a…。最终8核KEEPALIVE
+`images/hallisten-0297-20261114.img` 51306496B、SHA=bf1f84c0…，
+sweettime1794627872，实际cmdline恰590B且无重复key。
+
+90个累计marker、三条0297 marker各唯一且旧teardown v1为0，17个bridge/stream/period/
+listen符号、全部内嵌段、ADT MPIDR、boot v4和GPU probe0通过；verify-only重跑通过。
+镜像尚未启动。只允许目标serial一次fastboot boot，执行后预算73/120；五分钟内触发
+一次声音，不提高音量、不重放。
