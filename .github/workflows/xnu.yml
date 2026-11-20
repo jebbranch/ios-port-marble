@@ -200,6 +200,7 @@ jobs:
                    "SWEET MARK: listen v1 stopped=1" \
                    "SWEET MARK: listen tdmclk v2 request rc=%d" \
                    "SWEET MARK: listen tdmclk v2 release rc=%d" \
+                   "SWEET MARK: wifi handoff v1 readonly=1 stage=%d gdsc=%#x halted=%#x wlan=%#x perst=%#x" \
                    "SWEET HALSTREAM: ready src=%#x dst=%#x handle=%#x base=%#llx wait-ms=300000" \
                    "SWEET MARK: ibat " \
                    "SWEET MARK: ibat sweep sid=" \

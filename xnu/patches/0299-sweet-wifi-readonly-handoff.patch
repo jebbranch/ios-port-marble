@@ -1,0 +1,161 @@
+diff --git a/bsd/dev/sweet_wifi.c b/bsd/dev/sweet_wifi.c
+new file mode 100644
+index 0000000..ee703c5
+--- /dev/null
++++ b/bsd/dev/sweet_wifi.c
+@@ -0,0 +1,123 @@
++/* SPDX-License-Identifier: BSD-2-Clause-Patent */
++/*
++ * Marble QCA6490 / PCIe0 bring-up, ported from FoXLinne/UniXNU_marble
++ * commit 7a0d68fff2557f12be9f8c47f618fd332b7a3e67.
++ *
++ * Phase 1 is intentionally read-only.  It records the same GCC and TLMM
++ * handoff registers used by the proven iOS 18 implementation, but never
++ * writes a rail, clock, reset, GPIO, PHY, PCIe or endpoint register.
++ */
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <kern/clock.h>
++#include <machine/machine_routines.h>
++#include <pexpert/pexpert.h>
++
++extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
++extern void sweet_log_sync(void);
++
++#define SW_WIFI_GCC_PA        0x00100000u
++#define SW_WIFI_TLMM_PA       0x0f100000u
++#define SW_WIFI_PAGE_SIZE     0x00001000u
++#define SW_WIFI_GPIO_STRIDE   0x00001000u
++#define SW_WIFI_GPIO_IO       0x00000004u
++#define SW_WIFI_WLAN_GPIO     80u
++#define SW_WIFI_PERST_GPIO    94u
++#define SW_WIFI_GDSC          0x0007b004u
++#define SW_WIFI_MARKER \
++	"SWEET MARK: wifi handoff v1 readonly=1 stage=%d gdsc=%#x halted=%#x wlan=%#x perst=%#x"
++
++static const uint32_t sw_wifi_branches[] = {
++	0x7b020u, 0x7b028u, 0x7b030u, 0x7b034u, 0x7b03cu,
++	0x7b01cu, 0x7b08cu, 0x7b044u, 0x9d098u, 0x9d094u
++};
++
++struct sw_wifi_page {
++	uint32_t pa;
++	vm_offset_t va;
++};
++
++static struct sw_wifi_page sw_wifi_pages[4];
++
++static vm_offset_t
++sw_wifi_map_page(uint32_t pa)
++{
++	pa &= ~(SW_WIFI_PAGE_SIZE - 1u);
++	for (unsigned i = 0;
++	    i < sizeof(sw_wifi_pages) / sizeof(sw_wifi_pages[0]); ++i) {
++		if (sw_wifi_pages[i].pa == pa) {
++			return sw_wifi_pages[i].va;
++		}
++		if (sw_wifi_pages[i].pa == 0) {
++			sw_wifi_pages[i].va = ml_io_map(pa, SW_WIFI_PAGE_SIZE);
++			if (sw_wifi_pages[i].va) {
++				sw_wifi_pages[i].pa = pa;
++			}
++			return sw_wifi_pages[i].va;
++		}
++	}
++	return 0;
++}
++
++static uint32_t
++sw_wifi_read(uint32_t pa, bool *ok)
++{
++	vm_offset_t page = sw_wifi_map_page(pa);
++	if (!page) {
++		*ok = false;
++		return 0;
++	}
++	uint32_t value = *(volatile uint32_t *)(page +
++	    (pa & (SW_WIFI_PAGE_SIZE - 1u)));
++	__asm__ volatile("dmb oshld" ::: "memory");
++	return value;
++}
++
++static uint32_t
++sw_wifi_halted(bool *ok)
++{
++	uint32_t halted = 0;
++
++	for (unsigned i = 0;
++	    i < sizeof(sw_wifi_branches) / sizeof(sw_wifi_branches[0]); ++i) {
++		if (sw_wifi_read(SW_WIFI_GCC_PA + sw_wifi_branches[i], ok) &
++		    (1u << 31)) {
++			halted |= 1u << i;
++		}
++	}
++	return halted;
++}
++
++void
++sweet_wifi_init(void)
++{
++	int stage = 0;
++	uint32_t gdsc, halted, wlan, perst;
++	bool ok = true;
++
++	(void)PE_parse_boot_argn("sweetwifi", &stage, sizeof(stage));
++	if (stage == 0) {
++		return;
++	}
++	if (stage != 1) {
++		printf("SWEET WIFI: phase %d unavailable; only readonly phase 1 is built\n",
++		    stage);
++		sweet_log_sync();
++		return;
++	}
++	gdsc = sw_wifi_read(SW_WIFI_GCC_PA + SW_WIFI_GDSC, &ok);
++	halted = sw_wifi_halted(&ok);
++	wlan = sw_wifi_read(SW_WIFI_TLMM_PA +
++	    SW_WIFI_WLAN_GPIO * SW_WIFI_GPIO_STRIDE + SW_WIFI_GPIO_IO, &ok);
++	perst = sw_wifi_read(SW_WIFI_TLMM_PA +
++	    SW_WIFI_PERST_GPIO * SW_WIFI_GPIO_STRIDE + SW_WIFI_GPIO_IO, &ok);
++	if (!ok) {
++		printf("SWEET WIFI: readonly page mapping failed\n");
++		sweet_log_sync();
++		return;
++	}
++	printf(SW_WIFI_MARKER "\n", stage, gdsc, halted, wlan, perst);
++	sweet_log_sync();
++}
++#endif /* ARM64_BOARD_CONFIG_SWEET */
+diff --git a/bsd/conf/files b/bsd/conf/files
+index 465538a..0b642dd 100644
+--- a/bsd/conf/files
++++ b/bsd/conf/files
+@@ -119,6 +119,7 @@ bsd/dev/sweet_audio_periods.c		standard
+ bsd/dev/sweet_audio_stream.c		standard
+ bsd/dev/sweet_glink.c			standard
+ bsd/dev/sweet_i2c.c			standard
++bsd/dev/sweet_wifi.c			standard
+ bsd/dev/mem.c				standard
+ bsd/dev/munge.c 			optional config_requires_u32_munging
+ bsd/dev/unix_startup.c			standard
+diff --git a/bsd/dev/sweet_ufs.c b/bsd/dev/sweet_ufs.c
+index 7be6468..d5b4c64 100644
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -62,6 +62,7 @@ extern void sweet_usb_probe(void);
+ extern void sweet_audio_probe(void);
+ extern void sweet_adsp_init(void);
+ extern void sweet_audio_bridge_init(void);
++extern void sweet_wifi_init(void);
+ 
+ #define REG_CAP         0x00
+ #define REG_IS          0x20
+@@ -715,6 +716,7 @@ sweet_ufs_init(void)
+ 	sweet_usb_probe();
+ 	sweet_audio_probe();
+ 	sweet_audio_bridge_init();
++	sweet_wifi_init();
+ 	sweet_adsp_init();
+ 	return 0;
+ }

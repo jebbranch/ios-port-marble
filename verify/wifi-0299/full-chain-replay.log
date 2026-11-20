@@ -1,0 +1,11 @@
+replayed onto 2eebee3466cb94b84fe670bc6b8c26a0c2761868: applied=289 skipped_touching_file=0
+OK: CI post-image == chain-tree HEAD for bsd/dev/sweet_wifi.c
+work kept in /tmp/ci-replay-40219 (rm -rf when done)
+replayed onto 970d4eb946804bb469ae4af18e2867b7ed4ce64f: applied=277 skipped_touching_file=12
+skipped: 0019-sweet-builtin-pthread.patch 0025-sweet-builtin-amfi-no-entitlements.patch 0026-sweet-builtin-hfs.patch 0028-sweet-ufs-root-device.patch 0054-sweet-process-sampler.patch 0060-sweet-keys-touch-drivers.patch 0062-sweet-touch-power-battery.patch 0072-sweet-usb-probe.patch 0084-marble-touch-diag.patch 0106-sweet-audio-probe.patch 0110-sweet-adsp-pas.patch 0114-sweet-i2c-amps.patch
+OK: CI post-image == chain-tree HEAD for bsd/conf/files
+work kept in /tmp/ci-replay-40818 (rm -rf when done)
+replayed onto cb6c84c: applied=271 skipped_touching_file=18
+skipped: 0028-sweet-ufs-root-device.patch 0030-sweet-ufs-writes.patch 0034-sweet-ufs-dma-above-4g.patch 0047-sweet-persistent-console-log.patch 0054-sweet-process-sampler.patch 0060-sweet-keys-touch-drivers.patch 0069-sweet-ufs-faster.patch 0072-sweet-usb-probe.patch 0077-sweet-usb-live-log.patch 0081-sweet-ufs-device-wake.patch 0082-sweet-ufs-root-range.patch 0084-marble-touch-diag.patch 0106-sweet-audio-probe.patch 0110-sweet-adsp-pas.patch 0111-sweet-log-sync.patch 0195-sweet-cache-prewarm-disable.patch 0198-sweet-haptics-capability.patch 0199-sweet-mg-haptics-answers.patch
+OK: CI post-image == chain-tree HEAD for bsd/dev/sweet_ufs.c
+work kept in /tmp/ci-replay-41454 (rm -rf when done)
