@@ -13,13 +13,17 @@ import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parent.parent
-LABEL = "wifi-handoff-0299-20261120"
+LABEL = "wifi-pcie-0300-20261120"
 IMAGE = ROOT / "images" / (LABEL + ".img")
 OUT = ROOT / "out" / LABEL
 NDK = Path("/opt/homebrew/Caskroom/android-ndk/28/AndroidNDK13004108.app/Contents/NDK")
-MARKER = (
+HANDOFF_MARKER = (
     "SWEET MARK: wifi handoff v1 readonly=1 stage=%d gdsc=%#x "
     "halted=%#x wlan=%#x perst=%#x"
+)
+PCIE_MARKER = (
+    "SWEET MARK: wifi pcie v1 stage=%d id=%#x subsystem=%#x "
+    "bar=%#x bytes=%#x soc=%#x sub=%#x"
 )
 BASE_ARGS = (
     "debug=0xc serial=3 cpus=8 keepsyms=1 -noprogress rd=ufsroot0 "
@@ -29,7 +33,7 @@ BASE_ARGS = (
     "sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- "
     "sweetadsp=0 gicrstride=0x40000 sweetbatt=0 sweetglink=0 "
     "sweethalbridge=0 sweeti2c=0 sweetamp=0 sweetgpu=0 sweetlog=1 "
-    "sweetwifi=1"
+    "sweetwifi=2"
 )
 
 
@@ -57,7 +61,7 @@ def flags(command):
         "cpus": "8", "sweetadsp": "0", "sweetglink": "0",
         "sweethalbridge": "0", "sweeti2c": "0", "sweetamp": "0",
         "sweetgpu": "0", "sweetbatt": "0", "sweetlog": "1",
-        "sweetwifi": "1", "sweetiolog": "-", "marble_touch": "1",
+        "sweetwifi": "2", "sweetiolog": "-", "marble_touch": "1",
     }
     assert all(result.get(key) == value for key, value in expected.items())
     forbidden = {
@@ -87,7 +91,8 @@ def main():
         command = payload[0x48:0x2a8].split(b"\0", 1)[0].decode()
         assert command == manifest["cmdline"]
         flags(command)
-        assert kernel.count(MARKER.encode()) == 1
+        assert kernel.count(HANDOFF_MARKER.encode()) == 1
+        assert kernel.count(PCIE_MARKER.encode()) == 1
         print(json.dumps({
             "passed": True, "image": str(IMAGE), "sha256": sha(image),
             "cmdline_bytes": len(command.encode()), "device_access": False,
@@ -97,7 +102,8 @@ def main():
         parser.error("--raw and --raw-sha are required")
     raw = args.raw.read_bytes()
     assert sha(raw) == args.raw_sha
-    assert raw.count(MARKER.encode()) == 1
+    assert raw.count(HANDOFF_MARKER.encode()) == 1
+    assert raw.count(PCIE_MARKER.encode()) == 1
     workflow = (ROOT / ".github/workflows/xnu.yml").read_text()
     marker_loop = workflow.split('for s in "SWEET: halt:', 1)[1].split("; do", 1)[0]
     cumulative = ["SWEET: halt:" + marker_loop.split('"', 1)[0]]
@@ -182,7 +188,7 @@ def main():
         "symbols": ["_sweet_wifi_init"], "kernel_rebases": rebases,
         "kernel_segments_verified": True, "gpu_shim_probe_level": 0,
         "device_booted": False, "boot_budget_before": 73,
-        "stage": "read-only QCA6490 GCC/TLMM handoff survey",
+        "stage": "guarded QCA6490 power, PCIe link and endpoint identity",
     }
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps(manifest, indent=2))
