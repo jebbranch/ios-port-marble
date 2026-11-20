@@ -1,0 +1,32 @@
+{
+  "image": "/Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/images/wifi-handoff-0299-20261120.img",
+  "image_bytes": 51306496,
+  "image_sha256": "2ab0775cb1d59ef58dc01044881ddf3400e31cb2af3253933693f29de3adc139",
+  "raw_sha256": "112f3c116083a0e97977057e72cadc287cf39e408d8fbf53fcfad386492ba7b4",
+  "kernel_sha256": "655bb2296804dbc6906fb667fce62809d42c6b59e502a0e86dc2fde00f8504e9",
+  "cntp_nop_offset": "0x4aa348",
+  "cmdline": "debug=0xc serial=3 cpus=8 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- sweetadsp=0 gicrstride=0x40000 sweetbatt=0 sweetglink=0 sweethalbridge=0 sweeti2c=0 sweetamp=0 sweetgpu=0 sweetlog=1 sweetwifi=1 sweettime=1795187571",
+  "cmdline_bytes": 460,
+  "sweettime": 1795187571,
+  "cpu_count": 8,
+  "mpidrs": [
+    0,
+    256,
+    512,
+    768,
+    1024,
+    1280,
+    1536,
+    1792
+  ],
+  "workflow_markers_checked": 91,
+  "symbols": [
+    "_sweet_wifi_init"
+  ],
+  "kernel_rebases": 0,
+  "kernel_segments_verified": true,
+  "gpu_shim_probe_level": 0,
+  "device_booted": false,
+  "boot_budget_before": 73,
+  "stage": "read-only QCA6490 GCC/TLMM handoff survey"
+}

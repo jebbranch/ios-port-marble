@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "image": "/Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/images/wifi-handoff-0299-20261120.img",
+  "sha256": "2ab0775cb1d59ef58dc01044881ddf3400e31cb2af3253933693f29de3adc139",
+  "cmdline_bytes": 460,
+  "device_access": false
+}

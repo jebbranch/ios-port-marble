@@ -84,10 +84,45 @@ SWEET MARK: wifi handoff v1 readonly=1 stage=%d gdsc=%#x halted=%#x wlan=%#x per
 
 ## 第一次设备轮的前置门
 
-0299完整CI、新raw、CNTP、累计marker、符号、最终镜像与事前身份尚未冻结，当前禁止boot。
+0299完整CI和最终镜像已通过：
+
+```text
+raw SHA      112f3c116083a0e97977057e72cadc287cf39e408d8fbf53fcfad386492ba7b4
+kernel SHA   655bb2296804dbc6906fb667fce62809d42c6b59e502a0e86dc2fde00f8504e9
+image        images/wifi-handoff-0299-20261120.img
+image SHA    2ab0775cb1d59ef58dc01044881ddf3400e31cb2af3253933693f29de3adc139
+sweettime    1795187571
+cmdline      460 B
+markers      91
+symbol       _sweet_wifi_init
+```
+
+CNTP raw恰一处、最终kernel为0；8核、全部内嵌Mach-O段、ADT MPIDR和GPU probe0
+通过。`--verify-only`复跑通过。证据在`verify/wifi-0299-image/`。
+
+执行只准：
+
+```text
+serial 2aa26095
+fastboot boot images/wifi-handoff-0299-20261120.img
+```
+
+本轮记为Wi-Fi第1轮、总RAM-only开机第74次，执行后总预算74/120。它不播放声音，
+不需要人耳反馈。
+
 到需要设备时：
 
 - 设备进入TWRP或Android ADB均可先确认serial；随后脚本只执行`fastboot boot`。
 - 镜像只增加`sweetwifi=1`，必须关闭GPU与所有旧GPU探针。
 - 只记录上述marker，不以寄存器值推断端点已上电或链路存在。
 - 结果回来后再决定第2段，绝不在同一轮追加上电。
+
+实机门：
+
+| 观察 | 判读 |
+|---|---|
+| sweettime匹配、raw窗口成立 | 本轮身份有效 |
+| marker恰一条，readonly=1/stage=1 | 只读路径实际执行 |
+| gdsc/halted/wlan/perst有确定值 | 保存ABL/Android交接快照；不命名上电状态 |
+| 任何`phase 2`、PCIe marker或Wi-Fi写路径 | 本轮无效并立即停止 |
+| panic/Debugger | 只读映射风险，禁止进入第2段 |
