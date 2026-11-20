@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "files": [
+    "bsd/dev/sweet_wifi.c",
+    "bsd/dev/sweet_wifi_phy.h"
+  ],
+  "scope": "QCA6490 RPMh, GPIO, PHY, link and endpoint identity"
+}

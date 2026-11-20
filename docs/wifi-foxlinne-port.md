@@ -154,3 +154,52 @@ PCIe/上电marker为0；GLINK、I2C、GPU、GMU、panic均0。ADSP按参数关�
 - 结果只授权进入独立的第2阶段代码和新镜像；不能宣称PCIe、端点或Wi-Fi可用。
 
 证据：`verify/wifi-boot74/`。预算74/120。
+
+## 0300：QCA6490上电、PCIe链路与端点身份
+
+0299证明交接时Wi-Fi路径关闭且只读映射安全。0300在独立`sweetwifi=2`中移植
+FoXLinne的已验证顺序：
+
+1. 从AOP cmd-db精确查找8条VRM、3条ARC和`SN7`。
+2. 独占apps RSC TCS0执行28笔resource vote。
+3. XO/WLAN_EN/PERST时序。
+4. GCC PCIe0时钟、复位、PHY v0x63表。
+5. Gen2 ×1 link训练。
+6. 配置空间ATU、BAR sizing和`17cb:1103`硬门。
+7. 只读SoC version/subversion后停止；不建立SMMU/DMA，不加载固件。
+
+相对FoXLinne新增安全门：
+
+- 所有MMIO只映实际使用的4 KiB页，不映整块窗口。
+- TCS0必须idle/control0/enable0/wait0且无pending IRQ。
+- 每笔vote必须观察到新执行进展与issued+complete；超时立即poison本轮且不重试。
+- PHY/link/vendor/device/BAR任一失败立即停止。
+- `sweetwifi=1`的只读行为保持不变。
+
+成功marker：
+
+```text
+SWEET MARK: wifi pcie v1 stage=%d id=%#x subsystem=%#x bar=%#x bytes=%#x soc=%#x sub=%#x
+```
+
+离线结果：
+
+- 实际phase2主机模型4场景通过：
+  成功28 vote、首vote timeout poison、link timeout、错误vendor/device。
+- 0299只读模型4场景回归通过。
+- 双文件apply/check/post-image严格相等。
+- Wi-Fi全链applied290、touching-file skip0、post-image等于HEAD，marker唯一。
+
+证据：`verify/wifi-0300/`。尚无完整内核、镜像或设备操作。
+
+### Wi-Fi第2轮 / 总第75次逻辑门
+
+完整构建及最终身份冻结前禁止启动。候选必须：
+
+- 只带`sweetwifi=2`；ADSP/GLINK/HAL/I2C/功放/GPU全部关闭。
+- handoff marker先出现，随后才允许phase2。
+- 成功只接受`id=0x110317cb`，BAR bytes必须非0且≤32 MiB。
+- SoC version应与FoXLinne真机基线`0x400c1211`对照记录；subversion同样只记录，
+  不因不相等自动写寄存器修正。
+- 失败时必须有明确errno；没有PCIe marker则不进入SMMU/DMA。
+- 本轮不加载WCN6855固件、不扫描网络、不创建en0。

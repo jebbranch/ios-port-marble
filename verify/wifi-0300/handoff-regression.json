@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "cases": 4,
+  "readonly": true,
+  "source": "actual sweet_wifi.c",
+  "device_access": false,
+  "checks": {
+    "disabled_zero_effect": true,
+    "readonly_values": true,
+    "unsupported_stage_refused": true,
+    "mapping_failure_safe": true,
+    "forbidden_mutators_absent": true
+  }
+}

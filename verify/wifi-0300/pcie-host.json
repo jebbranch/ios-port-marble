@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "cases": 4,
+  "votes_on_success": 28,
+  "actual_phase2": true,
+  "hardware": "mock-only",
+  "checks": [
+    "28 exact RPMh resource votes and endpoint identity",
+    "first-vote timeout poisons lifecycle and stops",
+    "PCIe link timeout prevents endpoint access",
+    "wrong PCI vendor/device is rejected"
+  ]
+}

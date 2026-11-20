@@ -8,6 +8,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT.parent / "chain-tree-wifi/bsd/dev/sweet_wifi.c"
+PHY = ROOT.parent / "chain-tree-wifi/bsd/dev/sweet_wifi_phy.h"
 
 
 def body(text):
@@ -26,6 +27,7 @@ SUPPORT = r'''
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <errno.h>
 typedef uintptr_t vm_offset_t;
 typedef size_t vm_size_t;
 static uint32_t gcc_words[0x100000/4];
@@ -57,6 +59,9 @@ static vm_offset_t ml_io_map(vm_offset_t physical,vm_size_t bytes) {
  assert(0);return 0;
 }
 static void sweet_log_sync(void){log_syncs++;}
+static void IOSleep(unsigned ms){(void)ms;}
+static void IODelay(unsigned us){(void)us;}
+static void delay(unsigned us){(void)us;}
 '''
 
 
@@ -83,9 +88,9 @@ int main(void) {
  assert(strstr(output,"halted=0x9")!=NULL);
  assert(strstr(output,"wlan=0x2 perst=0")!=NULL);
 
- reset_case(2);sweet_wifi_init();
+ reset_case(3);sweet_wifi_init();
  assert(map_calls==0 && log_syncs==1);
- assert(strstr(output,"phase 2 unavailable")!=NULL);
+ assert(strstr(output,"invalid phase 3")!=NULL);
 
  reset_case(1);map_failure=1;sweet_wifi_init();
  assert(map_calls>=1 && log_syncs==1);
@@ -101,11 +106,12 @@ int main(void) {
 
 def main():
     source = SOURCE.read_text()
+    readonly_prefix = source.split("static void\nsw_wifi_write", 1)[0]
     forbidden = (
         "sw_wifi_write", "sweet_rpmh_vreg_enable", "kmem_alloc",
         "kmem_alloc_contig", "kernel_thread_start",
     )
-    if any(item in source for item in forbidden):
+    if any(item in readonly_prefix for item in forbidden):
         raise ValueError("read-only phase contains a mutation/allocation entry")
     marker = (
         "SWEET MARK: wifi handoff v1 readonly=1 stage=%d gdsc=%#x "
@@ -113,7 +119,7 @@ def main():
     )
     if source.count(marker) != 1:
         raise ValueError("0299 marker must be unique")
-    code = SUPPORT + "\n" + body(source) + "\n" + TESTS
+    code = SUPPORT + "\n" + body(PHY.read_text()) + "\n" + body(source) + "\n" + TESTS
     with tempfile.TemporaryDirectory(prefix="wifi-handoff-") as name:
         cfile = Path(name) / "test.c"
         exe = Path(name) / "test"
