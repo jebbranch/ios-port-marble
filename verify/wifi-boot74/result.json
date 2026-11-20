@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "budget_after": "74/120",
+  "identity": {
+    "sweettime": 1795187571,
+    "ring_total": 151350,
+    "ring_sequence": 253,
+    "window_match": true
+  },
+  "handoff": {
+    "readonly": true,
+    "stage": 1,
+    "pcie_gdsc": "0x0022f001",
+    "halted_branch_mask": "0x017f",
+    "wlan_en_level": 0,
+    "perst_level": 0
+  },
+  "isolation": {
+    "wifi_pcie_marker_count": 0,
+    "glink_count": 0,
+    "i2c_count": 0,
+    "gpu_count": 0,
+    "gmu_count": 0,
+    "panic_count": 0
+  },
+  "claim": "The read-only Wi-Fi handoff survey executed once and observed the QCA6490/PCIe0 path powered down.",
+  "not_claimed": [
+    "PCIe link training works",
+    "QCA6490 endpoint is accessible",
+    "Wi-Fi firmware can boot",
+    "DMA or networking works"
+  ]
+}

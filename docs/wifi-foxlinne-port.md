@@ -126,3 +126,31 @@ fastboot boot images/wifi-handoff-0299-20261120.img
 | gdsc/halted/wlan/perst有确定值 | 保存ABL/Android交接快照；不命名上电状态 |
 | 任何`phase 2`、PCIe marker或Wi-Fi写路径 | 本轮无效并立即停止 |
 | panic/Debugger | 只读映射风险，禁止进入第2段 |
+
+## Wi-Fi第1轮 / 总第74次判决
+
+身份和窗口成立：
+
+```text
+sweettime 1795187571
+raw total 151350
+seq       253
+window    match
+```
+
+唯一只读marker：
+
+```text
+readonly=1 stage=1 gdsc=0x22f001 halted=0x17f wlan=0 perst=0
+```
+
+PCIe/上电marker为0；GLINK、I2C、GPU、GMU、panic均0。ADSP按参数关闭。
+
+判决：
+
+- QCA6490/PCIe0在ABL/TWRP交接后保持关闭：WLAN_EN=0、PERST=0。
+- GDSC没有证明上电，10个预登记分支中mask `0x17f`对应多数halt。
+- 只读页映射未引发panic，0299成立。
+- 结果只授权进入独立的第2阶段代码和新镜像；不能宣称PCIe、端点或Wi-Fi可用。
+
+证据：`verify/wifi-boot74/`。预算74/120。
