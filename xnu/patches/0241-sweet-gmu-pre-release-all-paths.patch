@@ -1,0 +1,113 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -3239,6 +3239,51 @@ g_hfi_dump(vm_offset_t hfi, unsigned int t)
+ 	sweet_log_sync();
+ }
+ 
++/*
++ * Pre-release preconditions, mandatory before EVERY form of CM3 release.
++ * The fall-through path below has always done both of these; the rel==2
++ * branch (0229) jumped straight to gmu_done and skipped them, so the G4
++ * run released the CM3 with the GMU/HFI SPIs unmasked and the AO AHB
++ * fence still armed -- the exact confound the 2026-11-02 re-review
++ * flagged.  Hoisted here so all three release paths share one ordering:
++ * mask + fence first, release second.
++ */
++static void
++g_gmu_pre_release(vm_offset_t gm)
++{
++	/*
++	 * The CM3 raises its GMU/HFI SPIs (304/305 in the live DT) the
++	 * moment it runs.  They are level-sensitive and nothing in XNU has
++	 * masked them, so the releasing CPU drowns in interrupts and every
++	 * probe print after the release disappears.  Mask and clear them.
++	 */
++	vm_offset_t gd = g_map_win_wimg(0x17100000ull, 0x2000u,
++	    VM_WIMG_IO);
++
++	if (gd) {
++		uint32_t b = (1u << 16) | (1u << 17);
++
++		gm_wr(gd, 0x1a4u, b);	/* GICD_ICENABLER9 */
++		gm_wr(gd, 0x2a4u, b);	/* GICD_ICPENDR9 */
++		__asm__ volatile("dsb sy" ::: "memory");
++		printf("SWEET GMU: gic masked en=%#x pend=%#x\n",
++		    gm_rd(gd, 0x1a4u), gm_rd(gd, 0x2a4u));
++		sweet_log_sync();
++	}
++	/*
++	 * Put the GMU AO AHB fence in ALLOW mode and clear any latched
++	 * fence status before the CM3 runs.  gen7_gmu_pwrctrl_suspend does
++	 * exactly these two writes; without them the firmware can leave the
++	 * fence armed, and from that point *every* AP access to GPUCC, the
++	 * GMU, the SMMU and RSCC wedges the core.
++	 */
++	gm_wr(gm, GMU_OFF(0x23b14u), 0x7u);	/* AHB_FENCE_STATUS_CLR */
++	gm_wr(gm, GMU_OFF(0x23b10u), 0u);	/* AO_AHB_FENCE_CTRL: allow */
++	printf("SWEET GMU: fence ctrl=%#x status=%#x\n",
++	    gm_rd(gm, GMU_OFF(0x23b10u)), gm_rd(gm, GMU_OFF(0x23b14u)));
++	sweet_log_sync();
++}
++
+ static void
+ g_gmu_boot(void)
+ {
+@@ -3655,6 +3700,8 @@ g_gmu_boot(void)
+ 			unsigned int t;
+ 			thread_t th;
+ 
++			/* Mask + fence before any release form (see above). */
++			g_gmu_pre_release(gm);
+ 			g_hfi_dump(hfi, 60000u);
+ 			if (kernel_thread_start((thread_continue_t)g_rel_thread,
+ 			    NULL, &th) == KERN_SUCCESS) {
+@@ -3677,6 +3724,8 @@ g_gmu_boot(void)
+ 			 * watch GX_GDSCR: the GMU powers GX as soon as its
+ 			 * firmware runs.
+ 			 */
++			/* Same preconditions: the shim CPU releases, we prepare. */
++			g_gmu_pre_release(gm);
+ 			printf("SWEET GMU: release delegated to shim cpu\n");
+ 			sweet_log_sync();
+ 			uint32_t r0, w0, r1, w1;
+@@ -3744,39 +3793,7 @@ g_gmu_boot(void)
+ 	}
+ 	printf("SWEET GMU: releasing cm3 (posted window)\n");
+ 	sweet_log_sync();
+-	/*
+-	 * The CM3 raises its GMU/HFI SPIs (304/305 in the live DT) the
+-	 * moment it runs.  They are level-sensitive and nothing in XNU has
+-	 * masked them, so the releasing CPU drowns in interrupts and every
+-	 * probe print after the release disappears.  Mask and clear them.
+-	 */
+-	{
+-		vm_offset_t gd = g_map_win_wimg(0x17100000ull, 0x2000u,
+-		    VM_WIMG_IO);
+-
+-		if (gd) {
+-			uint32_t b = (1u << 16) | (1u << 17);
+-
+-			gm_wr(gd, 0x1a4u, b);	/* GICD_ICENABLER9 */
+-			gm_wr(gd, 0x2a4u, b);	/* GICD_ICPENDR9 */
+-			__asm__ volatile("dsb sy" ::: "memory");
+-			printf("SWEET GMU: gic masked en=%#x pend=%#x\n",
+-			    gm_rd(gd, 0x1a4u), gm_rd(gd, 0x2a4u));
+-			sweet_log_sync();
+-		}
+-	}
+-	/*
+-	 * Put the GMU AO AHB fence in ALLOW mode and clear any latched
+-	 * fence status before the CM3 runs.  gen7_gmu_pwrctrl_suspend does
+-	 * exactly these two writes; without them the firmware can leave the
+-	 * fence armed, and from that point *every* AP access to GPUCC, the
+-	 * GMU, the SMMU and RSCC wedges the core.
+-	 */
+-	gm_wr(gm, GMU_OFF(0x23b14u), 0x7u);	/* AHB_FENCE_STATUS_CLR */
+-	gm_wr(gm, GMU_OFF(0x23b10u), 0u);	/* AO_AHB_FENCE_CTRL: allow */
+-	printf("SWEET GMU: fence ctrl=%#x status=%#x\n",
+-	    gm_rd(gm, GMU_OFF(0x23b10u)), gm_rd(gm, GMU_OFF(0x23b14u)));
+-	sweet_log_sync();
++	g_gmu_pre_release(gm);
+ 	/*
+ 	 * Vendor order: gpu_cc_ahb is enabled immediately *before* the
+ 	 * release, not seconds earlier.  It self-gates when idle, so doing

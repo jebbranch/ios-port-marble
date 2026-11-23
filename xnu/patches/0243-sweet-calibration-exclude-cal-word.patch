@@ -1,0 +1,32 @@
+--- a/bsd/dev/sweet_glink.c
++++ b/bsd/dev/sweet_glink.c
+@@ -3556,11 +3556,17 @@ g_gmu_boot(void)
+ 		 * 0xf8228800 (this function wrote 0x228800 with PWR_ON, and six
+ 		 * boots of witnesses agree) and the two target reads must match.
+ 		 * Only pairs passing both checks count, and only counted pairs may
+-		 * decide A or B.
++		 * decide A or B.  A target read equal to the calibration word
++		 * itself is not a sample at all: the G4 ring showed pipeline
++		 * values of exactly 0xf8228800 landing in the target slots, and
++		 * the old criterion counted them valid.  Such pairs are
++		 * discarded, and the print buffer is zero-filled so unfilled
++		 * slots cannot borrow a stale stack word that happens to equal
++		 * the calibration.
+ 		 */
+ 		{
+ 			uint32_t a1, a2, c1, c2, c3;
+-			uint32_t va[8];
++			uint32_t va[8] = { 0 };
+ 			unsigned int t, valid = 0, bad = 0;
+ 
+ 			for (t = 0; t < 8u; t++) {
+@@ -3570,7 +3576,8 @@ g_gmu_boot(void)
+ 				a2 = gm_rd(gc, 0x911cu);
+ 				c3 = gm_rd(gc, 0x9108u);
+ 				if (c1 == 0xf8228800u && c2 == 0xf8228800u &&
+-				    c3 == 0xf8228800u && a1 == a2) {
++				    c3 == 0xf8228800u && a1 == a2 &&
++				    a1 != 0xf8228800u) {
+ 					va[valid++] = a1;
+ 				} else {
+ 					bad++;
