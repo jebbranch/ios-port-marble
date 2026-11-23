@@ -1,0 +1,4 @@
+replayed onto 2eebee3466cb94b84fe670bc6b8c26a0c2761868: applied=291 skipped_touching_file=0
+OK: CI post-image == chain-tree HEAD for bsd/dev/sweet_wifi.c
+marker SWEET MARK: wifi pcie v2       1
+work kept in /tmp/ci-replay-23617 (rm -rf when done)

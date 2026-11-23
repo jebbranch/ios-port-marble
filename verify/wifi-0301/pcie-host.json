@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "cases": 16,
+  "votes_on_success": 28,
+  "actual_phase2": true,
+  "hardware": "mock-only",
+  "checks": [
+    "28 exact RPMh resource votes and endpoint identity",
+    "first-vote timeout poisons lifecycle and stops",
+    "PCIe link timeout prevents endpoint access",
+    "wrong PCI vendor/device is rejected",
+    "fixed physical TCS IRQ addresses independent of driver macros",
+    "disabled/read-only phases perform zero writes",
+    "busy slot and unknown RSC revision refused",
+    "stale/all-ones completion and cleanup failure do not release ownership",
+    "PHY timeout and invalid BAR geometry refused"
+  ]
+}

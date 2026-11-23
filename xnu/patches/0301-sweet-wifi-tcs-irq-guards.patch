@@ -1,0 +1,292 @@
+diff --git a/bsd/dev/sweet_wifi.c b/bsd/dev/sweet_wifi.c
+index 61793d9..533403a 100644
+--- a/bsd/dev/sweet_wifi.c
++++ b/bsd/dev/sweet_wifi.c
+@@ -17,6 +17,9 @@
+ 
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ extern void sweet_log_sync(void);
++/* Exact C declarations from XNU 8796 IOKit/IOLib.h. */
++extern void IOSleep(unsigned milliseconds);
++extern void IODelay(unsigned microseconds);
+ 
+ #define SW_WIFI_GCC_PA        0x00100000u
+ #define SW_WIFI_TLMM_PA       0x0f100000u
+@@ -29,6 +32,7 @@ extern void sweet_log_sync(void);
+ #define SW_WIFI_CMD_DB_PA     0x80860000u
+ #define SW_WIFI_CMD_DB_SIZE   0x00020000u
+ #define SW_WIFI_RSC_PA        0x17a20000u
++#define SW_WIFI_TCS_PA        0x17a20d00u
+ #define SW_WIFI_PARF_PA       0x01c00000u
+ #define SW_WIFI_PHY_PA        0x01c06000u
+ #define SW_WIFI_DBI_PA        0x60000000u
+@@ -40,7 +44,7 @@ extern void sweet_log_sync(void);
+ #define SW_WIFI_MARKER \
+ 	"SWEET MARK: wifi handoff v1 readonly=1 stage=%d gdsc=%#x halted=%#x wlan=%#x perst=%#x"
+ #define SW_WIFI_PCIE_MARKER \
+-	"SWEET MARK: wifi pcie v1 stage=%d id=%#x subsystem=%#x bar=%#x bytes=%#x soc=%#x sub=%#x"
++	"SWEET MARK: wifi pcie v2 stage=%d id=%#x subsystem=%#x bar=%#x bytes=%#x soc=%#x sub=%#x"
+ 
+ #define SW_WIFI_RSC_TCS       0u
+ #define SW_WIFI_TCS_STRIDE    0x2a0u
+@@ -78,6 +82,8 @@ struct sw_wifi_page {
+ 
+ static struct sw_wifi_page sw_wifi_pages[64];
+ static bool sw_wifi_rpmh_poisoned;
++static bool sw_wifi_started_once;
++static unsigned sw_wifi_milestone;
+ 
+ static vm_offset_t
+ sw_wifi_map_page(uint32_t pa)
+@@ -102,6 +108,9 @@ sw_wifi_map_page(uint32_t pa)
+ static uint32_t
+ sw_wifi_read(uint32_t pa, bool *ok)
+ {
++	if (!*ok) {
++		return 0;
++	}
+ 	vm_offset_t page = sw_wifi_map_page(pa);
+ 	if (!page) {
+ 		*ok = false;
+@@ -131,6 +140,9 @@ sw_wifi_halted(bool *ok)
+ static void
+ sw_wifi_write(uint32_t pa, uint32_t value, bool *ok)
+ {
++	if (!*ok) {
++		return;
++	}
+ 	vm_offset_t page = sw_wifi_map_page(pa);
+ 	if (!page) {
+ 		*ok = false;
+@@ -196,7 +208,9 @@ sw_wifi_db_find(const char *name, uint32_t *address,
+ 	if (!name || !address || !level_count) {
+ 		return EINVAL;
+ 	}
+-	if (sw_wifi_read(SW_WIFI_CMD_DB_PA + 4u, &ok) != SW_WIFI_CMD_MAGIC) {
++	if (sw_wifi_read(SW_WIFI_CMD_DB_PA, &ok) != 1u ||
++	    sw_wifi_read(SW_WIFI_CMD_DB_PA + 4u, &ok) != SW_WIFI_CMD_MAGIC ||
++	    (sw_wifi_read(SW_WIFI_CMD_DB_PA + 140u, &ok) & 1u) || !ok) {
+ 		return ENODEV;
+ 	}
+ 	for (unsigned i = 0; i < 8 && name[i]; ++i) {
+@@ -211,7 +225,9 @@ sw_wifi_db_find(const char *name, uint32_t *address,
+ 		uint32_t entries = SW_WIFI_DB_HEADER + sw_wifi_db16(header + 2u, &ok);
+ 		uint32_t data = SW_WIFI_DB_HEADER + sw_wifi_db16(header + 4u, &ok);
+ 		unsigned count = sw_wifi_db16(header + 6u, &ok);
+-		if (!ok || !sw_wifi_db_range(entries, count * SW_WIFI_DB_ENTRY)) {
++		if (!ok || slave < 3u || slave > 5u || (entries & 3u) ||
++		    !sw_wifi_db_range(data, 0) ||
++		    !sw_wifi_db_range(entries, count * SW_WIFI_DB_ENTRY)) {
+ 			return EINVAL;
+ 		}
+ 		for (unsigned e = 0; e < count; ++e) {
+@@ -222,10 +238,13 @@ sw_wifi_db_find(const char *name, uint32_t *address,
+ 			}
+ 			uint32_t aux_bytes = sw_wifi_db16(at + 20u, &ok);
+ 			uint32_t aux = data + sw_wifi_db16(at + 22u, &ok);
+-			if (!ok || !sw_wifi_db_range(aux, aux_bytes)) {
++			if (!ok || !sw_wifi_db_range(aux, aux_bytes) || (aux_bytes & 1u)) {
+ 				return EINVAL;
+ 			}
+ 			*address = sw_wifi_read(SW_WIFI_CMD_DB_PA + at + 16u, &ok);
++			if (!ok || !*address || (*address >> 16) != slave) {
++				return EINVAL;
++			}
+ 			*level_count = 0;
+ 			for (unsigned i = 0; levels && i + 1u < aux_bytes &&
+ 			    *level_count < 16u; i += 2u) {
+@@ -261,27 +280,34 @@ sw_wifi_level(const uint16_t levels[16], unsigned count,
+ static int
+ sw_wifi_vote(uint32_t address, uint32_t value)
+ {
+-	const uint32_t base = SW_WIFI_RSC_PA + 0xd00u +
++	const uint32_t base = SW_WIFI_TCS_PA +
+ 	    SW_WIFI_RSC_TCS * SW_WIFI_TCS_STRIDE;
+ 	const uint32_t bit = 1u << SW_WIFI_RSC_TCS;
+ 	bool ok = true, progress = false, done = false;
+-	uint32_t irq_enable, irq, idle, command_status;
++	uint32_t irq_enable, irq, idle, command_status, control, enabled, wait;
+ 
+ 	if (sw_wifi_rpmh_poisoned) {
+ 		return EIO;
+ 	}
+-	irq_enable = sw_wifi_read(SW_WIFI_RSC_PA + SW_WIFI_IRQ_EN, &ok);
+-	if (!ok || sw_wifi_read(base + SW_WIFI_STATUS, &ok) == 0 ||
+-	    sw_wifi_read(base + SW_WIFI_CONTROL, &ok) != 0 ||
+-	    sw_wifi_read(base + SW_WIFI_ENABLE, &ok) != 0 ||
+-	    sw_wifi_read(base + SW_WIFI_WAIT, &ok) != 0 ||
+-	    (sw_wifi_read(SW_WIFI_RSC_PA + SW_WIFI_IRQ_STATUS, &ok) & bit)) {
++	uint32_t major = (sw_wifi_read(SW_WIFI_RSC_PA, &ok) >> 16) & 255u;
++	if (!ok || major != 2u) {
++		return ENODEV; /* offsets verified only for marble's major 2 */
++	}
++	irq_enable = sw_wifi_read(base + SW_WIFI_IRQ_EN, &ok);
++	idle = sw_wifi_read(base + SW_WIFI_STATUS, &ok);
++	control = sw_wifi_read(base + SW_WIFI_CONTROL, &ok);
++	enabled = sw_wifi_read(base + SW_WIFI_ENABLE, &ok);
++	wait = sw_wifi_read(base + SW_WIFI_WAIT, &ok);
++	irq = sw_wifi_read(base + SW_WIFI_IRQ_STATUS, &ok);
++	if (!ok || irq_enable == 0xffffffffu || idle == 0xffffffffu ||
++	    irq == 0xffffffffu || idle == 0 || control || enabled || wait ||
++	    (irq & bit)) {
+ 		return EBUSY;
+ 	}
+ 	sw_wifi_rpmh_poisoned = true;
+-	sw_wifi_write(SW_WIFI_RSC_PA + SW_WIFI_IRQ_EN, irq_enable & ~bit, &ok);
++	sw_wifi_write(base + SW_WIFI_IRQ_EN, irq_enable & ~bit, &ok);
+ 	sw_wifi_write(base + SW_WIFI_CONTROL, 0, &ok);
+-	sw_wifi_write(SW_WIFI_RSC_PA + SW_WIFI_IRQ_CLEAR, bit, &ok);
++	sw_wifi_write(base + SW_WIFI_IRQ_CLEAR, bit, &ok);
+ 	sw_wifi_write(base + SW_WIFI_MSGID, SW_WIFI_WRITE_ACK, &ok);
+ 	sw_wifi_write(base + SW_WIFI_ADDR, address, &ok);
+ 	sw_wifi_write(base + SW_WIFI_DATA, value, &ok);
+@@ -290,13 +316,15 @@ sw_wifi_vote(uint32_t address, uint32_t value)
+ 	sw_wifi_write(base + SW_WIFI_CONTROL, SW_WIFI_AMC_EN, &ok);
+ 	sw_wifi_write(base + SW_WIFI_CONTROL, SW_WIFI_AMC_EN | SW_WIFI_TRIGGER, &ok);
+ 	for (unsigned us = 0; ok && us < SW_WIFI_TIMEOUT_US; ++us) {
+-		irq = sw_wifi_read(SW_WIFI_RSC_PA + SW_WIFI_IRQ_STATUS, &ok);
++		irq = sw_wifi_read(base + SW_WIFI_IRQ_STATUS, &ok);
+ 		idle = sw_wifi_read(base + SW_WIFI_STATUS, &ok);
+ 		command_status = sw_wifi_read(base + SW_WIFI_CMD_STATUS, &ok);
+-		bool complete = (command_status & (SW_WIFI_ISSUED | SW_WIFI_COMPLETE)) ==
++		bool complete = command_status != 0xffffffffu &&
++		    (command_status & (SW_WIFI_ISSUED | SW_WIFI_COMPLETE)) ==
+ 		    (SW_WIFI_ISSUED | SW_WIFI_COMPLETE);
+ 		progress |= idle == 0 || !complete;
+-		if (idle && ((irq & bit) || progress) && complete) {
++		if (ok && idle && idle != 0xffffffffu && irq != 0xffffffffu &&
++		    ((irq & bit) || progress) && complete) {
+ 			done = true;
+ 			break;
+ 		}
+@@ -309,9 +337,14 @@ sw_wifi_vote(uint32_t address, uint32_t value)
+ 	sw_wifi_write(base + SW_WIFI_CONTROL, 0, &ok);
+ 	sw_wifi_write(base + SW_WIFI_ENABLE, 0, &ok);
+ 	sw_wifi_write(base + SW_WIFI_WAIT, 0, &ok);
+-	sw_wifi_write(SW_WIFI_RSC_PA + SW_WIFI_IRQ_CLEAR, bit, &ok);
+-	sw_wifi_write(SW_WIFI_RSC_PA + SW_WIFI_IRQ_EN, irq_enable, &ok);
+-	if (!ok) {
++	sw_wifi_write(base + SW_WIFI_IRQ_CLEAR, bit, &ok);
++	uint32_t current_enable = sw_wifi_read(base + SW_WIFI_IRQ_EN, &ok);
++	sw_wifi_write(base + SW_WIFI_IRQ_EN,
++	    (current_enable & ~bit) | (irq_enable & bit), &ok);
++	if (!ok || sw_wifi_read(base + SW_WIFI_CONTROL, &ok) ||
++	    sw_wifi_read(base + SW_WIFI_ENABLE, &ok) ||
++	    sw_wifi_read(base + SW_WIFI_WAIT, &ok) ||
++	    (sw_wifi_read(base + SW_WIFI_IRQ_STATUS, &ok) & bit) || !ok) {
+ 		return EIO;
+ 	}
+ 	sw_wifi_rpmh_poisoned = false;
+@@ -340,7 +373,10 @@ sw_wifi_power(void)
+ 		if (!error) error = sw_wifi_vote(address + 8u, 7u);
+ 		if (!error) error = sw_wifi_vote(address, rails[i].mv);
+ 		if (!error) error = sw_wifi_vote(address + 4u, 1u);
+-		if (error) return error;
++		if (error) {
++			printf("SWEET WIFI: rail=%s errno=%d\n", rails[i].name, error);
++			return error;
++		}
+ 	}
+ 	for (unsigned i = 0; i < sizeof(arcs) / sizeof(arcs[0]); ++i) {
+ 		error = sw_wifi_db_find(arcs[i], &address, levels, &count);
+@@ -349,7 +385,10 @@ sw_wifi_power(void)
+ 			error = sw_wifi_level(levels, count, 0x100u, &index);
+ 		}
+ 		if (!error) error = sw_wifi_vote(address, index);
+-		if (error) return error;
++		if (error) {
++			printf("SWEET WIFI: arc=%s errno=%d\n", arcs[i], error);
++			return error;
++		}
+ 	}
+ 	error = sw_wifi_db_find("SN7", &address, 0, &count);
+ 	if (!error) {
+@@ -407,6 +446,7 @@ sw_wifi_endpoint(uint32_t *id, uint32_t *subsystem, uint32_t *bar,
+ 	sw_wifi_write(SW_WIFI_CFG_PA + 0x10u, saved, &ok);
+ 	size = ~(mask & ~15u) + 1u;
+ 	if (!ok || (mask & 1u) || !(mask & ~15u) || !size ||
++	    (size & (size - 1u)) || size < 0x100000u ||
+ 	    size > 0x02000000u) return EINVAL;
+ 	base = (SW_WIFI_BAR_BASE + size - 1u) & ~(size - 1u);
+ 	if (base + size > SW_WIFI_BAR_LIMIT ||
+@@ -417,12 +457,15 @@ sw_wifi_endpoint(uint32_t *id, uint32_t *subsystem, uint32_t *bar,
+ 	sw_wifi_write(SW_WIFI_CFG_PA + 0x10u, base | (saved & 15u), &ok);
+ 	if ((mask & 6u) == 4u) sw_wifi_write(SW_WIFI_CFG_PA + 0x14u, 0, &ok);
+ 	sw_wifi_write(SW_WIFI_CFG_PA + 4u, (command & ~4u) | 2u, &ok);
++	uint32_t final_command = sw_wifi_read(SW_WIFI_CFG_PA + 4u, &ok);
++	if (!ok || (final_command & 6u) != 2u) return EIO;
+ 	*bar = sw_wifi_read(SW_WIFI_CFG_PA + 0x10u, &ok);
+ 	*bar_bytes = size;
+ 	*soc = sw_wifi_read(base + 0x224u, &ok);
+ 	bhi = sw_wifi_read(base + 0x28u, &ok);
+ 	(void)bhi;
+ 	uint32_t window = sw_wifi_read(base + 0x310cu, &ok);
++	if (!ok || window == 0xffffffffu) return EIO;
+ 	sw_wifi_write(base + 0x310cu,
+ 	    (1u << 30) | ((0x1910010u >> 19) & 0x3fu), &ok);
+ 	*subversion = sw_wifi_read(base + 0x80000u +
+@@ -438,6 +481,9 @@ sw_wifi_phase2(int stage)
+ 	uint32_t id = 0, subsystem = 0, bar = 0, bytes = 0, soc = 0, sub = 0;
+ 	int error = sw_wifi_power();
+ 	if (error) return error;
++	sw_wifi_milestone = 1; /* all 28 resource votes acknowledged */
++	printf("SWEET WIFI: phase2 milestone=%u\n", sw_wifi_milestone);
++	sweet_log_sync();
+ 
+ 	sw_wifi_pin(94, 1u | (1u << 9), 0, &ok);
+ 	sw_wifi_pin(95, 3u | (1u << 2), -1, &ok);
+@@ -449,6 +495,7 @@ sw_wifi_phase2(int stage)
+ 	IOSleep(4);
+ 	sw_wifi_pin(204, 1u << 9, 0, &ok);
+ 	IOSleep(60);
++	sw_wifi_milestone = 2; /* reset asserted, WLAN enabled */
+ 
+ 	sw_wifi_clear(SW_WIFI_GCC_PA + 0x62128u, 1u, &ok);
+ 	if (!sw_wifi_wait(SW_WIFI_GCC_PA + SW_WIFI_GDSC,
+@@ -476,6 +523,7 @@ sw_wifi_phase2(int stage)
+ 		sw_wifi_clear(SW_WIFI_GCC_PA + resets[i], 1u, &ok);
+ 		IODelay(1000);
+ 	}
++	sw_wifi_milestone = 3; /* clocks/reset ready */
+ 
+ 	sw_wifi_write(SW_WIFI_PARF_PA + 0x1000u, 4u, &ok);
+ 	sw_wifi_clear(SW_WIFI_PARF_PA + 0x40u, 1u, &ok);
+@@ -494,6 +542,7 @@ sw_wifi_phase2(int stage)
+ 	if (!sw_wifi_wait(SW_WIFI_PHY_PA + 0x214u, 1u << 6, 0, 100, &ok)) {
+ 		return ETIMEDOUT;
+ 	}
++	sw_wifi_milestone = 4; /* PHY ready */
+ 	for (unsigned i = 0; i < 256; ++i) {
+ 		sw_wifi_write(SW_WIFI_PARF_PA + 0x2000u + 4u * i, 0, &ok);
+ 	}
+@@ -520,6 +569,7 @@ sw_wifi_phase2(int stage)
+ 	sw_wifi_set(SW_WIFI_PARF_PA + 0x1b0u, 1u << 8, &ok);
+ 	if (!sw_wifi_wait(SW_WIFI_DBI_PA + 0x80u,
+ 	    1u << 29, 1u << 29, 1000, &ok)) return ETIMEDOUT;
++	sw_wifi_milestone = 5; /* link up */
+ 	error = sw_wifi_endpoint(&id, &subsystem, &bar, &bytes, &soc, &sub);
+ 	if (error) return error;
+ 	printf(SW_WIFI_PCIE_MARKER "\n",
+@@ -544,6 +594,11 @@ sweet_wifi_init(void)
+ 		sweet_log_sync();
+ 		return;
+ 	}
++	if (sw_wifi_started_once) {
++		printf("SWEET WIFI: already attempted; no restart\n");
++		return;
++	}
++	sw_wifi_started_once = true;
+ 	gdsc = sw_wifi_read(SW_WIFI_GCC_PA + SW_WIFI_GDSC, &ok);
+ 	halted = sw_wifi_halted(&ok);
+ 	wlan = sw_wifi_read(SW_WIFI_TLMM_PA +
+@@ -560,8 +615,8 @@ sweet_wifi_init(void)
+ 	if (stage == 2) {
+ 		int error = sw_wifi_phase2(stage);
+ 		if (error) {
+-			printf("SWEET WIFI: phase 2 failed errno=%d poisoned=%d\n",
+-			    error, sw_wifi_rpmh_poisoned);
++			printf("SWEET WIFI: phase 2 failed errno=%d poisoned=%d milestone=%u\n",
++			    error, sw_wifi_rpmh_poisoned, sw_wifi_milestone);
+ 			sweet_log_sync();
+ 		}
+ 	}

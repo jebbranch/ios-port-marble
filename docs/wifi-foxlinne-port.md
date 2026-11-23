@@ -203,3 +203,45 @@ SWEET MARK: wifi pcie v1 stage=%d id=%#x subsystem=%#x bar=%#x bytes=%#x soc=%#x
   不因不相等自动写寄存器修正。
 - 失败时必须有明确errno；没有PCIe marker则不进入SMMU/DMA。
 - 本轮不加载WCN6855固件、不扫描网络、不创建en0。
+
+## 0301：开机前拒绝0300，修正IRQ窗口与C接口
+
+0300明确禁用，未上机。Release错误记录绑定提交
+`15b47b511cda30a43a144d930a32bbda0f909d55`：C文件缺少
+`IOSleep/IODelay`声明，完整构建失败。主机stub预先定义了这两个函数，未暴露声明缺失。
+
+另一个独立源码错误是RPMh IRQ enable/status/clear少加TCS block偏移：
+
+| 寄存器 | 0300错误地址 | 0301正确地址 |
+|---|---|---|
+| IRQ enable | `0x17a20000`，误指RSC ID | `0x17a20d00` |
+| IRQ status | `0x17a20004` | `0x17a20d04` |
+| IRQ clear | `0x17a20008` | `0x17a20d08` |
+
+正确地址由FoXLinne的`0xd00 + QcomRscLayout`及本项目已有RPMh驱动交叉确认。
+新模型固定这些物理地址，不再从被测驱动宏推导硬件布局；旧0300会被模型拒绝。
+
+0301还保持以下失败关闭规则：
+
+- C接口声明与XNU8796 `IOKit/IOLib.h`一致。
+- 只接受实机已经确认的RSC major2；其他版本零写返回。
+- cmd-db version/magic/范围/资源slave必须通过检查。
+- MMIO访问失败后不再读写后续寄存器。
+- 全1或陈旧CMD_STATUS不得冒充完成；清理读回失败保留poison。
+- BAR必须为2幂、至少1 MiB且不大于32 MiB；端点PCI command读回必须为
+  memory decoding enabled、bus mastering disabled。
+- 每次启动只执行一次；记录失败milestone便于区分power/clock/PHY/link/endpoint。
+
+新的成功身份必须为：
+
+```text
+SWEET MARK: wifi pcie v2 stage=%d id=%#x subsystem=%#x bar=%#x bytes=%#x soc=%#x sub=%#x
+```
+
+实际phase2主机16场景和handoff4场景通过，ASan/UBSan/严格警告通过；
+0301对0300基线apply/check和最终逐字节比较通过；Wi-Fi全链touching-file skip为0。
+证据保存在`verify/wifi-0301/`。
+
+总预算仍74/120。下轮候选只能使用0301，完整构建/raw SHA/最终image SHA、
+CNTP/marker/符号/参数和事前冻结提交全部通过后才能执行第75次。
+当前没有Wi-Fi链路、固件、DMA或联网成功的新实机证据。

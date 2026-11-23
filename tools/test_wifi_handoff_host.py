@@ -59,8 +59,8 @@ static vm_offset_t ml_io_map(vm_offset_t physical,vm_size_t bytes) {
  assert(0);return 0;
 }
 static void sweet_log_sync(void){log_syncs++;}
-static void IOSleep(unsigned ms){(void)ms;}
-static void IODelay(unsigned us){(void)us;}
+void IOSleep(unsigned ms){(void)ms;}
+void IODelay(unsigned us){(void)us;}
 static void delay(unsigned us){(void)us;}
 '''
 
@@ -69,6 +69,7 @@ TESTS = r'''
 static void reset_case(int stage) {
  memset(gcc_words,0,sizeof(gcc_words));memset(tlmm_words,0,sizeof(tlmm_words));
  memset(sw_wifi_pages,0,sizeof(sw_wifi_pages));
+ sw_wifi_started_once=false;sw_wifi_milestone=0;
  boot_stage=stage;map_failure=map_calls=log_syncs=0;output_at=0;output[0]=0;
 }
 int main(void) {
