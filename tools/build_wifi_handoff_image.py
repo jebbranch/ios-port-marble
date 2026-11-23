@@ -30,7 +30,7 @@ BASE_ARGS = (
     "ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 "
     "ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 "
     "sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 "
-    "sweettouch=0 marble_touch=1 sweetfb_noconsole=1 sweetiolog=- "
+    "sweettouch=0 marble_touch=0 sweetfb_noconsole=1 sweetiolog=- "
     "sweetadsp=0 gicrstride=0x40000 sweetbatt=0 sweetglink=0 "
     "sweethalbridge=0 sweeti2c=0 sweetamp=0 sweetgpu=0 sweetlog=1 "
     "sweetwifi=2"
@@ -61,7 +61,7 @@ def flags(command):
         "cpus": "8", "sweetadsp": "0", "sweetglink": "0",
         "sweethalbridge": "0", "sweeti2c": "0", "sweetamp": "0",
         "sweetgpu": "0", "sweetbatt": "0", "sweetlog": "1",
-        "sweetwifi": "2", "sweetiolog": "-", "marble_touch": "1",
+        "sweetwifi": "2", "sweetiolog": "-", "marble_touch": "0",
     }
     assert all(result.get(key) == value for key, value in expected.items())
     forbidden = {
@@ -70,6 +70,10 @@ def flags(command):
         "sweetnowait", "sweetampfirst", "sweetampverify",
     }
     assert not forbidden & result.keys()
+    allowed = {word.split("=", 1)[0] for word in BASE_ARGS.split() if "=" in word}
+    assert set(result) == allowed | {"sweettime"}, "unreviewed boot argument"
+    assert command.split().count("-noprogress") == 1
+    assert all("=" in word or word == "-noprogress" for word in command.split())
     return result
 
 
@@ -86,6 +90,8 @@ def main():
         payload = (OUT / "marble-adsp.payload").read_bytes()
         assert sha(image) == manifest["image_sha256"]
         assert sha(kernel) == manifest["kernel_sha256"]
+        assert image[:8] == b"ANDROID!" and len(image) == manifest["image_bytes"]
+        assert not kernel.count(bytes.fromhex("28e21bd5"))
         where = 4096 + struct.unpack_from("<I", image, 8)[0] - len(payload)
         assert image[where:where + len(payload)] == payload
         command = payload[0x48:0x2a8].split(b"\0", 1)[0].decode()
@@ -188,6 +194,7 @@ def main():
         "symbols": ["_sweet_wifi_init"], "kernel_rebases": rebases,
         "kernel_segments_verified": True, "gpu_shim_probe_level": 0,
         "device_booted": False, "boot_budget_before": 74,
+        "touch_disabled_for_tcs_isolation": True,
         "stage": "guarded QCA6490 power, PCIe link and endpoint identity",
     }
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

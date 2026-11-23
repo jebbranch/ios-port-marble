@@ -245,3 +245,8 @@ SWEET MARK: wifi pcie v2 stage=%d id=%#x subsystem=%#x bar=%#x bytes=%#x soc=%#x
 总预算仍74/120。下轮候选只能使用0301，完整构建/raw SHA/最终image SHA、
 CNTP/marker/符号/参数和事前冻结提交全部通过后才能执行第75次。
 当前没有Wi-Fi链路、固件、DMA或联网成功的新实机证据。
+
+首轮phase2镜像暂时固定`marble_touch=0`和`sweettouch=0`。现有触摸线程会在
+延时后使用同一apps RSC TCS0，因此必须避免与独立Wi-Fi owner并发。这仅影响本轮
+诊断镜像，不修改日常触摸设置；此轮无需触屏，用实体按键返回TWRP。
+参数检查采用完整key白名单，防止额外GPU/音频/RPMh探针混入。
