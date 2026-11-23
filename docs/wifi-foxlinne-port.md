@@ -250,3 +250,44 @@ CNTP/marker/符号/参数和事前冻结提交全部通过后才能执行第75�
 延时后使用同一apps RSC TCS0，因此必须避免与独立Wi-Fi owner并发。这仅影响本轮
 诊断镜像，不修改日常触摸设置；此轮无需触屏，用实体按键返回TWRP。
 参数检查采用完整key白名单，防止额外GPU/音频/RPMh探针混入。
+
+## 0301第75次冻结身份（未启动）
+
+```text
+image        images/wifi-pcie-0301-20261123.img
+image SHA    7f722647dfdd4fbe8b59e81a4aa8ae1e54438083e9e7dd769e16412342d189a1
+raw SHA      2ceac3fbf7591c71367e3b5c09f728a666573dfaa239e20236984ac8580ac1dd
+kernel SHA   2db83180e4058518902ab8f15edbea2e9b668e6efb90ad618770c163f1792c1a
+sweettime    1795431511
+image bytes  51322880
+cmdline      460 B
+markers      92
+```
+
+CNTP raw恰1处，修补点`0x4aa348`，修后0处；`_sweet_wifi_init`链接、8个MPIDR、
+全部Mach-O内嵌段、boot包和GPU shim level0验证通过。Wi-Fi v2 marker在image恰1处，
+旧v1为0。verify-only复跑通过，见`verify/wifi-0301-image/`。
+
+操作边界：
+
+- 只对serial `2aa26095`执行一次`fastboot boot`，启动后总预算75/120。
+- 当前总预算74/120，尚未启动。
+- `sweetwifi=2`；`marble_touch=0`、`sweettouch=0`；音频硬件、HAL、GPU全关闭。
+- 本轮不需要触屏。启动后等待日志落盘，再用实体按键回TWRP。
+- 不在同一轮追加固件、SMMU/DMA、MSI、ath11k或任何网络连接。
+- 无设备连接则保留镜像，不猜测设备状态、不添加启动次数。
+
+实机判据：
+
+| 门 | 成功条件 / 失败解释 |
+|---|---|
+| 身份 | sweettime1795431511；raw有效窗口，无陈旧尾部 |
+| 隔离 | touch disabled、ADSP disabled；无GLINK/I2C/HAL PCM/GPU/GMU/panic |
+| 初始状态 | stage2 handoff仅1条 |
+| 电源 | milestone=1，代表28次资源请求通过本地完成门；不等于实测电压 |
+| 端点 | v2 marker仅1条，id=0x110317cb；BAR合法且终止前bus-master读回关闭 |
+| SoC | 记录soc/sub，与参考0x400c1211/0x1016d0e1对照；不同不自动调整 |
+| 失败 | errno/poison/milestone记录；无端点marker则不进入DMA |
+
+评分器`tools/score_wifi_pcie.py`和8项正负证据测试已提交。成功只宣称
+“QCA6490 PCIe端点识别”，不宣称Wi-Fi联网、固件或GPU完成。

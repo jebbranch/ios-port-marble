@@ -1,0 +1,33 @@
+{
+  "image": "/Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/images/wifi-pcie-0301-20261123.img",
+  "image_bytes": 51322880,
+  "image_sha256": "7f722647dfdd4fbe8b59e81a4aa8ae1e54438083e9e7dd769e16412342d189a1",
+  "raw_sha256": "2ceac3fbf7591c71367e3b5c09f728a666573dfaa239e20236984ac8580ac1dd",
+  "kernel_sha256": "2db83180e4058518902ab8f15edbea2e9b668e6efb90ad618770c163f1792c1a",
+  "cntp_nop_offset": "0x4aa348",
+  "cmdline": "debug=0xc serial=3 cpus=8 keepsyms=1 -noprogress rd=ufsroot0 ufsroot=userdata ufsroot_lba=0x3603600 ufsroot_blocks=5243387 ufsrw=1 rootrw=1 wdt=-1 sweetusb=2 marbleusb=1 ufslogsecs=1 sweetsample=- cs_enforcement_disable=1 unentitled_ios_sim_launch=1 sweettouch=0 marble_touch=0 sweetfb_noconsole=1 sweetiolog=- sweetadsp=0 gicrstride=0x40000 sweetbatt=0 sweetglink=0 sweethalbridge=0 sweeti2c=0 sweetamp=0 sweetgpu=0 sweetlog=1 sweetwifi=2 sweettime=1795431511",
+  "cmdline_bytes": 460,
+  "sweettime": 1795431511,
+  "cpu_count": 8,
+  "mpidrs": [
+    0,
+    256,
+    512,
+    768,
+    1024,
+    1280,
+    1536,
+    1792
+  ],
+  "workflow_markers_checked": 92,
+  "symbols": [
+    "_sweet_wifi_init"
+  ],
+  "kernel_rebases": 0,
+  "kernel_segments_verified": true,
+  "gpu_shim_probe_level": 0,
+  "device_booted": false,
+  "boot_budget_before": 74,
+  "touch_disabled_for_tcs_isolation": true,
+  "stage": "guarded QCA6490 power, PCIe link and endpoint identity"
+}

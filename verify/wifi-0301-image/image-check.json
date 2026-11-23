@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "image": "/Users/huxiaoshi/Desktop/marble-ios/work/xnu-gh/images/wifi-pcie-0301-20261123.img",
+  "sha256": "7f722647dfdd4fbe8b59e81a4aa8ae1e54438083e9e7dd769e16412342d189a1",
+  "cmdline_bytes": 460,
+  "device_access": false
+}
