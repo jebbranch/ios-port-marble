@@ -1,0 +1,1 @@
+{"passed": true, "old_irq_bug_rejected": true, "compile_succeeded": true, "scope": "same hardware model rejects restored 0300 IRQ bug"}

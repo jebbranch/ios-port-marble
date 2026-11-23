@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run actual Wi-Fi phase-2 sequencing against an MMIO/RPMh/PCIe model."""
 import json
+import argparse
 from pathlib import Path
 import subprocess
 import tempfile
@@ -227,8 +228,17 @@ int main(void) {
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--negative-irq-control", action="store_true",
+                        help="restore the 0300 IRQ addressing bug; model must fail")
+    args = parser.parse_args()
+    production = PRODUCTION
+    if args.negative_irq_control:
+        for reg in ("SW_WIFI_IRQ_EN", "SW_WIFI_IRQ_STATUS", "SW_WIFI_IRQ_CLEAR"):
+            production = production.replace("base + " + reg,
+                                            "SW_WIFI_RSC_PA + " + reg)
     code = (HEADERS + "\n" + DECLARATIONS + "\n" + SUPPORT + "\n" + body(PHY.read_text()) +
-            "\n" + PRODUCTION + "\n" + TESTS)
+            "\n" + production + "\n" + TESTS)
     with tempfile.TemporaryDirectory(prefix="wifi-pcie-") as name:
         cfile, exe = Path(name) / "test.c", Path(name) / "test"
         cfile.write_text(code)
@@ -238,6 +248,13 @@ def main():
             "-o", str(exe),
         ], check=True)
         run = subprocess.run([str(exe)], check=False, capture_output=True, text=True)
+        if args.negative_irq_control:
+            if run.returncode == 0 or "Assertion failed" not in run.stderr:
+                raise RuntimeError("negative control did not expose the wrong IRQ addresses")
+            print(json.dumps({"passed": True, "old_irq_bug_rejected": True,
+                              "compile_succeeded": True,
+                              "scope": "same hardware model rejects restored 0300 IRQ bug"}))
+            return
         if run.returncode:
             raise RuntimeError(
                 f"wifi phase2 host failed {run.returncode}\n{run.stdout}\n{run.stderr}")
