@@ -11,7 +11,7 @@
 | 3 | **ADSP 固件** `adsp2.mdt` + `adsp2.bNN` | 你手机的 `/vendor/firmware/`（Qualcomm / 小米专有） | 专有固件，禁止再分发 | 见下文 3 |
 | 4 | **HFS+ iOS 用户态镜像** | 你自己的 iPhone X iOS 16 IPSW / 设备上的系统分区 | Apple 版权内容；且写入 userdata 是独立的高风险步骤 | 见下文 4 |
 | 5 | **Android NDK**（编译 shim） | Google 官方：<https://developer.android.com/ndk> | 公开可下载，仓库不重复存 | 安装后设 `ANDROID_NDK_HOME` |
-| 6 | **Xcode 15.x + KDK 13.5**（仅本地编译 XNU） | Apple 开发者工具 | 需 Apple 许可；CI 已用 `macos-14` 自带环境 | 仅在你本地重编内核时需要 |
+| 6 | **Xcode 15.x + KDK 13.5**（仅本地编译 XNU） | Apple 开发者工具 | 需 Apple 许可；CI 已用 `macos-15` 自带环境 | 仅在你本地重编内核时需要 |
 | 7 | **adb / fastboot** | Android Platform Tools（Google 公开下载） | 公开工具 | `brew install android-platform-tools` |
 | 8 | **测试设备** | 你自己的 Redmi Note 12 Turbo（marble），bootloader 已解锁 | 设备不在仓库里 :) | 默认 `SERIAL=2aa26095` 只是作者的测试机，可改 |
 
@@ -21,7 +21,7 @@
   许可证 **APSL 2.0**。
 - 构建框架：[`blacktop/darwin-xnu-build`](https://github.com/blacktop/darwin-xnu-build)，
   workflow 里固定了 `DXB_SHA`。
-- 本仓库的 `.github/workflows/xnu.yml` 在 GitHub 的 `macos-14` runner 上编译，
+- 本仓库的 `.github/workflows/xnu.yml` 在 GitHub 的 `macos-15` runner 上编译，
   产物发布到 rolling release **`kernel-latest`**。
 - 本地取回并打本机需要的 CNTP_CTL 补丁：
 
@@ -87,6 +87,8 @@ SERIAL=<你的序列号> ./scripts/extract_adsp_fw.sh
 - **制作或写入这个镜像需要修改 userdata，属于独立的高风险步骤**，
   不在本仓库"RAM-only、不写分区"的流程内。请先做完整备份，并自行承担风险。
 - 公开仓库里不要上传该镜像的任何部分。
+- root 位于 userdata 尾部，而 f2fs 没有被缩小；研究机开 Android 后写满会覆盖 root。
+  详见项目根 `docs/08-dual-boot-plan.md` §3。
 
 ## 5. 许可速览
 

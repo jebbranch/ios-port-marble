@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>marble-ios —— iOS 16 内核跑在 Redmi Note 12 Turbo 上</title>
+<meta name="description" content="把 Apple 开源的 XNU 8796（iOS 16 那一代）内核和 iPhone X 的 iOS 16.7.16 用户态，用自写裸机 shim 以纯 RAM 方式开机到 Redmi Note 12 Turbo（marble / SM7475）。研究项目，不刷任何分区。">
+<meta name="theme-color" content="#0b0e11">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="iOS 16 内核跑在 Redmi Note 12 Turbo 上">
+<meta property="og:description" content="XNU 8796 + iPhone X 用户态，自写 shim，纯 RAM 启动，不写分区。能进 SpringBoard；音频暂停，Wi-Fi 施工中。">
+<link rel="alternate" hreflang="zh-Hans" href="./">
+<link rel="alternate" hreflang="zh-Hant" href="zh-hant/">
+<link rel="alternate" hreflang="en" href="en/">
+<link rel="alternate" hreflang="x-default" href="./">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0e11'/%3E%3Cpath d='M6 11h9M6 16h14M6 21h6' stroke='%23ff6a3d' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="site.css">
+<script>document.documentElement.classList.add('js-anim')</script>
+<script src="lang.js" defer></script>
+<script src="timeline.js" defer></script>
+</head>
+
+<body>
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="#top"><span class="brand-mono">marble<span class="dim">-ios</span></span></a>
+    <nav class="nav" aria-label="页面导航">
+      <a href="#chain">启动链</a>
+      <a href="#status">现状</a>
+      <a href="#timeline">时间轴</a>
+      <a href="#discipline">踩过的坑</a>
+      <a href="#missing">还差什么</a>
+      <a href="#run">怎么跑</a>
+      <a href="#contribute">参与</a>
+    </nav>
+    <div class="lang" role="group" aria-label="语言">
+      <a href="./" data-lang="zh-CN" class="on" aria-current="true">中文</a>
+      <a href="zh-hant/" data-lang="zh-Hant">繁體</a>
+      <a href="en/" data-lang="en">EN</a>
+    </div>
+    <a class="repo-link" href="https://github.com/jebbranch/ios-port-marble">仓库 <span aria-hidden="true">↗</span></a>
+  </div>
+</header>
+
+<main id="top">
+
+<section class="hero wrap">
+  <div class="hero-text">
+    <h1 id="t">把 iOS 16 的内核，<br>开机到一台<br><span class="hl">Redmi Note 12 Turbo</span></h1>
+    <p class="lede">Apple 开源的 XNU（iOS 16 那一代）跑在小米这颗 Snapdragon 7+ Gen 2 上，上面是 iPhone X 的 iOS 16.7.16 用户态：launchd、系统守护进程、backboardd、SpringBoard、自带 App。引导链是自己写的裸机 shim，从 fastboot 直接把镜像推进内存跑，<strong>不刷 boot、不写 userdata、不动分区表</strong>。</p>
+    <p class="lede lede-flat">它是研究项目，不是一台能用的手机。现在能进主屏幕、能触摸、能用硬件按键；音频暂停在 73/120，Wi-Fi 正在施工，GPU 第二优先。缺的东西比列出来的多。</p>
+    <p class="cta-row">
+      <a class="btn" href="https://github.com/jebbranch/ios-port-marble">github.com/jebbranch/ios-port-marble</a>
+      <a class="btn btn-ghost" href="https://github.com/jebbranch/ios-port-marble/blob/main/docs/START-HERE.md">从 <code>docs/START-HERE.md</code> 接手</a>
+    </p>
+  </div>
+
+  <div class="term" role="img" aria-label="一次真机启动的内核日志片段">
+    <div class="term-bar"><span>logs/ring-run.txt</span><span class="term-meta">从 userdata 尾部取回</span></div>
+    <pre><code><span class="p">›</span> fastboot boot shim-iosroot.img
+<span class="p">›</span> ABL → shim → XNU
+boot cpu: Cortex-A510, MIDR 0x410FD463
+VM bootstrap done: 85 maps, 165 entries and 502 holes left
+kdp_core zlib memory 0x8000
+SWEET UFS: "userdata" on LUN 0, read-only
+BSD root: ufsroot0, major 1, minor 0
+SWEET MARBLE TOUCH: Goodix 9916R ok
+clock set from sweettime=<span class="dim">1794588906</span>
+<span class="g">launchd → SpringBoard</span>
+<span class="p">›</span> <span class="dim">内核自己复位，手机回到 TWRP</span></code></pre>
+  </div>
+</section>
+
+<section class="wrap" id="chain">
+  <p class="eyebrow">01 / 启动链</p>
+  <h2>四段路，没有一段是现成的</h2>
+  <p class="sec-lede">从 fastboot 到主屏幕之间原本什么都没有：没有 UEFI，没有 Linux，没有厂商驱动。每一段要么自己写，要么把 iPhone 的驱动搬到一颗它从没见过的高通 SoC 上。</p>
+
+  <ol class="chain">
+    <li><span class="chain-tag">ABL</span><h3>小米的 fastboot</h3><p>boot.img header v4（header 1584 / signature 4096）。只借它把镜像送进内存；<code>verifiedbootstate</code> 是 <code>orange</code>。</p></li>
+    <li><span class="chain-tag">shim</span><h3>自写 AArch64 裸机</h3><p>读硬件事实、配 MMU 与 16 KB 页表、把 splash 画进 framebuffer、组装 XNU payload，然后跳进内核。</p></li>
+    <li><span class="chain-tag">XNU</span><h3>xnu-8796.141.3，SWEET / DEVELOPMENT</h3><p>GICv3、VTIMER INTID 27、8 核 SMP。设备树由 D22AP 的 <code>.adt</code> 加上从真机 live FDT 采集的 marble 地址合成。</p></li>
+    <li><span class="chain-tag">userland</span><h3>iPhone X 的 iOS 16.7.16</h3><p>根文件系统是 userdata 尾部切出来的 HFS+ 分区；launchd、SpringBoard、自带 App 原封不动。</p></li>
+  </ol>
+
+  <div class="notes">
+    <h3 class="h-sm">搬驱动时要付的三笔学费</h3>
+    <dl>
+      <dt><code>msr CNTP_CTL_EL0</code> → NOP</dt>
+      <dd>这颗 SoC 在 EL1 不给物理定时器，XNU 只能走 CNTV。不改就直接 <code>Undefined kernel instruction</code>。</dd>
+      <dt>GICR stride 是 <code>0x40000</code>，不是默认的 <code>0x20000</code></dt>
+      <dd>marble 的 redistributor 间距 256 KB。用 <code>cpus=1</code> 时永远只碰 offset 0，所以这个差异一直藏着；要起 8 核就必须显式传 <code>gicrstride=0x40000</code>。</dd>
+      <dt>UFS 要往设备 W-LUN <code>0xD0</code> 发 <code>START STOP UNIT</code></dt>
+      <dd>ABL 交接时 UFS 是掉电的，普通 LUN 的唤醒无效。<code>cdb[4]=0x10</code> 之后 INQ / TUR / CAP / READ / GPT 才全部成立。</dd>
+    </dl>
+  </div>
+</section>
+
+<section class="band" id="status">
+  <div class="wrap">
+    <p class="eyebrow">02 / 现状</p>
+    <h2>能做到的和做不到的，写在同一张表里</h2>
+    <p class="sec-lede">√ 真机验证过；○ 部分通、结论还没收口；× 没做或已停车。每一行的措辞都按最保守的那条读数写。</p>
+
+    <table class="matrix">
+      <caption class="sr-only">子系统状态表</caption>
+      <thead><tr><th scope="col">子系统</th><th scope="col">状态</th><th scope="col">说明</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">启动到 SpringBoard</th><td><span class="s-ok">√</span></td><td>shim + 自建 ADT + XNU 8796，RAM-only。进过主屏幕，能解锁、开设置、拉控制中心。</td></tr>
+        <tr><th scope="row">显示 / 触摸 / 按键</th><td><span class="s-ok">√</span></td><td>CPU 软件渲染，没有 GPU 驱动。Goodix 9916R 走 GPIO 软件 SPI，多指与负载下的体验还没验。</td></tr>
+        <tr><th scope="row">UFS 读写 + HFS+ 根</th><td><span class="s-ok">√</span></td><td>userdata 尾部切出来的 <code>iosroot</code>；GPT、分区、DMA 全部真机回读。</td></tr>
+        <tr><th scope="row">8 核 SMP</th><td><span class="s-ok">√</span></td><td>4×A510 + 3×A710 + 1×X2，GICR stride 修正后 8/8 起核，调度器真的在分配工作；代价是发热偏大。</td></tr>
+        <tr><th scope="row">ADSP：PAS / GLINK / GPR / APM</th><td><span class="s-ok">√</span></td><td><code>GRAPH_OPEN</code>、<code>PREPARE</code>、<code>START</code> 与 TDM <code>SET_CFG</code> 全部 <code>status=0</code>。</td></tr>
+        <tr><th scope="row">音频数据面（DSP 消费我们的 PCM）</th><td><span class="s-ok">√</span></td><td>门槛在 S1 叶子页表项的 <code>AP</code> 位：DSP 非特权读被 SMMU 终止。修好后 <code>DATA_BUFFER done status=0</code>，1200 个 buffer 跑完并正常复位。</td></tr>
+        <tr><th scope="row">音频</th><td><span class="s-warn">○</span></td><td>暂停在 73/120。数据面、HAL 连续流、功放修复都已通过；最后一次有效负读数是功放没有 TDM 时钟。0298 已离线修好 PRM 回包绑定，尚无新内核/镜像/开机。</td></tr>
+        <tr><th scope="row">USB</th><td><span class="s-warn">○</span></td><td>枚举与控制请求有证据，稳定数据传输还没收口。</td></tr>
+        <tr><th scope="row">电池</th><td><span class="s-ok">√</span></td><td><code>pmic_glink</code> 通道能开，capacity / vbat / temp 按正确单位展示；充电状态由<strong>电流的正负号</strong>判定——本机电流为负表示充电、为正表示放电，不靠某个布尔位。</td></tr>
+        <tr><th scope="row">关机</th><td><span class="s-ok">√</span></td><td>userland 里的关机会真正执行断电。10-27 那次 <code>CPU 1 caller Halt/Restart</code> 看门狗超时是当时还没收口的状态。</td></tr>
+        <tr><th scope="row">震动</th><td><span class="s-warn">○</span></td><td>AP 侧 SPMI 直驱 PMIC HAP520 真的能震（44/44 次有震感）；UIKit / CoreHaptics 的请求被 <code>backboardd</code> 的用户态 gate 拦下，内核侧看不到 IPC。</td></tr>
+        <tr><th scope="row">RTC</th><td><span class="s-warn">○</span></td><td>当前显示时间来自启动参数。PMK8350 的 RTC 归 ADSP 所有，AP 写入被拒。</td></tr>
+        <tr><th scope="row">GPU（Adreno 725 / gen7 GMU）</th><td><span class="s-warn">○</span></td><td>第二优先。旧 XNU 8796 线仍冻结；FoXLinne 的上游 iOS 18 实现可参考，但 iOS 16 适配尚未开始。绝不主动 collapse GPU。</td></tr>
+        <tr><th scope="row">Wi-Fi / 蓝牙</th><td><span class="s-warn">○</span></td><td>当前主线。第 74 轮只读 handoff 通过，确认 QCA6490/PCIe0 交接后保持关闭；端点识别尚未实机验证。0302/0303 已把无线栈、固件、DMA/SMMU 核心离线接进同一个对象，尚未整机启动。</td></tr>
+        <tr><th scope="row">基带</th><td><span class="s-bad">×</span></td><td>还没做过实机实验。先决门是 306 MB 的 <code>mpss_region</code> 在我们 XNU 启动时能否持有；真正的墙是 iOS 16 的 telephony 用户态。</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="wrap stats" aria-label="项目数字">
+  <div><b>293</b><span>个 XNU 移植补丁<br><em>编号到 0303</em></span></div>
+  <div><b>8<span class="u">/8</span></b><span>起核<br><em>16 KB 页 / GICv3</em></span></div>
+  <div><b>784</b><span>次 commit<br><em>macOS runner 排队；#404 是 runner not found</em></span></div>
+  <div><b>33</b><span>篇技术文档<br><em>含失败记录</em></span></div>
+</section>
+
+<section class="wrap" id="timeline">
+  <p class="eyebrow">03 / 时间轴</p>
+  <h2>十五个节点，从一句「不可能」到 2026-11-28</h2>
+  <p class="sec-lede">日期取自仓库提交时间戳与 GitHub Actions 的构建记录，顺序按实际发生排；<code>docs/status-log.md</code> 里若干条日期在几次转手之后已经和当时不符，不作依据。</p>
+  <div class="tl-wrap">
+    <span class="tl-rail" aria-hidden="true"></span>
+    <span class="tl-rail-fill" aria-hidden="true"></span>
+    <ol class="tl">
+      <li class="tl-item">
+        <p class="tl-date">2026-10-21 15:58</p>
+        <h3>「红米 Note 12 能刷 iOS 吗？」</h3>
+        <p>得到的回答是：不可能。iOS 不开源、Secure Boot、SHSH 签名、Secure Enclave，只认 A 系列芯片。项目是从这句「不可能」开始的。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-21</p>
+        <h3>shim 探硬件，最小根在内存里</h3>
+        <p>16 KB 页、MIDR、GICv3、framebuffer 全部实测通过。19:05 第一次 shim 上机是乱码 + 红蓝屏，19:09 修复版拍到 P1 诊断；19:31 CI run #1 成功。23:00 panic 在 <code>msr CNTP_CTL_EL0</code>，NOP 之后 XNU 到 console；23:19 屏幕打出 <code>userland alive</code>——16 MB HFS+ 最小根由 shim 以 <code>rd=md0</code> 带进内存，里面只有一个静态 <code>/sbin/launchd</code>，不碰 UFS。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-22</p>
+        <h3>UFS 醒过来</h3>
+        <p>ABL 交接时 UFS 是掉电的，普通 LUN 的唤醒无效；向设备 W-LUN <code>0xD0</code> 发 <code>START STOP UNIT</code>（<code>cdb[4]=0x10</code>）之后 INQ / TUR / CAP / READ / GPT 全部成功，读出 SAMSUNG KLUEG8UHGC-B0E1、4 KiB 块、约 256 GB。22:53 文件级备份校验完成；深夜开始把约 11 GiB 的 HFS+ 镜像按 1 GiB × 16 块写进 userdata 尾部，GPT 全程没动。同一天发现 0082 的 hunk 行号写错导致 CI 静默跳过补丁——marker 门由此而来。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-23 01:05</p>
+        <h3>Apple logo + 进度条：iOS 在引导</h3>
+        <p><code>launchd_cache_loader</code> 过了，launchd 已经在跑用户态引导，不再是内核 panic 屏。02:07 日志确认 SpringBoard(pid 26) 与 backboardd(57) 都在运行、framebuffer 交换 19.4 万次；停在进度条的原因是缺 preboot 卷、独立数据卷、SEP、前台会话、GPU 加速和基带/蓝牙守护进程。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-23 10:21 → 15:11</p>
+        <h3>进 Setup，再进桌面</h3>
+        <p>10:21「成了，进 setup 了」：绕过 datamigrator + 激活种子这条路走对，随后开始新写 Goodix GT9916R over SPI 的触摸驱动。15:11「进桌面了，但是没有壁纸，锁屏时钟是红色的」：<code>SetupDone</code> 生效，用户态彻底过了 Setup；壁纸与红色时钟归到 WallpaperKit / 颜色管线，还没有 GPU 合成。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-23 → 24</p>
+        <h3>音频开工</h3>
+        <p>LPASS/WCD938x 只读探针 → AOP command DB → 走 TZ PAS 装载与释放 ADSP → 最小 GLINK/GPR 客户端 → 通过 q6prm 投 LPASS。第二天打开厂商自己的 AudioReach 播放图、灌 1 kHz、开始碰功放 I2C，也第一次试了 HAP520 震动引擎。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-27</p>
+        <h3>八核是修音频时顺手修的</h3>
+        <p>marble 的 GICR 间距是 <code>0x40000</code> 而不是 XNU 默认的 <code>0x20000</code>；改成运行时可配、ADT 里放八个核，8/8 起来。同一天记下 apps-smmu 的死路、盘了 GPU 可行性（kgsl-smmu 与 apps-smmu 是两颗独立 SMMU），并确认喇叭走 TERTIARY TDM + 两颗 AW882xx，不是 WSA。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-30</p>
+        <h3>震动：输出侧解决</h3>
+        <p>AP 侧 SPMI 直驱 PMIC HAP520，44/44 次有震感、震感与设置一致。同一轮修掉 SpringBoard 的 TCC 崩溃（补 16 个 usage 键）。剩下的不在硬件：UIKit / CoreHaptics 的请求被 <code>backboardd</code> 的用户态 gate 拦下，这条线当天暂停。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-02</p>
+        <h3>音频数据面打通</h3>
+        <p>门槛不是厂商那 18 KB 校准，而是 S1 叶子页表项的 <code>AP</code> 位——DSP 非特权读被 SMMU 终止。改到 <code>sweets1ap=3</code> 之后 <code>DATA_BUFFER done status=0</code> 回来，1200 个 buffer 跑完并正常复位。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-03</p>
+        <h3>mediaserverd 来 open 我们的壳</h3>
+        <p>线上格式在本机 <code>libar-gsl.so</code> 上逐条反汇编复验：记录头 16 B、OOB 包结构、正文 ≤256 走带内；SHM 映射的高 32 位是 stream index 而不是地址。pid 28 调了 <code>method_Open</code>。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-05</p>
+        <h3>一条轴关门，两条线改道</h3>
+        <p>带外 <code>SET_CFG</code> 的 E–N 十轮把地址、传输、长度、正文字节逐格排除；N1 的哨兵证明之前那些 <code>err=0</code> 其实是「没人写过」。同一天 Wi-Fi 决定暂缓，基带开线先做零开机普查。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-07</p>
+        <h3>图的内容判死，GPU 冻结</h3>
+        <p>离线核清图生成轴（2960 是当代四个 key，旧的 2724 属于上一代且自身索引越界）；逐字 dump 两次推翻「图里缺 DEC/CNV」，真正缺的是 <code>PCM_DEC</code> + <code>PCM_CNV</code>。856 B 的图能开、能起、能推 120 帧，人耳三次都没听到；<code>EOS_RENDERED</code> 在收包仪器被证明活着的前提下从未到达。GPU 线转冻结。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-08 → 13</p>
+        <h3>修功放，然后接上 HAL</h3>
+        <p>功放两处真实缺陷实机生效：初始化不再执行诊断复位，寄存器写合成三字节单消息，两颗的表值 <code>b440</code> / <code>05a9</code> 读回一致。11-10 重开音频做 capture-only HAL；第 70 轮 HAL → AudioReach 连续流 <code>30/30/30</code>、六条控制应答全 0——仍然不是出声。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-14 → 15</p>
+        <h3>定位到功放没有 TDM 时钟</h3>
+        <p>第 72 轮有效无声：两颗 AW88266 的 profile / ID / vol 都对，清掉 PWDN 之后 <code>SYSST=0</code>、PLL 全 0，安全门在任何 period 提交前拒绝并双关断。0297 补上厂商那张精确 PRM 票，第 73 轮判为 PRM 回包解析失配——应答是 <code>0x02001002</code> 配 <code>0x0800102c</code>，不是 BASIC_RSP；0298 已离线把绑定修好。声音仍未证明。</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-20 → 28</p>
+        <h3>Wi-Fi 成为主线，GPU 转为第二优先</h3>
+        <p>引入 FoXLinne 的 marble 参考。第 74 轮只读 handoff 通过，确认 QCA6490/PCIe0 交接后保持关闭；端点识别尚未验证。0302/0303 把 109 个无线栈对象、固件、DMA/SMMU 核心离线接进同一个对象，但还没进入 XNU 的实际启动路径。预算仍 74/120。</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="band" id="discipline">
+  <div class="wrap">
+    <p class="eyebrow">04 / 踩过的坑</p>
+    <h2>一个人踩不完所有的坑，所以坑要写下来</h2>
+    <p class="sec-lede">这个项目最贵的资源不是时间，是开机次数——一次开机等于一次真机、一次取日志、一次归因。下面四条机制都是为了把它变便宜才长出来的。</p>
+
+    <div class="cards">
+      <article>
+        <h3>marker 门：让被跳过的补丁表现为一次 CI 红</h3>
+        <p>每个补丁自带一条唯一的 <code>printf</code> 字面量，GitHub Actions 构建完 XNU 后在<strong>产物</strong>里逐条 grep。补丁因为基线选错而没打上时，红的是 CI，不是一次白花掉的开机。改一条字符串必须在同一个 push 里删掉旧 marker。</p>
+      </article>
+      <article>
+        <h3>cmdline 只有 590 字节</h3>
+        <p>启动参数塞到 607 字节会被截断，而且是<strong>静默切值</strong>：<code>sweetbufs=30</code> 变成 <code>sweetbufs=3</code>，于是你拿一个约 12 ms 的音当负读数写进结论。现在 <code>mkimage.sh</code> 在超长时直接报错退出，不许绕过。</p>
+      </article>
+      <article>
+        <h3>日志要从磁盘尾取，而且先对身份</h3>
+        <p>内核 console 在 <code>exec bluetoothd</code> 之后基本是哑的，所以关键行直写 ring buffer，落在 userdata 尾部，复位后用脚本拉回来。单条记录约 240 字节、截断不加分隔符，一个“长行”其实是几条粘在一起。每轮先 <code>grep sweettime</code> 对身份——对不上意味着这一轮根本没写 ring，而脚本会安静地把上一轮给你。</p>
+      </article>
+      <article>
+        <h3>判据表必须在开机之前 commit</h3>
+        <p>一次实验只动一个语义变量，并打印它实际用的参数；判决表在开机之前写死，事后不改。仪器必须能自证失败：只在已被证明会执行的路径上打印，否则明确标注“非判据”。尺寸凑对了不算证据——同一个 <code>u32=18504</code> 在厂商 ACDB 里能出现几十次。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="wrap" id="missing">
+  <p class="eyebrow">05 / 还差什么</p>
+  <h2>没做到的部分，才是这份清单的意义</h2>
+  <div class="two-col">
+    <div>
+      <p><strong>声音。</strong>音频暂停在 73/120。数据面、HAL 连续流、功放修复都已通过；最后一次有效负读数是功放没有 TDM 时钟。0298 已离线修好 PRM 回包绑定，尚无新内核/镜像/开机。</p>
+      <p><strong>Wi-Fi。</strong>第 74 轮只读 handoff 通过，确认 QCA6490/PCIe0 交接后保持关闭；端点识别尚未验证。0302/0303 已离线集成 109 个无线栈对象、固件与 DMA/SMMU 核心，但还没进入 XNU 的实际启动路径。</p>
+      <p><strong>图形。</strong>每个像素仍是 CPU 算的。FoXLinne 的上游 iOS 18 GPU 实现可参考，但 iOS 16 适配尚未开始；旧 XNU 8796 线仍冻结。</p>
+    </div>
+    <div>
+      <p><strong>存储。</strong>root 镜像位于 userdata 尾部，但 f2fs 没有缩小、GPT 没有改。研究机日常还要开 Android，写满就会覆盖 root；目前只能开机前重读卷头签名与 free 块数，发现被覆盖就重新分块写尾部。</p>
+      <p><strong>可用性。</strong>缺 preboot 卷、独立数据卷、SEP、前台会话；部分 App 看门狗超时；空密码仍要求输入（用户态 bug）。这套东西的目标不是日常手机，而是回答「Apple 的内核离开工厂校准的硬件能走多远」。</p>
+      <p><strong>已证伪的路线。</strong>SMMU 死路、拿 <code>DATA_BUFFER</code> 当探针、用 <code>tinyplay</code> 扰动测时钟——每一条都花过真机开机，列出来是为了省下你的。</p>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="run">
+  <div class="wrap">
+    <p class="eyebrow">06 / 怎么跑一遍</p>
+    <h2>你需要自备的文件</h2>
+    <p class="sec-lede">仓库是<strong>纯代码、补丁与文档</strong>，不含任何 Apple、高通或小米的二进制。XNU 源码由 CI 从公开源构建；下面三样只能从你自己的设备来。</p>
+
+    <table class="matrix assets">
+      <caption class="sr-only">需要自备的文件</caption>
+      <thead><tr><th scope="col">文件</th><th scope="col">来源</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>d22ap.adt</code></th><td>你自己的 iPhone X（D22AP）iOS 16.7.16 IPSW。Apple 版权内容，不可再分发。</td></tr>
+        <tr><th scope="row"><code>adsp2.mdt</code> 与分段</th><td>你自己手机上的 <code>/vendor/firmware/</code>，用 <code>extract_adsp_fw.sh</code> 抽取（需要 root）。</td></tr>
+        <tr><th scope="row">HFS+ 用户态镜像</th><td>你自己的 iPhone X IPSW 或设备。仓库不提供，也不提供获取渠道。</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <p class="code-label">构建 → 启动 → 取日志，全程只 <code>fastboot boot</code></p>
+<pre><code><span class="c"># 1. 取回 CI 产物并打上 CNTP_CTL NOP（一定要用处理过的内核）</span>
+GH_REPO=&lt;你&gt;/ios-port-marble ./scripts/fetch_kernel.sh
+
+<span class="c"># 2. 从手机抽 ADSP 固件</span>
+SERIAL=&lt;你的机器&gt; ./scripts/extract_adsp_fw.sh
+
+<span class="c"># 3. 生成 RAM-only 启动镜像</span>
+D22AP_ADT=/path/to/d22ap.adt ADSP_FW_DIR=$PWD/adsp-fw ./scripts/mkimage.sh
+
+<span class="c"># 4. 启动。不写任何分区。</span>
+SERIAL=&lt;你的机器&gt; ./scripts/boot_ram.sh images/shim-iosroot-adsp.img
+
+<span class="c"># 5. 取回这一轮的 ring 日志</span>
+SERIAL=&lt;你的机器&gt; ./scripts/pull_logs.sh run1</code></pre>
+    </div>
+
+    <p class="warn">只对<strong>你自己的设备</strong>使用。测试前一定先备份原机数据——别学我不备份就在线调整 userdata 分区大小，这很吃运气。另外要知道怎么进 fastboot（Power + Vol Down）和恢复路径。内核 panic 时屏幕会花，推荐先拍照，再记下 pc / lr / far 然后重启。</p>
+  </div>
+</section>
+
+<section class="wrap" id="contribute">
+  <p class="eyebrow">07 / 参与</p>
+  <h2>欢迎一起来折腾</h2>
+  <div class="two-col">
+    <div>
+      <ul class="clean">
+        <li><strong>有同款机器</strong>（Redmi Note 12 Turbo / marble / SM7475）：帮忙实机复现、抓日志、读寄存器、验证补丁。</li>
+        <li><strong>做过 XNU / IOKit / 驱动移植</strong>：补丁和代码评审都欢迎，一个 PR 尽量只做一件事。</li>
+        <li><strong>懂高通 PMIC / RPMh / SMMU / AudioReach</strong>：如果文档里有错，或者这条路你早走通过、走死过，请一定告诉我们。</li>
+      </ul>
+    </div>
+    <div>
+      <p>开 Issue 请贴四样：现象、<code>logs/ring-*.txt</code>、启动参数、以及镜像标识 <code>sweettime</code>。有这四样，同一轮实验就能复现。范围不限于 bug——“这条路我试过，结论是 X”同样有价值。</p>
+      <p class="flat">失败的尝试也请顺手写进 <code>docs/</code>，下一个人就不会重走。</p>
+      <p class="flat">Issues and pull requests in English are welcome too.</p>
+    </div>
+  </div>
+
+  <div class="credits">
+    <h3 class="h-sm">站在谁的肩膀上</h3>
+    <p>公开参考项目 <code>ios-sweet</code>（同一代 XNU 移植到 Redmi Note 10 Pro / SM7150）与 <code>ios-topaz</code> 提供了起点；本项目把地址、时钟、中断、触摸、UFS 全部换成 marble 的，并把 sweet 的 SM7150 驱动逐条重验。其他移植项目的音频源码与厂商 kprobe trace 也用来交叉校验过我们的线上格式。</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-inner">
+    <p>仅供学习与研究，不提供任何担保；因使用导致的设备损坏或数据损失由使用者自负。补丁、shim 与脚本按仓库 LICENSE 发布；XNU 源码版权归 Apple，构建过程从公开源拉取。</p>
+    <p class="mono dim">文档最后固化于 2026-11-28</p>
+    <p class="mono dim">本页源码：<a href="https://github.com/jebbranch/ios-port-marble/blob/main/index.html">index.html</a>，跟 <code>docs/</code> 一起随仓库走，不单独维护版本号</p>
+  </div>
+</footer>
+
+</body>
+</html>

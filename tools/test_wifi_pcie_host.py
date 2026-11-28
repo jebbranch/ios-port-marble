@@ -14,7 +14,8 @@ PHY = ROOT.parent / "chain-tree-wifi/bsd/dev/sweet_wifi_phy.h"
 def body(text):
     return "\n".join(
         line for line in text.splitlines()
-        if not line.startswith(("#include", "#if", "#endif"))
+        if not line.startswith(("#include", "#if defined(ARM64_BOARD_CONFIG_SWEET)"))
+        and line != "#endif /* ARM64_BOARD_CONFIG_SWEET */"
     )
 
 
@@ -41,6 +42,11 @@ HEADERS = r'''
 #include <errno.h>
 typedef uintptr_t vm_offset_t;
 typedef size_t vm_size_t;
+#if SWEET_WIFI_EMBEDDED
+typedef int wait_result_t;
+typedef int kern_return_t;
+typedef void *thread_t;
+#endif
 '''
 
 SUPPORT = r'''
@@ -52,6 +58,23 @@ static int boot_stage,log_syncs,complete_votes,link_ready,bad_vendor;
 static int phy_ready,stale_complete,all_ones_status,cleanup_failed;
 static char output[32768];
 static size_t output_at;
+#if SWEET_WIFI_EMBEDDED
+static unsigned worker_starts,runtime_starts;
+static int touch, worker_error, omit_flags;
+#define KERN_SUCCESS 0
+#define THREAD_CONTINUE_NULL NULL
+static thread_t current_thread(void){return (thread_t)1;}
+int thread_terminate(thread_t thread){assert(thread == (thread_t)1);return 0;}
+static void thread_block(void *continuation){assert(!continuation);}
+static void thread_deallocate(thread_t thread){assert(thread == (thread_t)1);}
+static int kernel_thread_start(void (*worker)(void *,wait_result_t),void *arg,thread_t *out) {
+ worker_starts++;
+ if (worker_error) return 1;
+ *out = (thread_t)1;
+ worker(arg,0);
+ return KERN_SUCCESS;
+}
+#endif
 static int test_printf(const char *format,...) {
  va_list ap;va_start(ap,format);
 #pragma clang diagnostic push
@@ -70,7 +93,15 @@ static struct cell *cell(uint32_t pa) {
 static void put(uint32_t pa,uint32_t value){cell(pa)->value=value;}
 static uint32_t get(uint32_t pa){return cell(pa)->value;}
 static int PE_parse_boot_argn(const char *name,void *value,int bytes) {
- assert(!strcmp(name,"sweetwifi") && bytes==4);memcpy(value,&boot_stage,4);return 1;
+ assert(bytes==4);
+ if(!strcmp(name,"sweetwifi")){memcpy(value,&boot_stage,4);return 1;}
+#if SWEET_WIFI_EMBEDDED
+ if(omit_flags)return 0;
+ int v = !strcmp(name,"marble_touch") ? touch : 0;
+ memcpy(value,&v,4);return 1;
+#else
+ assert(!"unexpected boot argument");return 0;
+#endif
 }
 vm_offset_t ml_io_map(vm_offset_t pa,vm_size_t bytes){(void)pa;(void)bytes;return 1;}
 void sweet_log_sync(void){log_syncs++;}
@@ -99,6 +130,15 @@ static uint32_t sw_wifi_halted(bool *ok) {
   if(sw_wifi_read(SW_WIFI_GCC_PA+sw_wifi_branches[i],ok)&(1u<<31))halted|=1u<<i;
  return halted;
 }
+#if SWEET_WIFI_EMBEDDED
+int sweet_wifi_runtime_start(uint32_t cfg,uint32_t dbi,uint32_t bar,uint32_t bytes) {
+ assert(cfg==0x60100000u && dbi==0x60000000u && bar==0x60400000u && bytes==0x200000u);
+ assert((get(cfg+4)&6u)==2u && votes==28 && log_syncs>0);
+ assert(strstr(output,"wifi pcie v2 stage=3"));
+ runtime_starts++;
+ return 0;
+}
+#endif
 static void sw_wifi_write(uint32_t pa,uint32_t value,bool *ok) {
  if(!*ok)return;
  assert(pa<0x17a20000u || pa>=0x17a20010u); /* never overwrite RSC ID */
@@ -157,6 +197,9 @@ static void reset_case(void) {
  memset(cells,0,sizeof(cells));cells_n=writes=votes=0;boot_stage=2;log_syncs=0;
  complete_votes=1;link_ready=phy_ready=1;bad_vendor=0;output_at=0;output[0]=0;
  stale_complete=all_ones_status=cleanup_failed=0;bar_mask=0xffe00000u;
+#if SWEET_WIFI_EMBEDDED
+ worker_starts=runtime_starts=0;touch=worker_error=omit_flags=0;
+#endif
  memset(vote_addresses,0,sizeof(vote_addresses));memset(vote_values,0,sizeof(vote_values));
  sw_wifi_rpmh_poisoned=false;
  sw_wifi_started_once=false;sw_wifi_milestone=0;
@@ -218,6 +261,23 @@ int main(void) {
  reset_case();phy_ready=0;sweet_wifi_init();assert(votes==28 && get(SW_WIFI_CFG_PA+4)==0);case_count++;
  reset_case();bar_mask=0xffffffffu;sweet_wifi_init();assert(strstr(output,"wifi pcie v2")==NULL);case_count++;
  reset_case();bar_mask=0xffe10000u;sweet_wifi_init();assert(strstr(output,"wifi pcie v2")==NULL);case_count++;
+ reset_case();boot_stage=3;sweet_wifi_init();
+#if SWEET_WIFI_EMBEDDED
+ assert(worker_starts==1 && runtime_starts==1 && strstr(output,"embedded=1 admitted=1"));case_count++;
+ sweet_wifi_init();assert(worker_starts==1 && runtime_starts==1);case_count++;
+ reset_case();boot_stage=3;touch=1;sweet_wifi_init();
+ assert(!writes && !worker_starts && !runtime_starts && strstr(output,"admitted=0"));case_count++;
+ reset_case();boot_stage=3;omit_flags=1;sweet_wifi_init();
+ assert(!writes && !worker_starts && !runtime_starts);case_count++;
+ reset_case();boot_stage=3;worker_error=1;sweet_wifi_init();
+ assert(!writes && worker_starts==1 && !runtime_starts && strstr(output,"worker start failed"));case_count++;
+ reset_case();boot_stage=3;link_ready=0;sweet_wifi_init();
+ assert(worker_starts==1 && !runtime_starts && get(0x60100004u)==0);case_count++;
+ reset_case();boot_stage=3;put(0x60400000u+0x224u,0x400c1212u);sweet_wifi_init();
+ assert(worker_starts==1 && !runtime_starts && (get(0x60100004u)&6u)==2u);case_count++;
+#else
+ assert(!writes && !votes && strstr(output,"embedded=0 admitted=0"));case_count++;
+#endif
 
  printf("{\"passed\":true,\"cases\":%u,\"votes_on_success\":%u,"
         "\"actual_phase2\":true,\"hardware\":\"mock-only\"}\n",case_count,28u);
@@ -231,6 +291,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--negative-irq-control", action="store_true",
                         help="restore the 0300 IRQ addressing bug; model must fail")
+    parser.add_argument("--embedded", action="store_true",
+                        help="exercise the local stage-3 worker hook")
     args = parser.parse_args()
     production = PRODUCTION
     if args.negative_irq_control:
@@ -244,6 +306,7 @@ def main():
         cfile.write_text(code)
         subprocess.run([
             "clang", "-std=gnu11", "-Wall", "-Wextra", "-Wformat=2",
+            f"-DSWEET_WIFI_EMBEDDED={int(args.embedded)}",
             "-Werror", "-fsanitize=address,undefined", str(cfile),
             "-o", str(exe),
         ], check=True)

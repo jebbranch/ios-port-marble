@@ -1,10 +1,27 @@
 # Marble XNU 出声 — 阶段状态（2026-10-24 12:20）
 
-> **当前结论速查请看 [`STATUS-2026-11-07.md`](STATUS-2026-11-07.md)（新会话第一入口）**；
+> **当前结论速查请看 [`STATUS.md`](STATUS.md)（新会话第一入口）**；
 > 本文件是按时间追加的完整实验日志，**其中的"当前状态"都是当年的**（页 765、925 等处的
 > "数据面卡在 DSP 取 buffer / 卡 SMMU"早已被推翻 —— 数据面 2026-11-02 通过，
 > 现在的卡点是"全绿但不出声"）。本页提到的 `CURRENT.md` / `STATUS.md` **在本仓库不存在**（旧文件名）。
 > 目录说明与常用命令见 `../README.md`。
+
+## 2026-10-21 → 10-23（补记；完整时刻见 `chronology.md` §1–§3）
+
+- **10-21**：15:58 从一句「红米 Note 12 能刷 iOS 吗？」开始；19:05 第一次 shim 上机是乱码 +
+  红蓝屏，19:09 修复版拍到 P1 诊断（16 KB 页 / MIDR `0x410FD463` / GICv3 + VTIMER 27 /
+  FB `0xb8000000` stride 4320）；19:31 CI run #1 成功；23:00 panic 在
+  `msr CNTP_CTL_EL0`（pc `0xfffffe0007491348`，instr `d51be220`），NOP 之后 X1 到 console，
+  终点是 `waitForService("IODTNVRAM")` 永久等待；**23:19 打出 `userland alive`**
+  （16 MB HFS+ 最小根由 shim 以 `rd=md0` 带进内存，里面只有静态 `/sbin/launchd`，不碰 UFS）。
+- **10-22**：10:39 UFS 设备唤醒打通（W-LUN `0xD0` + `cdb[4]=0x10`），XNU 读出
+  `first block 0x2f6a00, 229581 MiB` 与 `BSD root: ufsroot0`；22:53 文件级备份校验完成；
+  深夜开始向 userdata 尾部写 root（1 GiB × 16 块）；同日发现 0082 的 hunk 行号写错
+  导致 **CI 静默跳过补丁** ⇒ marker 门由此而来。
+- **10-23**：**01:05 Apple logo + 进度条**（`launchd_cache_loader` 过了，SpringBoard(26) 与
+  backboardd(57) 在跑、framebuffer 交换 19.4 万次，停在缺 preboot 卷 / 数据卷 / SEP / 前台会话）；
+  **10:21 进 Setup**，随后开始新写 Goodix GT9916R over SPI 的触摸驱动；
+  **15:11 进桌面**（`SetupDone` 生效；无壁纸、锁屏时钟红色 = 还没有 GPU 合成）。
 
 ## 目标
 RAM-only `fastboot boot` 引导 XNU，让 Redmi Note 12 Turbo（marble，序列号 2aa26095）的
@@ -1115,7 +1132,8 @@ panic(cpu 1): Kernel data abort at pc 0xfffffe0007a8c598
 - `mkimage.sh` 现在支持 `CPUS=n`（替换 `cpus=1`）、`KEEPALIVE=1`（去掉
   `sweetreboot=1`），交互版镜像：`KEEPALIVE=1` + 不带 `sweetpcm`
 
-## 2026-10-25 14:1x —— 首次进到 GUI（Siri 欢迎页），随后又是 io_submap
+## 2026-10-25 14:1x —— 再次进到 GUI（Siri 欢迎页），随后又是 io_submap
+- 首次进 GUI 是 2026-10-23：01:05 Apple logo + 进度条，10:21 进 Setup，15:11 进桌面；本轮是回归之后再进入
 - 交互版镜像（单核、无 sweetpcm）**成功显示 iOS 界面**：屏幕上是
   「只要按住侧边按钮，或随时说"嘿 Siri"」的 Siri 欢迎页
   ⇒ 图形栈、触摸、SpringBoard 都起来了
@@ -2657,7 +2675,7 @@ R1 sweettime=1794104883，raw total/解码=100838/100838；唯一dec-cnv图，op
 
 0290在第67枪确认了诊断复位副作用消除：RESET=1/1、真实I2C可读，但仍4003/38掉电静音。随后核对厂商writer，发现本地把地址与16位值拆成两条WRITE；0291改为三字节单消息，读保持不变。
 第68枪新marker实际bytes3、两颗各一次；窗口101520/101520，各回归与写法门通过，**两颗真实reg4=b440、reg5=05a9，PWDN/AMPPD/HMUTE均从1变0，表值真实生效**。图open/start0、120tone/121DONE、timeout0、正常PSCI复位、无panic，设备回Android99%。听感未明确反馈，不宣布已出声。
-用户要求本轮之后暂停音频，现已收尾冻结，不追加GPIO/PLL/EOS/格式或新校准实验。最终68/120，R1免费扣0。最新权威入口 **AUDIO-CLOSEOUT-2026-11-08.md**，其他方面仅从既有记录整理为 OTHER-LINES-2026-11-08.md，没有新测试。
+用户要求本轮之后暂停音频，现已收尾冻结，不追加GPIO/PLL/EOS/格式或新校准实验。最终68/120，R1免费扣0。最新权威入口 **AUDIO-CLOSEOUT-2026-11-08.md**，其他方面仅从既有记录整理为 STATUS.md，没有新测试。
 当前短音不经过AudioQueue/Android AudioTrack；两个真实GPIO/I2C缺陷与应用push/pull标签无关。将来iOS应用HAL桥的回调、格式、时钟仍是独立未闭工程。
 
 ## 2026-11-10 音频按用户要求重开：先做 capture-only HAL，仍68/120
@@ -2744,7 +2762,7 @@ capture评分器9项正负对照通过。**模型尚未接入内核/GPR，无029
 控制ACK/DONE互不覆盖，不使用旧tone/回落路径。STOP/CLOSE匹配成功后才UNMAP，
 缺ACK保留DMA映射、不free、不强制PAS shutdown、不自动重开。
 本地链修复均已commit，marker列表新增7条。尚无新完整内核、无新镜像、无设备读写。
-逻辑事前门见`docs/audio-halstream-0293-2026-11-13.md`；下一步push/main触发完整编译。
+逻辑事前门见`docs/audio-hal-listen.md`；下一步push/main触发完整编译。
 
 ## 2026-11-13 0293产物开机前拒绝，0294恢复S1已验证基线（69/120）
 
@@ -2859,7 +2877,7 @@ teardown图；STOP/CLOSE缺ACK时不撤时钟、不UNMAP；release拒绝不UNMAP
 实际adapter52门、生产core全S16/136656断言、AW状态机10场景、单补丁post-image及GLINK
 全链applied238/历史skip49不增加均通过。补丁0297和三条唯一marker已加入workflow。
 尚未推送、完整构建、打包或开机；预算仍72/120。第73枪事前逻辑门见
-`docs/audio-hallisten-0297-2026-11-14.md`。
+`docs/audio-hal-listen.md`。
 
 ## 2026-11-14 0297完整构建与第73枪镜像冻结（尚未开，72/120）
 

@@ -8,6 +8,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 CHAIN = ROOT.parent / "chain-tree-wifi"
 BASE = "3b16c7a"
+POST = "6ded5c7b05918ba014082316c3bbe6a2e13165f9"
 FILES = ("bsd/dev/sweet_wifi.c", "bsd/dev/sweet_wifi_phy.h")
 PATCH = ROOT / "xnu/patches/0300-sweet-wifi-pcie-identify.patch"
 
@@ -26,7 +27,8 @@ def main():
                 target.write_bytes(before.stdout)
             elif file != "bsd/dev/sweet_wifi_phy.h":
                 raise ValueError("missing baseline " + file)
-            expected[file] = (CHAIN / file).read_bytes()
+            expected[file] = subprocess.check_output([
+                "git", "-C", str(CHAIN), "show", f"{POST}:{file}"])
         subprocess.run(["git", "-C", str(tree), "init", "-q"], check=True)
         subprocess.run(["git", "-C", str(tree), "add", "."], check=True)
         subprocess.run(["git", "-C", str(tree), "commit", "-qm", "0299"],

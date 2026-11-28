@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "linux": {
+    "url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
+    "ref": "v7.0.14",
+    "commit": "458c6079fc1d41d564c37679c8ace02cd83ee817",
+    "paths": [
+      "/drivers/net/wireless/ath/",
+      "/drivers/bus/mhi/",
+      "/include/",
+      "/net/qrtr/",
+      "/net/mac80211/",
+      "/net/wireless/",
+      "/net/core/skbuff.c",
+      "/drivers/soc/qcom/qmi_interface.c",
+      "/drivers/soc/qcom/qmi_encdec.c",
+      "/lib/rbtree.c",
+      "/lib/crypto/arc4.c"
+    ],
+    "required": [
+      "drivers/net/wireless/ath/ath12k/mac.c",
+      "drivers/net/wireless/ath/ath12k/wifi7/dp_tx.c",
+      "drivers/bus/mhi/host/boot.c",
+      "net/mac80211/mlme.c",
+      "net/mac80211/agg-rx.c",
+      "net/mac80211/wme.c",
+      "net/wireless/scan.c",
+      "include/net/mac80211.h",
+      "lib/rbtree.c",
+      "lib/crypto/arc4.c"
+    ]
+  },
+  "supplicant": {
+    "url": "https://w1.fi/releases/wpa_supplicant-2.12.tar.gz",
+    "archive": "wpa_supplicant-2.12.tar.gz",
+    "directory": "wpa_supplicant-2.12",
+    "sha256": "08e23937e16d0155e55cab2b51f51fbe10d80a1aa91c4e15442645059b737ef6",
+    "required": [
+      "wpa_supplicant/wpa_supplicant.c",
+      "src/rsn_supp/wpa.c",
+      "src/drivers/driver.h",
+      "src/crypto/aes-internal.c",
+      "src/crypto/aes-internal-enc.c",
+      "src/crypto/aes-ccm.c",
+      "src/crypto/aes-gcm.c",
+      "src/crypto/aes-omac1.c",
+      "src/crypto/aes-ctr.c",
+      "src/crypto/aes-siv.c",
+      "src/crypto/aes_siv.h",
+      "src/crypto/aes.h",
+      "src/crypto/aes_i.h",
+      "src/crypto/aes_wrap.h",
+      "src/crypto/crypto.h"
+    ]
+  },
+  "freebsd": {
+    "url": "https://github.com/freebsd/freebsd-src.git",
+    "ref": "releng/15.1",
+    "commit": "95719d8a895bf8170851e9844d9b4092b1d2b6fe",
+    "paths": [
+      "/sys/compat/linuxkpi/",
+      "/sys/net80211/",
+      "/sys/sys/"
+    ],
+    "required": [
+      "sys/compat/linuxkpi/common/include/linux/types.h"
+    ]
+  }
+}

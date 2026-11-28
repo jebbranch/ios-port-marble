@@ -1,11 +1,18 @@
 # marble 的扬声器到底接在哪（从 DTB 读出来的）
 
+> **2026-11-28 校注**：本页的 DTB 连接关系仍然有效（AW882xx ×2 @ `i2c@880000` 的
+> 0x34/0x35、TDM tert rx/tx、`tert_tdm_pinctrl`），扬声器不是 WSA。
+> 旧说「绕不开 DSP 读主存」的框架已被 2026-11-02 的数据面突破取代；
+> 当前音频暂停在 73/120，最后一次有效负读数是**功放没有 TDM 时钟**，
+> 0298 只完成离线 PRM 回包修正。当前状态看 [`STATUS.md`](STATUS.md)。
+
+
 > **2026-11-07 校注**：本页从 DTB 读出来的**连接关系仍然有效**（AW882xx ×2 @ `i2c@880000`
 > 的 0x34/0x35、TDM tert rx/tx、`tert_tdm_pinctrl`）。但页中说"绕不开 DSP 读主存"的
 > **框架已经作废**：数据面 2026-11-02 就通了（120 帧全部推完 + 121 个 DONE），
 > 现在的卡点是"全绿但不出声"，且功放读回那一侧已收窄到 **bit-bang 相位之后失去地址性 = 仪器问题**
-> （见 `unixnu-sheng-audio-2026-11-07.md` 与根 `README.md` 的撤回清单）。
-> 当前状态一律看 [`STATUS-2026-11-07.md`](STATUS-2026-11-07.md)。
+> （见 `unixnu-sheng-audio-2026-11-07.md` 与 `audio-closeout.md`）。
+> 当前状态一律看 [`STATUS.md`](STATUS.md)。
 
 `refs/marble/marble-fdt.dtb` 解析结果，全部是 `status = "ok"` 的节点：
 

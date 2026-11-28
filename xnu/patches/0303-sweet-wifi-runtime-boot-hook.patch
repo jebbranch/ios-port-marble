@@ -1,0 +1,114 @@
+diff --git a/bsd/dev/sweet_wifi.c b/bsd/dev/sweet_wifi.c
+--- a/bsd/dev/sweet_wifi.c
++++ b/bsd/dev/sweet_wifi.c
+@@ -15,6 +15,16 @@
+ #include <pexpert/pexpert.h>
+ #include "sweet_wifi_phy.h"
+ 
++#ifndef SWEET_WIFI_EMBEDDED
++#define SWEET_WIFI_EMBEDDED 0
++#endif
++#if SWEET_WIFI_EMBEDDED
++#include <kern/thread.h>
++#include <kern/sched_prim.h>
++extern kern_return_t thread_terminate(thread_t);
++extern int sweet_wifi_runtime_start(uint32_t, uint32_t, uint32_t, uint32_t);
++#endif
++
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ extern void sweet_log_sync(void);
+ /* Exact C declarations from XNU 8796 IOKit/IOLib.h. */
+@@ -45,6 +55,8 @@ extern void IODelay(unsigned microseconds);
+ 	"SWEET MARK: wifi handoff v1 readonly=1 stage=%d gdsc=%#x halted=%#x wlan=%#x perst=%#x"
+ #define SW_WIFI_PCIE_MARKER \
+ 	"SWEET MARK: wifi pcie v2 stage=%d id=%#x subsystem=%#x bar=%#x bytes=%#x soc=%#x sub=%#x"
++#define SW_WIFI_RUNTIME_MARKER \
++	"SWEET MARK: wifi runtime v1 embedded=%d admitted=%d"
+ 
+ #define SW_WIFI_RSC_TCS       0u
+ #define SW_WIFI_TCS_STRIDE    0x2a0u
+@@ -575,9 +587,48 @@ sw_wifi_phase2(int stage)
+ 	printf(SW_WIFI_PCIE_MARKER "\n",
+ 	    stage, id, subsystem, bar, bytes, soc, sub);
+ 	sweet_log_sync();
++#if SWEET_WIFI_EMBEDDED
++	if (stage == 3) {
++		if (subsystem != 0x010817cbu || soc != 0x400c1211u ||
++		    sub != 0x1016d0e1u) return ENXIO;
++		return sweet_wifi_runtime_start(SW_WIFI_CFG_PA, SW_WIFI_DBI_PA,
++		    bar & ~15u, bytes);
++	}
++#endif
+ 	return 0;
+ }
+ 
++#if SWEET_WIFI_EMBEDDED
++static bool
++sw_wifi_isolated(void)
++{
++	static const char *const off[] = {
++		"sweettouch", "marble_touch", "sweetadsp", "sweetglink", "sweetgpu"
++	};
++	for (unsigned i = 0; i < sizeof(off) / sizeof(off[0]); ++i) {
++		int value = -1;
++		if (!PE_parse_boot_argn(off[i], &value, sizeof(value)) || value != 0)
++			return false;
++	}
++	int gmu = 0;
++	(void)PE_parse_boot_argn("sweetgmuboot", &gmu, sizeof(gmu));
++	return gmu == 0;
++}
++
++static void
++sw_wifi_runtime_thread(void *arg, wait_result_t wr)
++{
++	(void)arg;
++	(void)wr;
++	int error = sw_wifi_phase2(3);
++	printf("SWEET WIFI: runtime exit errno=%d milestone=%u\n",
++	    error, sw_wifi_milestone);
++	sweet_log_sync();
++	(void)thread_terminate(current_thread());
++	thread_block(THREAD_CONTINUE_NULL);
++}
++#endif
++
+ void
+ sweet_wifi_init(void)
+ {
+@@ -589,7 +640,7 @@ sweet_wifi_init(void)
+ 	if (stage == 0) {
+ 		return;
+ 	}
+-	if (stage < 0 || stage > 2) {
++	if (stage < 0 || stage > 3) {
+ 		printf("SWEET WIFI: invalid phase %d\n", stage);
+ 		sweet_log_sync();
+ 		return;
+@@ -599,6 +650,26 @@ sweet_wifi_init(void)
+ 		return;
+ 	}
+ 	sw_wifi_started_once = true;
++	if (stage == 3) {
++		bool admitted = false;
++#if SWEET_WIFI_EMBEDDED
++		admitted = sw_wifi_isolated();
++#endif
++		printf(SW_WIFI_RUNTIME_MARKER "\n", SWEET_WIFI_EMBEDDED, admitted);
++		sweet_log_sync();
++		if (!admitted) return;
++#if SWEET_WIFI_EMBEDDED
++		thread_t thread;
++		kern_return_t kr = kernel_thread_start(sw_wifi_runtime_thread, NULL, &thread);
++		if (kr == KERN_SUCCESS) {
++			thread_deallocate(thread);
++		} else {
++			printf("SWEET WIFI: worker start failed kr=%d\n", kr);
++			sweet_log_sync();
++		}
++#endif
++		return;
++	}
+ 	gdsc = sw_wifi_read(SW_WIFI_GCC_PA + SW_WIFI_GDSC, &ok);
+ 	halted = sw_wifi_halted(&ok);
+ 	wlan = sw_wifi_read(SW_WIFI_TLMM_PA +

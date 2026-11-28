@@ -8,6 +8,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 CHAIN = ROOT.parent / "chain-tree-wifi"
 BASE = "6ded5c7b05918ba014082316c3bbe6a2e13165f9"
+POST = "80e5363c22982391485f2d3b7ed21b490f8aabdd"
 FILE = "bsd/dev/sweet_wifi.c"
 PATCH = ROOT / "xnu/patches/0301-sweet-wifi-tcs-irq-guards.patch"
 
@@ -22,7 +23,9 @@ def main():
         subprocess.run(["git", "-C", folder, "apply", "--check", str(PATCH)],
                        check=True)
         subprocess.run(["git", "-C", folder, "apply", str(PATCH)], check=True)
-        if target.read_bytes() != (CHAIN / FILE).read_bytes():
+        expected = subprocess.check_output([
+            "git", "-C", str(CHAIN), "show", POST + ":" + FILE])
+        if target.read_bytes() != expected:
             raise ValueError("0301 post-image differs from chain")
     print(json.dumps({"passed": True, "baseline": BASE, "file": FILE,
                       "scope": "0300 baseline check/apply/exact post-image"}))

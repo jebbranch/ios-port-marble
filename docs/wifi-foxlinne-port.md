@@ -291,3 +291,62 @@ CNTP raw恰1处，修补点`0x4aa348`，修后0处；`_sweet_wifi_init`链接、
 
 评分器`tools/score_wifi_pcie.py`和8项正负证据测试已提交。成功只宣称
 “QCA6490 PCIe端点识别”，不宣称Wi-Fi联网、固件或GPU完成。
+
+## 0302：合并 Wi-Fi 构建，取消独立 PCIe 开机轮
+
+按用户决定，先把板级初始化、DMA、MSI/MHI、无线栈和固件接到同一个候选内核；
+设备运行时用阶段日志区分失败点。0301 镜像只作历史对照，不再作为下一次开机候选。
+
+已经通过的本地构建和验证：
+
+- FoXLinne 快照及锁定的 Linux、FreeBSD、supplicant 输入已到位。现用 ath11k
+  manifest 编出 109 个无线栈对象；Clang 19 通过编译。实际 DXB 内核 Mach‑O
+  标为 macOS 平台，合成对象使用同平台的普通 arm64 ABI；这不改变 iOS 16 用户态。
+- `amss.bin`、`board-2.bin`、`m3.bin`、`regdb.bin` 已进入同一个可重定位
+  内核对象。主机执行了实际固件读取函数，核对四个长度、只读借用语义和
+  `firmware-2.bin` 缺失时的 API 1 回退约定。没有 GPU addon 或 VFS 依赖。
+- 对照现有 XNU 8796，符号检查未发现未满足导入、重复定义或冲突。
+  0302 已通过 apply/check；实际 Makefile 展开验证了只有 SWEET 本地
+  `SWEET_WIFI_EMBEDDED=1` 才会加对象和链接保留符号。
+- DMA 路由规划和 128 MiB S1 表生成已编进对象。离线模型覆盖 SID 掩码重叠、
+  bank 已占用、无可用路由、越界地址和页表别名；尚未读写设备 SMMU。
+
+复现入口：`tools/prepare_wifi_dependencies.py`、`tools/fetch_wifi_firmware.py`、
+`tools/build_wifi_kernel_archive.py`、`tools/stage_wifi_kernel_bundle.py`。
+验证用 `tools/test_wifi_embedded_bundle.py`。本地合成对象及报告在
+`out/wifi-full/arm64-dxb-dma/`。固件下载的完整性校验保留为自动步骤；不手工逐阶段验摘要。
+
+**未完成：** XNU 板级 worker 尚未调用此对象，SMMU context 的实际访问权、
+DMA 所有权和 MSI/MHI 启停仍待接入；不能把参考机的 bank 编号当成本机的授权。
+同一个 bank 在不同引导状态可能会产生外部中止，见 `smmu-dead-ends.md`。
+不发布带固件的二进制、不启动设备，直到整机链接、运行时保护和候选验证通过。
+
+## 0302 后续：DMA 分配与 SMMU 配置核心
+
+- 新 bundle 加入 `sweet_wifi_smmu_commit()`：要求板级 owner 确认指定
+  context bank、ASID 和 stream slot 的独占访问，且端点 BME 保持关闭。
+  检查现有路由、准备并同步独占页表、逐项读回 context 配置、限时等待
+  TLB 同步，再先写 S2CR、后装有效 SMR。失败时先撤 SMR 并读回；
+  一旦尝试过 MMIO 写入，本次引导保留已分配的 DMA backing 和页表。
+- 本机历史 `IDR0=0x4c017e71`、`IDR2=0x5111`；参考机也是相同值。
+  FoXLinne 成功关联并拿到 DHCP 的记录里 `AtosStats` 八项全零；历史强行
+  打 ATS 时曾得到 `128` 次错误/零 PAR。`ATOSNS=1` 不发 ATS，只有 owner
+  明确批准的有限 DMA 诊断可进入配置分支。ATS 可用时必须通过 128 个
+  边界地址及一个未映射保护地址的硬件验证；可用但失败时不回退。
+  `configured` 仅表示寄存器配置通过，另记 `ats_verified`；
+  两者都不能代替 BHI/MHI 的实际传输完成证据。
+- 新 DMA arena 保留首个 4 KiB 为 MSI sink，按大小对齐 BHI 缓冲，
+  只返回仍属活跃分配的 IOVA，拒绝越界、错误地址释放和重复释放。
+  真实板级分配仍须提供独占、全区清零且 DMA 可见的 wired backing，
+  以及正确的 CPU cache 属性；allocator 不负责选择物理地址。
+
+本地构建产物 `out/wifi-full/arm64-dxb-dma-runtime/sweet_wifi_bundle.o`：
+109 个无线栈对象，缺失导入、重复定义、XNU 符号冲突均为 0。
+按上节 `test_wifi_embedded_bundle.py` 改用该 `--build` 验证：
+19 个 SMMU 模型场景、1024 次 arena 碎片化循环、固件和 0302
+重放/staging/opt-in/主机链接通过。
+
+**还未进入 XNU 的实际启动路径。** 下一项是从板级 owner 取得真实
+SMMU 授权和 wired/无缓存 DMA 映射，再接 PCIe 后的 MSI/MHI worker。
+不能照抄参考 bank/slot，不能因 MMIO 回读成功就放开 BME。尚无整机
+内核链接、候选镜像或新实机日志。不开独立 PCIe 轮，预算仍 74/120。

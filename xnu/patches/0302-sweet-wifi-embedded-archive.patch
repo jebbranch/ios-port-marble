@@ -1,0 +1,21 @@
+diff --git a/makedefs/MakeInc.def b/makedefs/MakeInc.def
+--- a/makedefs/MakeInc.def
++++ b/makedefs/MakeInc.def
+@@ -862,5 +862,17 @@
+ LD_KERNEL_LIBS	   = -lcc_kext
+ LD_KERNEL_ARCHIVES = $(LDFLAGS_KERNEL_SDK) -lfirehose_kernel
++
++# Optional local SWEET Wi-Fi source/binary integration. Public builds leave
++# this unset. Include the relocatable bundle as a regular kernel object;
++# keep the two entry points even before the board runtime calls them.
++ifeq ($(CURRENT_MACHINE_CONFIG),SWEET)
++ifeq ($(SWEET_WIFI_EMBEDDED),1)
++	DEFINES += -DSWEET_WIFI_EMBEDDED=1
++	LDFILES_KERNEL_ONLY += $(SRCROOT)/bsd/dev/sweet_wifi_bundle.o
++	LDFLAGS_KERNEL_ONLY += -Wl,-u,_nw_wifi_start,-u,_sweet_wifi_firmware_get
++endif
++endif
++
+ # Link opensource binary library
+ ifneq ($(filter T6000 T8101 VMAPPLE T6000 T8101 VMAPPLE,$(CURRENT_MACHINE_CONFIG)),)
+ 	LDFLAGS_KERNEL_ONLY += -rdynamic -Wl,-force_load,$(KDKROOT)/System/Library/KernelSupport/lib$(CURRENT_MACHINE_CONFIG).os.$(CURRENT_KERNEL_CONFIG).a

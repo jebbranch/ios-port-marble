@@ -1,0 +1,45 @@
+{
+  "source": "Endless OS linux-firmware; WCN6855 hw2.0 distribution shared by hw2.1",
+  "files": [
+    {
+      "name": "Notice.txt",
+      "bytes": 152394,
+      "git_blob": "edf86d4a7b5ddb42077edb8426a9ed2eb9a2c821",
+      "sha256": "770720d03de70ff503c6d9bb6f6932fc7833d078647fe8352c6d5d49d44bbc5f",
+      "url": "https://github.com/endlessm/linux-firmware/blob/master/ath11k/WCN6855/hw2.0/Notice.txt"
+    },
+    {
+      "name": "amss.bin",
+      "bytes": 4988928,
+      "git_blob": "1576410ec76394d37037f8309692b4d664ce94c1",
+      "sha256": "e12b23ddc4b8d2d2a10a651a5d6fdcd00f60fcae884d2cf5dad17627211fcdfd",
+      "url": "https://github.com/endlessm/linux-firmware/blob/master/ath11k/WCN6855/hw2.0/amss.bin"
+    },
+    {
+      "name": "board-2.bin",
+      "bytes": 7237392,
+      "git_blob": "a896e6df58b6c280a975419645392eaa2bb27fff",
+      "sha256": "9287fa8d14d915892666b03e9403135875d08371fd1438d2c6d9fe96ae71cf68",
+      "url": "https://github.com/endlessm/linux-firmware/blob/master/ath11k/WCN6855/hw2.0/board-2.bin"
+    },
+    {
+      "name": "m3.bin",
+      "bytes": 266684,
+      "git_blob": "a5000154d6b329822a8fc100f569e47b6d87f63c",
+      "sha256": "0c590881870d0e6e98fc7d393ce05690e09287933b1b535e935bf5d98b77713f",
+      "url": "https://github.com/endlessm/linux-firmware/blob/master/ath11k/WCN6855/hw2.0/m3.bin"
+    },
+    {
+      "name": "regdb.bin",
+      "bytes": 24310,
+      "git_blob": "d4ab6ef96c08fe1184380996eb8d766590875ecd",
+      "sha256": "e1b774b1feda4cab01f5a26089124059539fc31544ac34129dce45c8ff26d645",
+      "url": "https://github.com/endlessm/linux-firmware/blob/master/ath11k/WCN6855/hw2.0/regdb.bin"
+    }
+  ],
+  "device": "marble",
+  "pci_id": "17cb:1103",
+  "soc_version": "0x400c1211",
+  "soc_subversion": "0x1016d0e1",
+  "status": "firmware bring-up candidate; hardware qualification pending"
+}

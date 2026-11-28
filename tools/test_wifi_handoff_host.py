@@ -14,7 +14,8 @@ PHY = ROOT.parent / "chain-tree-wifi/bsd/dev/sweet_wifi_phy.h"
 def body(text):
     lines = []
     for line in text.splitlines():
-        if line.startswith("#include") or line.startswith("#if") or line.startswith("#endif"):
+        if line.startswith(("#include", "#if defined(ARM64_BOARD_CONFIG_SWEET)")) or \
+                line == "#endif /* ARM64_BOARD_CONFIG_SWEET */":
             continue
         lines.append(line)
     return "\n".join(lines)
@@ -91,7 +92,7 @@ int main(void) {
 
  reset_case(3);sweet_wifi_init();
  assert(map_calls==0 && log_syncs==1);
- assert(strstr(output,"invalid phase 3")!=NULL);
+ assert(strstr(output,"wifi runtime v1 embedded=0 admitted=0")!=NULL);
 
  reset_case(1);map_failure=1;sweet_wifi_init();
  assert(map_calls>=1 && log_syncs==1);

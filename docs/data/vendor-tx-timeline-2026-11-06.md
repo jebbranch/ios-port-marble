@@ -1,5 +1,13 @@
 # 厂商一次真实 accepted 播放的完整 TX 时间线（2026-11-06，零开机）
 
+> **后续纠正**：本页是 10-27 抓包的 TX 时间线，保留 cadence 与字段形状；
+> 11-05 的双向抓包已修正其中若干解释：`gpr_tx` 行用的是 **t-fields**，
+> `GRAPH_OPEN` 是**三次带外调用**，18 KB 不是墙，「缺 DEC/CNV」与
+> 「DONE = 消费完成」也都被后续证据推翻。当前结论看
+> [`../audio-closeout.md`](../audio-closeout.md) 与
+> [`vendor-accepted-setcfg-2026-11-05.md`](vendor-accepted-setcfg-2026-11-05.md)。
+
+
 来源：`logs/gpr-20261027-090802.txt`（2026-10-27 的 `gprsend` kprobe，112 行，一次约 2 秒的播放）。
 可复现命令：`python3 tools/vendor_tx_timeline.py`。
 字段映射（用本仓已知语义的行反查确认）：`p2=src p3=dst p5=opcode p9=payload_size`，

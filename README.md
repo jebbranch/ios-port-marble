@@ -1,183 +1,73 @@
 # marble XNU —— iOS 16 内核跑在 Redmi Note 12 Turbo 上
 
-> **接手（尤其换会话）先读这一份：[`docs/STATUS-2026-11-07.md`](docs/STATUS-2026-11-07.md)** ——
-> 全部九条线的当前位置。**音频已于2026-11-08收尾暂停，预算68/120**；最新冻结状态见
-> [`docs/AUDIO-CLOSEOUT-2026-11-08.md`](docs/AUDIO-CLOSEOUT-2026-11-08.md)，不再自动执行旧待开机步骤。
-> 其他方面只整理现状，见 [`docs/OTHER-LINES-2026-11-08.md`](docs/OTHER-LINES-2026-11-08.md)。
-> **2026-11-10：用户已明确重开音频，当前只做离线 HAL PCM 捕获阶段。**
-> 0292 不连接 DSP/TDM/功放/听筒，也不改变任何硬件增益；入口为
-> [`docs/audio-hal-reopen-2026-11-10.md`](docs/audio-hal-reopen-2026-11-10.md)。
->
-> **音频/SMMU 接手必读：** [`docs/smmu-dead-ends.md`](docs/smmu-dead-ends.md) ——
-> 已经证伪的 SMMU 做法、正确的寄存器地图、以及“别再拿 DATA_BUFFER 当探针”的纪律。
->
-> **GPU 接手必读：** [`docs/gpu-probe.md`](docs/gpu-probe.md)（v1–v30 全部真机读数与
-> 厂商 kprobe trace）、[`docs/gpu-gpt-question.md`](docs/gpu-gpt-question.md)（外部问答稿）、
-> [`docs/gpu-feasibility.md`](docs/gpu-feasibility.md)（可行性盘点）。
-> 设备相关的交接与失败清单只在本地维护，不进入本仓库。
-
-把 Apple 开源的 **XNU 8796.141.3**（iOS 16 同期内核）跑到
-**Redmi Note 12 Turbo（marble / SM7475 / Snapdragon 7+ Gen 2）** 上。
-启动方式是 **shim + `fastboot boot`，纯 RAM 运行**：不刷 boot、不写
-userdata、不改 GPT。测试结束内核自己复位，手机回到 TWRP/Android。
+把 Apple 开源的 **XNU 8796.141.3**（iOS 16 同期内核）和 **iPhone X 的 iOS 16.7.16 用户态**
+跑到 **Redmi Note 12 Turbo（marble / SM7475 / Snapdragon 7+ Gen 2）**上。
+启动方式是 **shim + `fastboot boot`，纯 RAM 运行**：不刷 boot、不写 userdata、不改 GPT。
+测试结束内核自己复位，手机回到 TWRP/Android。
 
 > 研究项目，仅供学习与实验。不分发 Apple 固件/用户态镜像；
 > 不要把这套东西当作日常可用的手机系统。
+
+**当前主线是 Wi-Fi（0299–0303，总开机 74/120）；音频暂停在 73/120；GPU 第二优先。**
+按时间的记录看 [`docs/chronology.md`](docs/chronology.md)，当前状态看
+[`docs/STATUS.md`](docs/STATUS.md)，可复现配方看 [`docs/START-HERE.md`](docs/START-HERE.md)。
 
 ## 当前状态
 
 | 子系统 | 状态 |
 |---|---|
 | XNU early boot（16K 页 / GICv3 / vtimer / framebuffer） | ✅ |
+| 启动到 SpringBoard / 设置 | ✅ CPU 软件渲染 |
+| 触摸 / 按键 | ✅（触摸有已知限制） |
 | UFS 读写、HFS+ root（userdata 尾部） | ✅ |
-| 触摸 / 按键 / RTC | ✅（触摸有已知限制） |
+| 8 核 SMP | ✅（发热偏大） |
+| 电池 | ✅ 基本实现（电流为负 = 充电、为正 = 放电） |
+| 关机 | ✅ userland 关机会真正断电 |
 | USB（枚举 / 部分传输） | 🟡 |
 | ADSP（PAS + GLINK + AudioReach APM） | ✅ GLINK 通、图可 open/prepare/start、TDM 参数全 status 0 |
-| 音频（HAL / TDM / 功放） | 🟡 用户已重开，仍68/120。当前0292只做 AudioServerPlugIn → `/dev/marble-audio` PCM 捕获，不接硬件；0290/0291功放修复保留，声音/最终渲染仍未验证。见 [重开入口](docs/audio-hal-reopen-2026-11-10.md) |
-| 电池（pmic_glink） | 🟡 协议通、字段待校准 |
-| 震动（PM8350B） | 🟡 电源键触发已验证；UIKit/CoreHaptics 的请求被 backboardd 用户态 gate 拦下，见 [docs/haptics-abi-2026-10-30.md](docs/haptics-abi-2026-10-30.md) |
-| GPU（kgsl-smmu / GPU_CC / GMU） | 🔴 **冻结**：AP 能读写全部 GPU 寄存器、GMU 固件能装进 TCM；卡在 CX 域电源无法真正打通。reopen 门未满足（要 spin heartbeat + 活过 stall 的输出通道）；**没有用户点头不开 GPU 枪**（详见“GPU 硬件启动”） |
-| Wi-Fi / BT | ⬜ **停车**（2026-11-05 用户决定"先缓缓"）：芯片 QCA6490 `17cb:1103` 已盘点，便宜的第一口 = board-data 普查 + 只读 PCIe 探测 |
-| 基带 / modem | ⬜ 11-05 开线：内核半条可行，墙是 iOS 16 telephony 用户态 ⇒ 先做零开机资产普查 |
-
-## 音频收尾与暂停（2026-11-08）
-
-**本轮修复了两个真实AP功放缺陷，并在第68枪确认写入实际生效；用户要求该轮之后暂停。**
-权威结论、预算与未决项见 [AUDIO-CLOSEOUT-2026-11-08.md](docs/AUDIO-CLOSEOUT-2026-11-08.md)。
-
-- descriptor隔离修正了AP覆盖PCM缓冲的写入路径。
-- 0290让正常初始化不再执行诊断复位；RESET实际保持1/1，I2C可读。
-- 0291将寄存器地址和16位值放入一条三字节WRITE；两颗真实reg4/reg5从4003/38变为b440/05a9，PWDN/AMPPD/HMUTE清除。
-- 同一856 B图open/start=0，120tone/121DONE，正常复位无panic；这是控制/WR缓冲消费归还层证据，**不是末端渲染或人耳出声证明**。
-- 第68枪听感未明确反馈，保持未知。旧R1用户明确没听到，只对R1记负读数，不把未留意倒填。
-- EOS旧封装44 B与本机厂商28 B不一致，正确版本未测试；旧零事件不能排除AP请求错误。
-- DEC/CNV输出配置、MUX/MFC校准与播放期间PLL/I2S仍有未决项，iOS应用HAL桥也未闭合。当前内核短音不经Android AudioTrack，应用push/pull标签不是GPIO/I2C缺陷的解释。
-- B形式ACF索引不是APM wire payload、旧截断/陈旧blob路线保持关闭。不再依据旧“全部排除”表自动追加实验。
-
-本轮已经停在68/120（R1免费扣0）。暂停不删除已修代码；做其他方面时不要沿用音频听测启动参数。
-
-## GPU 硬件启动（**冻结中**，2026-11-07）
-
-> **状态纠正**：这一条线现在是**冻结**，不是"进行中"。原因不是"危险"，而是 **reopen 门未满足**：
-> 需要一条真正的 spin heartbeat + 一条能活过 stall 的输出通道，否则读数无法解释。
-> 旧说法"一放复位机器就停"**已撤回**（`delay()` 会阻塞、G4 跳过了 SPI mask、0228 数的是串扰）。
-> **绝不主动 collapse GPU**（那样永远回不来）；**没有用户明确点头，不开任何 GPU 枪。**
-> 外部 PR #1 重放干净（`applied=212`，无跳过），但合并被音频轮挤到后面 —— 它会**在取产物中途覆盖
-> kernel-latest** ⇒ 它的两笔债要**重编号到 0292+**（补丁链现在到 0291），并把 CNTVCT spin 界住。
-> 细节见 [`docs/gpu-probe.md`](docs/gpu-probe.md) / [`docs/gpu-feasibility.md`](docs/gpu-feasibility.md)。
-
-目标：把 Adreno 725v1（a730 家族、gen7 GMU）从 XNU 里点亮 —— 先 GMU/CM3，
-再 CP、HFI，最后才是 Metal。启动链是 ABL → 自写裸机 shim → XNU，
-**没有 Android，也没有任何厂商 GPU 驱动参与**。
-
-### 已确证（全部真机回读）
-
-- **GPU 的 SMMU 是独立的一颗**（`kgsl-smmu @0x3da0000`），不受 apps-smmu 那套
-  hypervisor 限制：`IDR0=0x4c017e18`（24 stream）、`IDR1=0x40000016` →
-  **CB0 = 0x3dc0000**（不是 apps-smmu 的 0x80000，早期结论已纠正）。
-- `S2CR=BYPASS` 会被改写成 FAULT，但 **stage-1 + CB0 可写可回读**；SMR 可写；
-  AP 侧确实能配置这套 SMMU。
-- GPU_CC 基址 `0x3d90000`：`CX_GDSCR@0x9108`（bit31 PWR_ON / bit1 HW_CONTROL /
-  bit0 SW_COLLAPSE）、`ahb@0x911c`、`cx_gmu@0x913c`、`hub_cx_int@0x9148`、
-  `smmu vote@0x7000`、gmu RCG `0x9318/0x931c`、hub RCG `0x93ec/0x93f0`。
-- **GMU 寄存器是 kgsl regmap 的“字偏移”**，实际字节：GMU base `0x3d68000`，
-  ITCM `0x3d6d000`、DTCM `0x3d79000`、`CM3_SYSRESET 0x3d7e000`、
-  `FW_INIT_RESULT 0x3d7e070`、`HFI_CTRL_INIT 0x3d7e618`。早期按字节偏移访问
-  是错的（读到 `0xdeafbead` 或挂总线）。
-- GMU 固件块格式 `{u32 addr; u32 size; 0xdeadbeef; 0xdeadbeef}`（magic 大端），
-  `gmu_gen70000.bin` 可正确解析并写入 ITCM/DTCM，**逐字节回读一致**。
-- **CM3 真的会执行**：shim 版实验里放复位 200 ms 再拉回，XNU 早期启动必挂；
-  瞬时放/拉（CM3 来不及执行）则正常 ⇒ 这 200 ms 里 CM3 在跑，并留下持久副作用。
-  放复位后 AP 对 GMU 寄存器的访问会挂（AHB 交给 GMU），所以轮询 `FW_INIT` 不能
-  在放复位的同一个核上做。
-- **厂商完整上电序列已抓到**（kprobe，8.47–8.53 s）：`lcx.lvl=7`、`lmx.lvl=5`、
-  `CX_GDSCR=0x228800`（EN_REST_WAIT=2/EN_FEW_WAIT=2/CLK_DIS_WAIT=8/RETAIN_FF）、
-  gmu RCG → cx_gmu → hub RCG → hub_cx_int → smmu vote → GCC `0x81010/0x81018`
-  → `gpu_cc_ahb=1` → `mxc.lvl`。**全程没有 collapse→restore 周期。**
-
-### 当前卡点
-
-1. **CX 域电源无法真正打通**。ABL 交接时 `PWR_ON=1`；我们做一次
-   “清 HW_CONTROL → 置 SW_COLLAPSE → 再清”之后永远回不来（`0x228801`）。
-   厂商 trace 里根本没有这一步，所以 **collapse 已从默认流程移除**
-   （`GP_PWR` 现在是显式实验开关，不再是 `gpu_pwr.sh` 的默认参数）。
-2. **RPMh ARC 投票“完成”但不生效**。`apps_rsc` drv-2 @`0x17a20000`、
-   `tcs-offset=0xd00`、`CFG=0x800c8104`（TCS=8/NCPT=16，非 solver 模式）；
-   ACTIVE TCS + AMC 投 `lcx/lmx/mxc` 后命令状态 `ISSUED|COMPLETE`、TCS 回 idle，
-   但 CX 依旧回不来。命令的 `msgid=0x10108`（LEN=8|RESP_REQ|WRITE）已与
-   `rpmh-rsc.c` 逐位核对，**格式没有问题**，剩下的是资源语义/仲裁/因果关系。
-3. 下游现象（`gpu_cc_ahb` 不 latch、GX 不开、CM3 无 AO 活动、HFI 无消息、
-   SMMU 无 fault）统一归因到上面这一条根：**平台电源没有真正就绪**。
-
-### 正在做的实验（工具已就位）
-
-| 开关 | 作用 |
-|---|---|
-| `sweetgsnap=1` | 在任何 GPU 写入前只读快照：GDSCR/CFG_GDSCR、GX、各 branch/RCG、GMU BCR、RBBM、SMMU ID/S2CR、CM3/FW_INIT/HFI 与 TCM |
-| `sweetrail=1` | SPMI 扫 SID 0..3 × `0x1400..0x1f00` 的 SMPS 块（VOUT/MODE/EN），物理验证轨道 |
-| `sweetgmuboot=1` / `sweetgmurel=1` | 内核侧 GMU 启动 / 委托 shim 的牺牲核放复位（带 DDR 标记：`0xdead0001/2` + 心跳，区分“写没完成”与“之后才卡”） |
-| `GP_RAIL=1` | shim 侧只投 `lcx=7/lmx=5/mxc=6` 三个 ARC，不动 GDSCR（用于投票/不投票同机对照） |
-
-顺序：先跑**纯基线**（不投票、不 collapse、不进 GMU boot）拿 ABL 交接快照 +
-PMIC 读数；再跑同一镜像序列的投票版，差分回答“投票是否落地”。
-
-```bash
-# 纯基线：快照 + 轨道读数，不开 GP_PWR、不进 GMU boot
-EXTRA_ARGS="sweetgsnap=1 sweetrail=1" ./scripts/gpu_pwr.sh build "GP_SURVEY=0"
-./scripts/gpu_pwr.sh run
-```
-
-### 还没开始的部分
-
-RPMh 完整实现（solver/batch/ARC 语义）、互连/BCM 带宽投票、PMIC 轨道接管、
-GPU PAS（ZAP：`pas_init_image/mem_setup/auth_and_reset`）、GMU HFI 协议与 CP
-固件、a725 的 HW-init 表、gpucc 时钟树完整化、Metal 前端（metal2vulkan/Turnip）。
-顺序与依赖见 [`docs/gpu-probe.md`](docs/gpu-probe.md) 末尾的“还差什么”盘点。
-
-## 震动（触感）现状
-
-内核侧链路（Callan → `AppleHapticsSupport` → PMIC HAP520）已打通，电源键触发
-真机验证通过；**UIKit / CoreHaptics 的请求被 `backboardd` 的用户态 gate 拦下**，
-内核各路径都看不到 IPC。这条线 2026-10-30 起暂停，恢复前先读
-**[docs/haptics-handoff-2026-10-30.md](docs/haptics-handoff-2026-10-30.md)**
-（交接状态、纪律与 P2 任务），ABI 细节见
-**[docs/haptics-abi-2026-10-30.md](docs/haptics-abi-2026-10-30.md)**。
-
-约束不变：只允许 `fastboot boot`；不得用坐标/selector/内核定时器模拟脉冲，
-测试必须来自真实 UIKit、CoreHaptics、ButtonResolver 或系统 HID 事件。
-
-## 仓库不包含什么（重要）
-
-本仓库是公开的**纯代码、补丁与文档**仓库，**不包含任何 Apple、Qualcomm
-或小米的二进制文件**。完整跑通需要你自备：
-
-| 文件 | 来源 | 说明 |
-|---|---|---|
-| **D22AP 设备树** `d22ap.adt` | 你自己的 iPhone X（D22AP）iOS 16.7.16 IPSW | Apple 版权内容，**不可再分发** |
-| **ADSP 固件** `adsp2.mdt` + `adsp2.bNN` | 你自己的手机 `/vendor/firmware/` | Qualcomm / 小米专有固件 |
-| **HFS+ iOS 用户态镜像** | 你自己的 iPhone X IPSW / 设备 | Apple 版权；仓库不提供、也不提供获取渠道 |
-| Android NDK / Xcode+KDK / adb | Google / Apple 公开下载 | 工具链，公开可获取 |
-
-来源、提取命令、放置位置与许可说明详见
-**[docs/required-assets.md](docs/required-assets.md)**。
-**请不要把上述专有文件上传到本仓库或任何公开渠道。**
+| 音频（HAL / TDM / 功放） | ⏸ 暂停在 73/120；0298 离线修好 PRM 回包绑定，尚无新内核/镜像/开机 |
+| Wi-Fi / 蓝牙 | 🚧 当前主线：第 74 轮只读 handoff 通过，确认 QCA6490/PCIe0 交接后保持关闭；端点识别尚未实机验证。0302/0303 尚未整机启动 |
+| GPU（kgsl-smmu / GPU_CC / GMU） | 🚧 第二优先：旧 XNU 8796 线冻结，FoXLinne 上游 iOS 18 实现可参考，iOS 16 适配未开始 |
+| 基带 / modem | ⬜ 未开实验；先决门是 306 MB `mpss_region` |
 
 ## 安全规则（请先读）
 
 1. **只允许 `fastboot boot`**。禁止 `flash` / `erase` / `format` /
    `set_active` / `oem` 写命令；不要碰 GPT / persist / modemst。
-2. 测试前确认电量 > 50%，并知道怎么进 fastboot（Power + Vol Down）和 EDL。
+2. 知道怎么进 fastboot（Power + Vol Down）和恢复路径。
 3. 只对**你自己的研究机**使用。本项目默认机器序列号 `2aa26095`。
 4. 仓库不包含 Apple 的任何二进制；XNU 源码由 CI 从公开源构建。
 
+### 已知存储风险
+
+root 镜像写在 userdata 尾部，但 **f2fs 没有被缩小，GPT 也没有改**。
+研究机日常还要开 Android，因此 f2fs 写满会覆盖尾部 root。当前没有机制阻止它，
+只能开机前重读 HFS+ 卷头签名与 free 块数，发现被覆盖就重新分块写尾部。
+详见项目根 `docs/08-dual-boot-plan.md` §2。
+
+## 仓库不包含什么
+
+本仓库是公开的**纯代码、补丁与文档**仓库，不包含任何 Apple、Qualcomm 或小米的二进制文件。
+完整跑通需要你自备：
+
+| 文件 | 来源 | 说明 |
+|---|---|---|
+| **D22AP 设备树** `d22ap.adt` | 你自己的 iPhone X（D22AP）iOS 16.7.16 IPSW | Apple 版权内容，不可再分发 |
+| **ADSP 固件** `adsp2.mdt` + `adsp2.bNN` | 你自己的手机 `/vendor/firmware/` | Qualcomm / 小米专有固件 |
+| **HFS+ iOS 用户态镜像** | 你自己的 iPhone X IPSW / 设备 | Apple 版权；仓库不提供，也不提供获取渠道 |
+| Android NDK / Xcode+KDK / adb | Google / Apple 公开下载 | 工具链，公开可获取 |
+
+来源、提取命令、放置位置与许可说明详见 [`docs/required-assets.md`](docs/required-assets.md)。
+**请不要把上述专有文件上传到本仓库或任何公开渠道。**
+
 ## 仓库结构
 
-```
-.github/workflows/xnu.yml  GitHub Actions：构建 XNU 内核并发布 kernel-latest
-xnu/patches/               XNU 的全部移植补丁（含音频、UFS、触摸、USB、GPU…）
+```text
+.github/workflows/xnu.yml  GitHub Actions：构建 XNU、marker 门、发布 kernel-latest
+xnu/patches/               XNU 的全部移植补丁（当前到 0303）
 shim/                      RAM-only 引导 shim（AArch64 裸机 + boot.img v4 打包）
-scripts/                   取内核 / 打包 / 启动 / 拉日志 / 抽固件 / GPU 探针
-docs/                      音频、SMMU、GPU、触感的状态与技术文档
+scripts/                   取内核 / 打包 / 启动 / 拉日志 / Wi-Fi 构建
+docs/                      编年史、当前状态、音频/GPU/触感/Wi-Fi 文档
 docs/traces/               厂商 kprobe / GPR 抓包原始数据
 ```
 
@@ -185,43 +75,30 @@ docs/traces/               厂商 kprobe / GPR 抓包原始数据
 
 ### 0. 你需要
 
-- 一台 bootloader 已解锁的 marble（本机：Redmi Note 12 Turbo，SM7475）。
+- 一台 bootloader 已解锁的 marble（Redmi Note 12 Turbo，SM7475）。
 - macOS（Apple Silicon 或 Intel 均可）+ `adb` / `fastboot` / Python 3。
 - 构建 shim 需要 **Android NDK**（`ANDROID_NDK_HOME` 指向 NDK 目录）。
-- 构建 ADT 需要 Apple 的 **D22AP 设备树**（从你自己的 iPhone X IPSW 提取，
-  仓库不包含）：放到 `research/ipsw-x/d22ap.adt`，或设置 `D22AP_ADT`。
-  提取命令见 `scripts/mkadt.py` 顶部注释。
-- 手机端需要 root 才能抽取 ADSP 固件（本机用 SukiSU Ultra）。
-- 一个已写入 userdata 尾部的 HFS+ 用户态镜像（Apple 内容，本项目不分发；
-  分区布局见 `docs/sweetlog.md`，来源与风险见 `docs/required-assets.md`）。
-
-> 以上自备文件的完整清单、来源与法律说明见 **docs/required-assets.md**。
+- 构建 ADT 需要 Apple 的 **D22AP 设备树**：放到
+  `research/ipsw-x/d22ap.adt`，或设置 `D22AP_ADT`。
+- 手机端需要 root 才能抽取 ADSP 固件。
+- 一个已写入 userdata 尾部的 HFS+ 用户态镜像。
 
 ### 1. 构建 XNU 内核（GitHub Actions）
 
 Fork 本仓库后：
 
 - 仓库 → **Actions** → `xnu` → **Run workflow**
-  - `macos_version`: `13.5`
+  - `macos_version`: `15`
   - `kernel_config`: `DEVELOPMENT`
   - `machine_config`: `SWEET`
 - 等 30–60 分钟。成功后 release `kernel-latest` 会滚动更新，
   产物 `kernel.development.sweet`。
 
-> 不提供本地编译脚本：xnu-8796 需要 Xcode 15.x 的 `iig` 和对应的 KDK，
-> Actions 的 `macos-14` 环境已经配好；本地环境不一致会出现 IORPC ABI 错误。
+> 一定要用 `fetch_kernel.sh` 处理过的内核：它会校验 sha256，并把
+> EL1 不可用的 `CNTP_CTL_EL0` 改成 NOP。直接 boot 原始产物会触发
+> `Undefined kernel instruction`。
 
-本地取回并打上本机需要的 CNTP_CTL 补丁：
-
-```bash
-GH_REPO=<你的用户名>/ios-port-marble ./scripts/fetch_kernel.sh
-# 输出 out/kernel.adsp（已校验 sha256，并把 MSR CNTP_CTL_EL0 改成 NOP）
-```
-
-> 一定要用 `fetch_kernel.sh` 处理过的内核。直接 boot 原始产物会因
-> EL1 不可用的 `CNTP_CTL_EL0` 触发 “Undefined kernel instruction”。
-
-### 2. 从手机抽取 ADSP 固件（不随仓库分发）
+### 2. 从手机抽取 ADSP 固件
 
 ```bash
 SERIAL=2aa26095 ./scripts/extract_adsp_fw.sh
@@ -244,8 +121,7 @@ D22AP_ADT=/path/to/d22ap.adt ADSP_FW_DIR=$PWD/adsp-fw ./scripts/mkimage.sh
 SERIAL=2aa26095 ./scripts/boot_ram.sh images/shim-iosroot-adsp.img
 ```
 
-内核跑完（cmdline 里 `sweetreboot=1`）会自己复位；手机通常落在
-TWRP/recovery。
+内核跑完（若 cmdline 带 `sweetreboot=1`）会自己复位；手机通常落在 TWRP/recovery。
 
 ### 5. 取回日志
 
@@ -254,47 +130,34 @@ SERIAL=2aa26095 ./scripts/pull_logs.sh run1
 # logs/raw/ring-run1.bin + logs/ring-run1.txt
 ```
 
-原理见 **[docs/sweetlog.md](docs/sweetlog.md)**。
+原理见 [`docs/sweetlog.md`](docs/sweetlog.md)。
 
-## 音频详细记录入口
+## 文档入口
 
-当前冻结结论见 [AUDIO-CLOSEOUT-2026-11-08.md](docs/AUDIO-CLOSEOUT-2026-11-08.md)，原始逐轮判据保留在 [audio-closeout.md](docs/audio-closeout.md)。
-“DATA_BUFFER不回DONE”“功放一直无ACK”“18 KB是已证实的墙”均不是当前状态：缓冲归还已通、功放可读且表值已真实写入；声音与末端渲染仍需独立证据。
-用户已要求暂停，不从历史待办或复现命令自动重开音频。
-
-## 常见问题
-
-| 现象 | 原因 / 处理 |
+| 文档 | 用途 |
 |---|---|
-| `Undefined kernel instruction ... d51be228` | 用了未打 CNTP_CTL 补丁的内核，重新跑 `fetch_kernel.sh` |
-| 启动后没有输出 | 用 `scripts/pull_logs.sh` 从 userdata 尾部读 SWEETLOG |
-| `fastboot boot` 后设备停在 TWRP | 正常回退；直接拉日志即可 |
-| 内核 panic 花屏 | 拍照记录 pc/lr/far + 寄存器；重启进 TWRP 拉上一轮日志 |
-| GitHub 下载很慢 | 设置 `MARBLE_PROXY=http://127.0.0.1:7890` |
+| [`docs/chronology.md`](docs/chronology.md) | 唯一编年史：从 10-21 那句「不可能」到 11-28 |
+| [`docs/STATUS.md`](docs/STATUS.md) | 当前状态、预算、下一道门 |
+| [`docs/START-HERE.md`](docs/START-HERE.md) | 当前验证过的构建与启动配方 |
+| [`docs/audio-closeout.md`](docs/audio-closeout.md) | 音频当前判决与证据索引 |
+| [`docs/audio-hal-listen.md`](docs/audio-hal-listen.md) | 0293→0298 / R1 的合并记录 |
+| [`docs/wifi-foxlinne-port.md`](docs/wifi-foxlinne-port.md) | 当前 Wi-Fi 移植 |
+| [`docs/gpu-status.md`](docs/gpu-status.md) | GPU 当前判决与原始日志索引 |
+| [`docs/haptics-abi-2026-10-30.md`](docs/haptics-abi-2026-10-30.md) | 触感 ABI 与当前 gate |
+| [`docs/smmu-dead-ends.md`](docs/smmu-dead-ends.md) | 已证伪的 SMMU 路线 |
+| [`docs/required-assets.md`](docs/required-assets.md) | 自备文件与许可 |
 
-## 参与项目：欢迎一起来折腾
+## 参与项目
 
-这是一个仍在进行中的研究项目，一个人踩不完所有的坑。**非常欢迎新朋友**：
+这是一个仍在进行中的研究项目，一个人踩不完所有的坑。欢迎：
 
-- 手里有同款机器（Redmi Note 12 Turbo / marble / SM7475）的朋友：帮忙实机复现、
-  抓日志、读寄存器、验证补丁；
-- 做 XNU / IOKit / 驱动移植的同学：欢迎提交补丁和代码评审；
-- 有 Qualcomm 平台或 PMIC/RPMh/SMMU 经验的人：如果发现文档里有错、或者我们正在
-  走的路你早就走通过/走死过，请一定告诉我们。
+- 手里有同款机器的朋友：实机复现、抓日志、读寄存器、验证补丁；
+- 做 XNU / IOKit / 驱动移植的同学：提交补丁和代码评审；
+- 有 Qualcomm 平台或 PMIC/RPMh/SMMU 经验的人：指出文档里的错误。
 
-**开 Issue**：请贴现象、`logs/ring-*.txt`、启动参数，以及镜像标识（`sweeettime`），
-这样同一轮实验可以复现。范围不限于 bug——"这条路我试过，结论是 X" 同样有价值。
-
-**发 PR**：改 `xnu/patches/`（不要改构建产物）、脚本、文档都欢迎。一个 PR 尽量
-只做一件事；失败的尝试也请顺手写进 `docs/`，下一个人才不会重走。
-
-**请不要提交**：Apple / Qualcomm / 小米的二进制固件、IPSW、HFS 用户态镜像，
-以及任何设备私密数据（这些文件仓库一律不收）。
-
-上手顺序：**[docs/START-HERE.md](docs/START-HERE.md)** → `docs/handoff.md` →
-对应子系统的文档。尤其先看 **[docs/smmu-dead-ends.md](docs/smmu-dead-ends.md)**
-和 **[docs/gpu-probe.md](docs/gpu-probe.md)**，里面已经写死了大量"别再重走"的坑，
-能省下不少时间。
+开 Issue 请贴：现象、`logs/ring-*.txt`、启动参数、镜像标识 `sweettime`。
+发 PR 请改 `xnu/patches/`、脚本或文档，一个 PR 尽量只做一件事；
+失败的尝试也请写进 `docs/`，下一个人才不会重走。
 
 Issues and pull requests in English are welcome too.
 
@@ -302,5 +165,5 @@ Issues and pull requests in English are welcome too.
 
 - 本仓库的补丁、shim 与脚本按仓库 LICENSE 发布。
 - XNU 源码版权归 Apple，按其开源许可使用；构建过程从公开源拉取。
-- Qualcomm/Xiaomi 固件、Apple 用户态镜像**不在仓库内**，需从你自己的设备提取。
+- Qualcomm/Xiaomi 固件、Apple 用户态镜像不在仓库内，需从你自己的设备提取。
 - 仅供研究，不提供任何担保；因使用导致的设备损坏/数据丢失由使用者自负。

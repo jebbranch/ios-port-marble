@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The iOS 16 kernel, booted on a Redmi Note 12 Turbo</title>
+<meta name="description" content="Apple's open-source XNU 8796 (the iOS 16 generation) and the iPhone X's iOS 16.7.16 userland, booted onto a Redmi Note 12 Turbo (marble / SM7475) by a hand-written bare-metal shim, entirely in RAM. No partitions are written.">
+<meta name="theme-color" content="#0b0e11">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="en_US">
+<meta property="og:title" content="The iOS 16 kernel, booted on a Redmi Note 12 Turbo">
+<meta property="og:description" content="XNU 8796 plus the iPhone X userland, our own shim, RAM-only, no partitions written. It reaches SpringBoard. Audio is paused; Wi-Fi is under construction.">
+<link rel="alternate" hreflang="zh-Hans" href="../">
+<link rel="alternate" hreflang="zh-Hant" href="../zh-hant/">
+<link rel="alternate" hreflang="en" href="./">
+<link rel="alternate" hreflang="x-default" href="../">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0e11'/%3E%3Cpath d='M6 11h9M6 16h14M6 21h6' stroke='%23ff6a3d' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../site.css">
+<script>document.documentElement.classList.add('js-anim')</script>
+<script src="../lang.js" defer></script>
+<script src="../timeline.js" defer></script>
+</head>
+
+<body>
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="#top"><span class="brand-mono">marble<span class="dim">-ios</span></span></a>
+    <nav class="nav" aria-label="Page navigation">
+      <a href="#chain">Boot chain</a>
+      <a href="#status">Status</a>
+      <a href="#timeline">Timeline</a>
+      <a href="#discipline">Pitfalls</a>
+      <a href="#missing">What's missing</a>
+      <a href="#run">How to run</a>
+      <a href="#contribute">Contribute</a>
+    </nav>
+    <div class="lang" role="group" aria-label="Language">
+      <a href="../" data-lang="zh-CN">中文</a>
+      <a href="../zh-hant/" data-lang="zh-Hant">繁體</a>
+      <a href="./" data-lang="en" class="on" aria-current="true">EN</a>
+    </div>
+    <a class="repo-link" href="https://github.com/jebbranch/ios-port-marble">repo <span aria-hidden="true">↗</span></a>
+  </div>
+</header>
+
+<main id="top">
+
+<section class="hero wrap">
+  <div class="hero-text">
+    <h1 id="t">The iOS 16 kernel,<br>booted on a<br><span class="hl">Redmi Note 12 Turbo</span></h1>
+    <p class="lede">Apple's open-source XNU — the iOS 16 generation — running on Xiaomi's Snapdragon 7+ Gen 2, with the iPhone X's iOS 16.7.16 userland on top: launchd, the system daemons, backboardd, SpringBoard, the stock apps. The boot chain is a bare-metal shim we wrote ourselves, which takes the image straight into memory from fastboot — <strong>no boot partition flashed, no userdata written, no partition table touched</strong>.</p>
+    <p class="lede lede-flat">It is a research project, not a phone you can use. It reaches the home screen, the touchscreen works, the hardware buttons work. Audio is paused at 73/120, Wi-Fi is under construction, and GPU is second priority. What's missing outweighs what's listed here.</p>
+    <p class="cta-row">
+      <a class="btn" href="https://github.com/jebbranch/ios-port-marble">github.com/jebbranch/ios-port-marble</a>
+      <a class="btn btn-ghost" href="https://github.com/jebbranch/ios-port-marble/blob/main/docs/START-HERE.md">start with <code>docs/START-HERE.md</code></a>
+    </p>
+  </div>
+
+  <div class="term" role="img" aria-label="Kernel log from one real boot">
+    <div class="term-bar"><span>logs/ring-run.txt</span><span class="term-meta">from userdata's tail</span></div>
+    <pre><code><span class="p">›</span> fastboot boot shim-iosroot.img
+<span class="p">›</span> ABL → shim → XNU
+boot cpu: Cortex-A510, MIDR 0x410FD463
+VM bootstrap done: 85 maps, 165 entries and 502 holes left
+kdp_core zlib memory 0x8000
+SWEET UFS: "userdata" on LUN 0, read-only
+BSD root: ufsroot0, major 1, minor 0
+SWEET MARBLE TOUCH: Goodix 9916R ok
+clock set from sweettime=<span class="dim">1794588906</span>
+<span class="g">launchd → SpringBoard</span>
+<span class="p">›</span> <span class="dim">kernel resets itself, phone lands back in TWRP</span></code></pre>
+  </div>
+</section>
+
+<section class="wrap" id="chain">
+  <p class="eyebrow">01 / Boot chain</p>
+  <h2>Four stages, and none of them off the shelf</h2>
+  <p class="sec-lede">Between fastboot and the home screen there was originally nothing: no UEFI, no Linux, no vendor driver. Every stage is either written from scratch, or a driver lifted off an iPhone and dropped onto a Qualcomm SoC it has never seen.</p>
+
+  <ol class="chain">
+    <li><span class="chain-tag">ABL</span><h3>Xiaomi's fastboot</h3><p>boot.img header v4 (header 1584 / signature 4096). Borrowed only to get the image into memory; <code>verifiedbootstate</code> is <code>orange</code>.</p></li>
+    <li><span class="chain-tag">shim</span><h3>Our own AArch64 bare metal</h3><p>Reads out the hardware, sets up the MMU and 16 KB pages, draws the splash into the framebuffer, assembles the XNU payload, then jumps into the kernel.</p></li>
+    <li><span class="chain-tag">XNU</span><h3>xnu-8796.141.3, SWEET / DEVELOPMENT</h3><p>GICv3, VTIMER INTID 27, 8-core SMP. The device tree is built from D22AP's <code>.adt</code> plus the marble addresses collected from the live FDT on the phone.</p></li>
+    <li><span class="chain-tag">userland</span><h3>iPhone X on iOS 16.7.16</h3><p>The root filesystem is an HFS+ partition carved off the tail of userdata; launchd, SpringBoard and the stock apps are unmodified.</p></li>
+  </ol>
+
+  <div class="notes">
+    <h3 class="h-sm">Three lessons we paid for while porting drivers</h3>
+    <dl>
+      <dt><code>msr CNTP_CTL_EL0</code> → NOP</dt>
+      <dd>This SoC does not expose the physical timer at EL1, so XNU has to run on CNTV. Leave the instruction in and you get <code>Undefined kernel instruction</code>.</dd>
+      <dt>The GICR stride is <code>0x40000</code>, not the default <code>0x20000</code></dt>
+      <dd>marble's redistributors sit 256 KB apart. With <code>cpus=1</code> you only ever touch offset 0, so the difference stayed hidden; bringing up 8 cores means passing <code>gicrstride=0x40000</code> explicitly.</dd>
+      <dt>UFS needs <code>START STOP UNIT</code> on device W-LUN <code>0xD0</code></dt>
+      <dd>UFS is powered down when ABL hands over, and waking a normal LUN does nothing. Only after <code>cdb[4]=0x10</code> do INQ / TUR / CAP / READ / GPT all succeed.</dd>
+    </dl>
+  </div>
+</section>
+
+<section class="band" id="status">
+  <div class="wrap">
+    <p class="eyebrow">02 / Status</p>
+    <h2>What works and what doesn't, in the same table</h2>
+    <p class="sec-lede">√ verified on real hardware; ○ partly working, conclusion not closed; × not done, or parked. Every line is worded to the most conservative reading we actually have.</p>
+
+    <table class="matrix">
+      <caption class="sr-only">Subsystem status table</caption>
+      <thead><tr><th scope="col">Subsystem</th><th scope="col">Status</th><th scope="col">Notes</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Boot to SpringBoard</th><td><span class="s-ok">√</span></td><td>shim, our own ADT, XNU 8796, RAM-only. It has reached the home screen: unlock it, open Settings, pull down Control Center.</td></tr>
+        <tr><th scope="row">Display / touch / buttons</th><td><span class="s-ok">√</span></td><td>CPU software rendering, no GPU driver. The Goodix 9916R runs over bit-banged GPIO SPI; multi-touch and behaviour under load are unverified.</td></tr>
+        <tr><th scope="row">UFS read-write + HFS+ root</th><td><span class="s-ok">√</span></td><td>The <code>iosroot</code> partition carved off the tail of userdata; GPT, partitions and DMA all read back on the device.</td></tr>
+        <tr><th scope="row">8-core SMP</th><td><span class="s-ok">√</span></td><td>4×A510 + 3×A710 + 1×X2. After the GICR stride fix, 8/8 cores come up and the scheduler really does distribute work; the price is noticeably more heat.</td></tr>
+        <tr><th scope="row">ADSP: PAS / GLINK / GPR / APM</th><td><span class="s-ok">√</span></td><td><code>GRAPH_OPEN</code>, <code>PREPARE</code>, <code>START</code> and the TDM <code>SET_CFG</code> all return <code>status=0</code>.</td></tr>
+        <tr><th scope="row">Audio data plane (the DSP consumes our PCM)</th><td><span class="s-ok">√</span></td><td>The gate was the <code>AP</code> bits in the S1 leaf page-table entry: unprivileged DSP reads were being terminated by the SMMU. After the fix, <code>DATA_BUFFER done status=0</code> comes back, 1200 buffers complete and the kernel resets normally.</td></tr>
+        <tr><th scope="row">Audio</th><td><span class="s-warn">○</span></td><td>Paused at 73/120. The data plane, HAL stream and amplifier fixes passed; the latest valid negative is that the amplifier has no TDM clock. 0298 fixes the PRM reply binding offline; no new kernel, image or boot yet.</td></tr>
+        <tr><th scope="row">USB</th><td><span class="s-warn">○</span></td><td>Enumeration and control requests have evidence; stable data transfer is not closed.</td></tr>
+        <tr><th scope="row">Battery</th><td><span class="s-ok">√</span></td><td>The <code>pmic_glink</code> channel opens and capacity / vbat / temp display in the right units; the charging state is decided by the <strong>sign of the current</strong> — on this device negative means charging and positive means discharging, not a boolean flag.</td></tr>
+        <tr><th scope="row">Power-off</th><td><span class="s-ok">√</span></td><td>Shutting down from userland really cuts the power. The <code>CPU 1 caller Halt/Restart</code> watchdog timeout on 10-27 was the state before that was closed out.</td></tr>
+        <tr><th scope="row">Haptics</th><td><span class="s-warn">○</span></td><td>Driving PMIC HAP520 directly over SPMI really buzzes (44/44 felt). Requests from UIKit and CoreHaptics are stopped by a user-space gate in <code>backboardd</code>, so the kernel never sees the IPC.</td></tr>
+        <tr><th scope="row">RTC</th><td><span class="s-warn">○</span></td><td>The time on screen comes from a boot argument. PMK8350's RTC is owned by the ADSP, and writes from the AP are refused.</td></tr>
+        <tr><th scope="row">GPU (Adreno 725 / gen7 GMU)</th><td><span class="s-warn">○</span></td><td>Second priority. The old XNU 8796 line is still frozen; FoXLinne's upstream iOS 18 implementation is a reference, but the iOS 16 port has not started. We never collapse the GPU on purpose.</td></tr>
+        <tr><th scope="row">Wi-Fi / Bluetooth</th><td><span class="s-warn">○</span></td><td>Current main line. Boot 74 passed the read-only handoff and confirmed QCA6490/PCIe0 stays powered down after ABL/TWRP handoff; endpoint identification is not verified on hardware. 0302/0303 integrate the wireless stack, firmware and DMA/SMMU core into one object, with no full-machine boot yet.</td></tr>
+        <tr><th scope="row">Baseband</th><td><span class="s-bad">×</span></td><td>No hardware experiment yet. The precondition is whether the 306 MB <code>mpss_region</code> can be held when our XNU starts; the real wall is the iOS 16 telephony userland.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="wrap stats" aria-label="Project numbers">
+  <div><b>293</b><span>XNU porting patches<br><em>numbered to 0303</em></span></div>
+  <div><b>8<span class="u">/8</span></b><span>cores up<br><em>16 KB pages / GICv3</em></span></div>
+  <div><b>784</b><span>commits<br><em>macOS runner queues; #404 answered runner not found</em></span></div>
+  <div><b>33</b><span>technical docs<br><em>failures included</em></span></div>
+</section>
+
+<section class="wrap" id="timeline">
+  <p class="eyebrow">03 / Timeline</p>
+  <h2>Fifteen turning points, from "impossible" to 2026-11-28</h2>
+  <p class="sec-lede">Dates come from commit timestamps in the repository and from the GitHub Actions build log, ordered by what actually happened. Several dates inside <code>docs/status-log.md</code> drifted during hand-offs and are not used here.</p>
+  <div class="tl-wrap">
+    <span class="tl-rail" aria-hidden="true"></span>
+    <span class="tl-rail-fill" aria-hidden="true"></span>
+    <ol class="tl">
+      <li class="tl-item">
+        <p class="tl-date">2026-10-21 15:58</p>
+        <h3>"Can a Redmi Note 12 run iOS?"</h3>
+        <p>The answer was no: iOS is closed, Secure Boot, SHSH-signed, Secure Enclave, A-series only. The project started from that "impossible".</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-21</p>
+        <h3>The shim probes the hardware; the root lives in RAM</h3>
+        <p>16 KB pages, MIDR, GICv3 and the framebuffer all verified. At 19:05 the first shim boot produced garbled output and red/blue screens; at 19:09 the fixed shim's P1 diagnostics were captured. CI run #1 succeeded at 19:31. A 23:00 panic in <code>msr CNTP_CTL_EL0</code> was NOPed; at 23:19 the screen printed <code>userland alive</code> — a 16 MB HFS+ root carried in RAM by the shim via <code>rd=md0</code>, containing only a static <code>/sbin/launchd</code>. UFS was not involved.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-22</p>
+        <h3>UFS wakes up</h3>
+        <p>UFS is powered down when ABL hands over and waking a normal LUN does nothing; after <code>START STOP UNIT</code> on device W-LUN <code>0xD0</code> (<code>cdb[4]=0x10</code>), INQ / TUR / CAP / READ / GPT all succeed and the disk reports as a SAMSUNG KLUEG8UHGC-B0E1, 4 KiB blocks, about 256 GB. At 22:53 the file-level backup passed verification; late that night an ~11 GiB HFS+ image was written into the tail of userdata in 16 × 1 GiB chunks, without touching GPT. The same day a wrong hunk line in 0082 made CI silently skip the patch — the origin of the marker gate.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-23 01:05</p>
+        <h3>Apple logo + progress bar: iOS is booting</h3>
+        <p><code>launchd_cache_loader</code> passed and launchd was already running userland boot tasks, no longer a kernel panic screen. At 02:07 the log confirmed SpringBoard (pid 26) and backboardd (57) were alive with 194,000 framebuffer swaps; the progress bar waited for a preboot volume, a separate data volume, SEP, a foreground session, GPU acceleration and baseband/Bluetooth daemons.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-23 10:21 → 15:11</p>
+        <h3>Setup, then the home screen</h3>
+        <p>At 10:21: "made it into Setup" — bypassing datamigrator and walking through activation worked, and the Goodix GT9916R over SPI touch driver was written next. At 15:11: "made it to the desktop, but no wallpaper and the lock-screen clock is red" — <code>SetupDone</code> had taken effect. Wallpaper and the red clock were left to WallpaperKit / the color pipeline, with no GPU composition yet.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-23 → 24</p>
+        <h3>Audio starts</h3>
+        <p>Read-only LPASS/WCD938x probe → AOP command DB → loading and releasing the ADSP through the TZ PAS interface → a minimal GLINK/GPR client → voting LPASS on through q6prm. The next day the vendor's own AudioReach playback graph was open, a 1 kHz tone was feeding it, amplifier I2C was being probed, and the HAP520 haptics engine got its first try.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-27</p>
+        <h3>Eight cores, fixed as a side task during the audio push</h3>
+        <p>marble's GICR stride is <code>0x40000</code>, not XNU's default <code>0x20000</code>; made runtime-configurable, eight cores in the ADT, 8/8 alive. The same day recorded the apps-smmu dead ends, surveyed GPU feasibility (kgsl-smmu is a separate SMMU from apps-smmu), and confirmed the speaker is TERTIARY TDM plus two AW882xx — not WSA.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-10-30</p>
+        <h3>Haptics: the output side is solved</h3>
+        <p>Driving PMIC HAP520 directly over SPMI from the AP: felt 44 times out of 44, matching what was set. The same round fixed SpringBoard's TCC crash (16 usage keys added). What remains is not hardware — requests from UIKit and CoreHaptics are stopped by a user-space gate in <code>backboardd</code>, and the line paused that day.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-02</p>
+        <h3>The audio data plane opens</h3>
+        <p>The gate was not the vendor's 18 KB calibration but the <code>AP</code> bits of the S1 leaf page-table entry: unprivileged DSP reads were terminated by the SMMU. With <code>sweets1ap=3</code>, <code>DATA_BUFFER done status=0</code> returns, 1200 buffers complete and the kernel resets normally.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-03</p>
+        <h3>mediaserverd opens our shells</h3>
+        <p>The wire format re-verified instruction by instruction against the device's own <code>libar-gsl.so</code>: 16-byte record header, OOB packet layout, in-band below 256 bytes; the high 32 bits of the SHM mapping are a stream index, not an address. pid 28 calls <code>method_Open</code>.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-05</p>
+        <h3>One axis closes, two lines change course</h3>
+        <p>Rounds E through N on out-of-band <code>SET_CFG</code> eliminate address, transport, length and payload bytes one cell at a time; the N1 sentinel proves the earlier <code>err=0</code> readings meant "nobody wrote it". The same day Wi-Fi is parked and the baseband line starts with a zero-boot survey.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-07</p>
+        <h3>Graph content settled, GPU frozen</h3>
+        <p>The graph-generation axis closed offline (2960 is the current four keys; the old 2724 belongs to a previous generation and overruns its own index). Verbatim dumps overturned "the graph is missing DEC/CNV" twice — what is missing is <code>PCM_DEC</code> plus <code>PCM_CNV</code>. The 856 B graph opens, starts and pushes 120 frames; a human ear heard nothing on three attempts, and <code>EOS_RENDERED</code> never arrived even with the packet logger proven live. The GPU line goes frozen.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-08 → 13</p>
+        <h3>Fix the amplifiers, then bridge the HAL</h3>
+        <p>Two real amplifier defects fixed and verified on hardware: init no longer performs a diagnostic reset, and a register write becomes a single three-byte message — both chips read back <code>b440</code> / <code>05a9</code>. Audio reopened on 11-10 as a capture-only HAL; round 70 streams HAL → AudioReach <code>30/30/30</code> with all six control replies at zero. Still not sound.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-14 → 15</p>
+        <h3>Located: the amplifier has no TDM clock</h3>
+        <p>Round 72 is a valid silence: both AW88266 have the right profile / ID / volume, but after clearing PWDN, <code>SYSST=0</code> and every PLL reads 0, so the safety gate refuses before any period is submitted and shuts both down. Patch 0297 adds the vendor's exact PRM clock vote; round 73 turns out to be a PRM reply parsing mismatch — the answer is <code>0x02001002</code> with <code>0x0800102c</code>, not a BASIC_RSP. 0298 fixes the binding offline. Sound is still unproven.</p>
+      </li>
+      <li class="tl-item">
+        <p class="tl-date">2026-11-20 → 28</p>
+        <h3>Wi-Fi becomes the main line; GPU moves to second priority</h3>
+        <p>FoXLinne's marble port is brought in as a reference. Boot 74 passed the read-only handoff and confirmed QCA6490/PCIe0 stays powered down after ABL/TWRP handoff; endpoint identification is not verified. 0302/0303 integrate 109 wireless-stack objects, firmware and the DMA/SMMU core into one object, but it has not entered XNU's real boot path. The budget remains 74/120.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="band" id="discipline">
+  <div class="wrap">
+    <p class="eyebrow">04 / Pitfalls</p>
+    <h2>You can't hit every bug alone, so write the bugs down</h2>
+    <p class="sec-lede">The scarcest resource on this project isn't time, it's boots: one boot equals one device, one log pull, one attribution. The four mechanisms below exist to make that cheaper.</p>
+
+    <div class="cards">
+      <article>
+        <h3>The marker gate: a skipped patch costs a red CI, not a wasted boot</h3>
+        <p>Every patch carries one unique <code>printf</code> literal, and GitHub Actions greps for those literals in the built artifact. When a patch fails to apply because the baseline was wrong, CI goes red instead of you burning a boot. Change a string and the old marker has to go in the same push.</p>
+      </article>
+      <article>
+        <h3>The cmdline is only 590 bytes</h3>
+        <p>Push boot arguments past 607 bytes and they get truncated — silently, by cutting a value: <code>sweetbufs=30</code> became <code>sweetbufs=3</code>, and a conclusion got written off a 12 ms tone. <code>mkimage.sh</code> now exits with an error when it's too long, and there is no way around it.</p>
+      </article>
+      <article>
+        <h3>Logs come off the tail of the disk, and identity comes first</h3>
+        <p>The kernel console goes mute after <code>exec bluetoothd</code>, so the important lines are written straight into a ring buffer at the tail of userdata and pulled back after the reset. A record is about 240 bytes and truncation adds no separator, so one “long line” is really several stuck together. Every round starts by grepping <code>sweettime</code>: if it doesn't match, that round never wrote the ring — and the script will quietly hand you the previous one.</p>
+      </article>
+      <article>
+        <h3>The verdict table is committed before the boot</h3>
+        <p>One semantic variable per experiment, and print the arguments actually used. The verdict table is written and committed before booting, never edited afterwards. An instrument must be able to prove it can fail: print only on a path already shown to run, otherwise mark it explicitly as not a verdict. Matching a size proves nothing — the same <code>u32=18504</code> appears dozens of times in the vendor ACDB.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="wrap" id="missing">
+  <p class="eyebrow">05 / What's missing</p>
+  <h2>The parts that don't work are the point of this list</h2>
+  <div class="two-col">
+    <div>
+      <p><strong>Sound.</strong> Audio is paused at 73/120. The data plane, HAL stream and amplifier fixes passed; the latest valid negative is that the amplifier has no TDM clock. 0298 fixes the PRM reply binding offline, with no new kernel, image or boot.</p>
+      <p><strong>Wi-Fi.</strong>Boot 74 passed the read-only handoff and confirmed QCA6490/PCIe0 stays powered down after ABL/TWRP handoff; endpoint identification is not verified. 0302/0303 integrate 109 wireless-stack objects, firmware and the DMA/SMMU core, but have not entered XNU's real boot path.</p>
+      <p><strong>Graphics.</strong>Every pixel is still computed by the CPU. FoXLinne's upstream iOS 18 GPU implementation is a reference, but the iOS 16 port has not started; the old XNU 8796 line remains frozen.</p>
+    </div>
+    <div>
+      <p><strong>Storage.</strong>The root image lives in the tail of userdata, but f2fs was not shrunk and GPT was not changed. The research phone still runs Android, so filling userdata will overwrite the root. Today the only guard is to re-read the HFS+ header signature and free-block count before boot, then rewrite the tail if it was overwritten.</p>
+      <p><strong>Usability.</strong>There is no preboot volume, separate data volume, SEP or foreground session; some apps hit watchdog timeouts; an empty passcode still demands input (a userland bug). The goal is not a daily phone, but to find out how far Apple's kernel gets once it leaves factory-calibrated hardware.</p>
+      <p><strong>Routes already disproved.</strong>SMMU dead ends, using <code>DATA_BUFFER</code> as a probe, perturbing the clock with <code>tinyplay</code> — each cost a real boot, which is why they are listed: to save you the one.</p>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="run">
+  <div class="wrap">
+    <p class="eyebrow">06 / How to run it</p>
+    <h2>Files you have to bring yourself</h2>
+    <p class="sec-lede">The repository is <strong>code, patches and documentation only</strong> — no Apple, Qualcomm or Xiaomi binaries. XNU itself is built by CI from public sources; the three things below can only come from your own devices.</p>
+
+    <table class="matrix assets">
+      <caption class="sr-only">Files you need to supply</caption>
+      <thead><tr><th scope="col">File</th><th scope="col">Where it comes from</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>d22ap.adt</code></th><td>Your own iPhone X (D22AP) iOS 16.7.16 IPSW. Apple copyrighted content; it may not be redistributed.</td></tr>
+        <tr><th scope="row"><code>adsp2.mdt</code> and its sections</th><td>From <code>/vendor/firmware/</code> on your own phone, pulled with <code>extract_adsp_fw.sh</code> (needs root).</td></tr>
+        <tr><th scope="row">HFS+ userland image</th><td>Your own iPhone X IPSW or device. The repository does not provide it, and does not provide a way to get it.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <p class="code-label">Build → boot → pull logs, with <code>fastboot boot</code> only</p>
+<pre><code><span class="c"># 1. Fetch the CI artifact and apply the CNTP_CTL NOP (use the processed kernel)</span>
+GH_REPO=&lt;you&gt;/ios-port-marble ./scripts/fetch_kernel.sh
+
+<span class="c"># 2. Pull the ADSP firmware off the phone</span>
+SERIAL=&lt;your-device&gt; ./scripts/extract_adsp_fw.sh
+
+<span class="c"># 3. Build the RAM-only boot image</span>
+D22AP_ADT=/path/to/d22ap.adt ADSP_FW_DIR=$PWD/adsp-fw ./scripts/mkimage.sh
+
+<span class="c"># 4. Boot it. Nothing is written to any partition.</span>
+SERIAL=&lt;your-device&gt; ./scripts/boot_ram.sh images/shim-iosroot-adsp.img
+
+<span class="c"># 5. Pull this round's ring log back</span>
+SERIAL=&lt;your-device&gt; ./scripts/pull_logs.sh run1</code></pre>
+    </div>
+
+    <p class="warn">Use it on <strong>your own device</strong> only. Back the device up first — I didn't, I resized userdata in place without a backup, and whether that works out is down to luck. Know how to get into fastboot (Power + Vol Down) and where your recovery path is. When the kernel panics the screen tears: photograph it, note pc / lr / far, then reboot.</p>
+  </div>
+</section>
+
+<section class="wrap" id="contribute">
+  <p class="eyebrow">07 / Contribute</p>
+  <h2>Come tinker with it</h2>
+  <div class="two-col">
+    <div>
+      <ul class="clean">
+        <li><strong>Own the same phone</strong> (Redmi Note 12 Turbo / marble / SM7475): reproduce on hardware, pull logs, read registers, verify patches.</li>
+        <li><strong>Work in XNU / IOKit / driver porting</strong>: patches and code review are both welcome. Keep one PR to one thing.</li>
+        <li><strong>Know Qualcomm PMIC / RPMh / SMMU / AudioReach</strong>: if something in the docs is wrong, or you have already walked this road to a dead end, please tell us.</li>
+      </ul>
+    </div>
+    <div>
+      <p>In an issue, paste four things: what happened, <code>logs/ring-*.txt</code>, the boot arguments, and the image identity <code>sweettime</code>. With those four, the round is reproducible. Not only bugs — “I tried this road, the answer is X” is just as valuable.</p>
+      <p class="flat">Write the failed attempts into <code>docs/</code> as well. The next person won't have to walk it twice.</p>
+      <p class="flat">Issues and pull requests in 中文 or 繁體中文 are welcome too.</p>
+    </div>
+  </div>
+
+  <div class="credits">
+    <h3 class="h-sm">Whose shoulders</h3>
+    <p>The public reference projects <code>ios-sweet</code> (the same XNU generation ported to a Redmi Note 10 Pro / SM7150) and <code>ios-topaz</code> were the starting point. This project swapped the addresses, clocks, interrupts, touch and UFS over to marble's, and re-verified every SM7150 driver it inherited. Audio sources from other ports, and vendor kprobe traces, have been used to cross-check our wire format.</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-inner">
+    <p>Research and education only, with no warranty; damage to your device or loss of data is yours to carry. The patches, the shim and the scripts are released under the repository LICENSE; XNU's source copyright belongs to Apple and is fetched from public sources at build time.</p>
+    <p class="mono dim">docs last frozen 2026-11-28</p>
+    <p class="mono dim">this page's source: <a href="https://github.com/jebbranch/ios-port-marble/blob/main/en/index.html">en/index.html</a>, updated with <code>docs/</code> in the same repo</p>
+  </div>
+</footer>
+
+</body>
+</html>

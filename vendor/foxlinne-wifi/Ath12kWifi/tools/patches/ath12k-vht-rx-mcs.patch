@@ -1,0 +1,12 @@
+--- a/dp_rx.c
++++ b/dp_rx.c
+@@ -1216,7 +1216,8 @@
+ 	case RX_MSDU_START_PKT_TYPE_11AC:
+ 		rx_status->encoding = RX_ENC_VHT;
+ 		rx_status->rate_idx = rate_mcs;
+-		if (rate_mcs > ATH12K_VHT_MCS_MAX) {
++		/* mac80211 accepts vendor VHT MCS 10/11; retain their NSS/BW. */
++		if (rate_mcs > 11) {
+ 			ath12k_warn(dp->ab,
+ 				    "Received with invalid mcs in VHT mode %d\n",
+ 				     rate_mcs);

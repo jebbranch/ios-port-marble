@@ -1,5 +1,15 @@
 # 厂商 GPR 报文格式（本机 kprobe 实测）
 
+> **后续纠正（11-05 双向抓包后）**：本页是 10-27 的单向 `gpr_send_pkt()` 抓包，
+> 保留原始格式价值，但以下旧解释已作废：
+> - `property_flag` 不是厂商自定义，而是 `1 << (mem_pool_id − 1)`，pool=3 得 4；
+> - SHM 映射的高 32 位是 **stream index**，不是地址高字；
+> - token 必须全 32 位匹配，不能简化成 `token == slot`；
+> - 18 KB `SET_CFG` 不是数据面主因。
+> 当前判决见 [`audio-closeout.md`](audio-closeout.md)，双向抓包见
+> [`data/vendor-accepted-setcfg-2026-11-05.md`](data/vendor-accepted-setcfg-2026-11-05.md)。
+
+
 `docs/traces/trace_ui.txt` 是在**本机 Android** 上对 `gpr_send_pkt()` 下 kprobe
 抓到的 534 个包（播放一次系统音效）。解码用
 `scripts/parse_gpr_trace.py`。
@@ -109,7 +119,7 @@ w9 = 0x480         长度
 ## 相关文档
 
 - 图拓扑（模块 / 端口 / 连接）见 [vendor-graph.md](vendor-graph.md)
-- 当前进度与卡点见 [audio-status.md](audio-status.md)
+- 当前进度与卡点见 [audio-closeout.md](audio-closeout.md)
 
 ## 厂商 APM opcode 全清单（2026-11-02 两份抓包合并统计，第一次做）
 

@@ -64,4 +64,4 @@ WR接口把DONE定义为缓冲已被消费并可归还客户端，边界不是�
 - 本地检查：功放11路径回归、写/读/表/失败事务模型、strict syntax、ASan/UBSan、纯基线apply、I2C与GLINK全链post-image匹配；最后打分器所有运行门通过。
 - 详细流水：`audio-closeout.md`、`audio-ampguard-2026-11-08.md`、`audio-descsep-live-2026-11-08.md`。
 
-其他方面仅整理了既有日志与交接状态，入口为 `OTHER-LINES-2026-11-08.md`。GPU冻结、Wi-Fi/BT停车与基带前置门均没有因音频暂停而解除。
+其他方面仅整理了既有日志与交接状态，入口为 `STATUS.md`。GPU冻结、Wi-Fi/BT停车与基带前置门均没有因音频暂停而解除。

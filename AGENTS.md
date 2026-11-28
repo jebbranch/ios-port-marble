@@ -1,470 +1,147 @@
-# marble / iOS-on-Android 项目工作守则
+# marble / XNU 工作守则
 
-> **0298修复PRM专用回包绑定，离线通过（2026-11-15，仍73/120）**：
-> APM继续严格认`0x02001005+原命令opcode`；PRM时钟改认历史实测的
-> `0x02001002+param0x0800102c`，route/full token仍严格匹配，DATA DONE不变。
-> adapter56项含错opcode/错param负对照、功放10场景、全S16 136656断言、全链
-> applied239/历史skip49通过。尚无完整内核/镜像/开机。见
-> [`docs/audio-hallisten-0298-2026-11-15.md`](docs/audio-hallisten-0298-2026-11-15.md)。
-
-> **第73枪确认无声，但判为PRM回包解析失配（2026-11-15，73/120）**：
-> 身份/窗口成立，HAL非静音及时到达；精确0x204 request发出后，0297只等待APM
-> BASIC_RSP `0x02001005`，而历史全量收包证明PRM专用应答是`0x02001002`
-> `{param=0x0800102c,status}`。故5秒timeout后安全门不OPEN、不碰功放、不发PCM，
-> UNMAP=0。不能判PRM接受/拒绝，也未测试PLL。见
-> [`docs/audio-hallisten-0297-2026-11-14.md`](docs/audio-hallisten-0297-2026-11-14.md)。
-
-> **0297第73枪镜像已冻结、尚未启动（2026-11-14，72/120）**：
-> `images/hallisten-0297-20261114.img` SHA `bf1f84c0…211e1`，
-> raw `e06d4770…8927`，kernel `d8f29c6a…0994`，sweettime1794627872，
-> 590B/90marker/17符号/8核门通过。只准目标机fastboot boot一次，执行后73/120；
-> 五分钟内触发一次声音，不提高/不重放。见
-> [`docs/audio-hallisten-0297-2026-11-14.md`](docs/audio-hallisten-0297-2026-11-14.md)。
-
-> **0297厂商TDM时钟票离线通过，等待完整构建（2026-11-14，仍72/120）**：
-> 只在`sweetlisten=1`按厂商顺序于图OPEN前request
-> `0x204@12.288MHz attr4 root0`，STOP/CLOSE确认后release；旧`sweettdmclk`仍必须0。
-> request失败不OPEN/不启功放，STOP/CLOSE或release缺ACK不假释放DMA。实际adapter52项、
-> 功放10场景、全S16 136656断言和全链重放通过。尚无新内核/镜像/开机。
-> 见 [`docs/audio-hallisten-0297-2026-11-14.md`](docs/audio-hallisten-0297-2026-11-14.md)。
-
-> **第72枪有效无声，已定位到功放无TDM时钟（2026-11-14，72/120）**：
-> HAL非静音及时到达，两颗AW88266安全profile/ID/vol均正确；第一颗清PWDN后
-> `SYSST=0`，PLLS/CLKS均0，安全门在任何period提交前拒绝并双关断。用户明确“没有”。
-> 下一单变量只能是厂商精确PRM票`0x204@12.288MHz attr4 root0`，图OPEN前request、
-> STOP/CLOSE后release；禁止加音量绕过。见
-> [`docs/audio-hallisten-0296-2026-11-14.md`](docs/audio-hallisten-0296-2026-11-14.md)。
-
-> **0296第72枪镜像就绪（2026-11-14）**：
-> `images/hallisten-0296-20261114.img` SHA `9d7fcf7a…6843`，
-> sweettime1794624169，590B/88marker/17符号门通过。只把功放关闭时HAL等待从120s
-> 延到300s，其他0295不变。只准一次，用户五分钟内触发一次声音，不提高/不重放；
-> 预算启动后72/120。见 [`docs/audio-hallisten-0296-2026-11-14.md`](docs/audio-hallisten-0296-2026-11-14.md)。
-
-> **免费听测R1无声但未触发（2026-11-14，仍71/120）**：R1身份成立，但120s内
-> HAL全静音，流以0/0/0安全teardown；用户操作和非静音PCM发生在图关闭之后。
-> 功放pre_play从未调用，无PLL/unmute/period，故不是电声负读数。下一版只把功放关闭
-> 状态下的HAL等待延至300s，其余0295不动，须新构建。见
-> [`docs/audio-hallisten-r1-result-2026-11-14.md`](docs/audio-hallisten-r1-result-2026-11-14.md)。
-
-> **0295第71枪听测镜像已冻结、未开（2026-11-14）**：
-> `images/hallisten-0295-20261114.img` SHA `693ee73e…cbd9`，
-> sweettime1794588906，实际参数恰590B，raw/kernel/87marker/17符号/8核门通过。
-> 只准目标机fastboot boot一次；听测约0.64秒且可能很轻，不调音量、不重复触发。
-> 功放双PLL/故障门未通过则不发PCM，结束必须双关断。仍70/120。
-> 见 [`docs/audio-hallisten-0295-2026-11-14.md`](docs/audio-hallisten-0295-2026-11-14.md)。
-
-> **0295 AW88266听测状态机离线通过，等待完整构建（2026-11-14）**：
-> 只在`sweetlisten=1`进入本机44项表、双PLL/故障门和峰值16384的30-period短听测；
-> GPIO52强制speaker=0，禁handset；任一失败不发PCM，结束/超时/DSP错误都双功放
-> 静音+AMPPD/PWDN，I2C关断失败则双reset低。功放10场景、adapter41门、
-> 全S16 136656断言和六文件/全链重放通过。尚无新内核/镜像/开机，仍70/120。
-> 见 [`docs/audio-hallisten-0295-2026-11-14.md`](docs/audio-hallisten-0295-2026-11-14.md)。
-
-> **第70枪HAL→AudioReach连续流通过（2026-11-13，70/120）**：
-> `attempted/sent/done=30/30/30`、reject/fault=0、source30720、peak-in700、
-> 固定除32后peak-out21；六个open…unmap控制应答全0，安全teardown通过。
-> 原始128帧是合理双声道S16，功放路径严格为0。结论仅到DSP归还，不是出声。
-> 下一步是本机AW88266短时PLL/状态/安全关断，禁止mayfly profile、正增益和听筒复用。
-> 详见 [`docs/audio-halstream-0294-2026-11-13.md`](docs/audio-halstream-0294-2026-11-13.md)。
-
-> **0294第70枪镜像已冻结，设备尚未在线（2026-11-13）**：
-> `images/halstream-0294-20261113.img` SHA `931181d6…fe19f`，
-> sweettime `1794581323`，raw/kernel/84 marker/14符号/8核/576B参数门通过。
-> 本版功放硬绕过、只验证30个HAL period的DSP归还与安全STOP/CLOSE/UNMAP，
-> 不是听测。设备回来后只准一轮；若需手动长按而用户离席则等待。
-> 冻结门见 [`docs/audio-halstream-0294-2026-11-13.md`](docs/audio-halstream-0294-2026-11-13.md)。
-
-> **0294等待完整构建（2026-11-13）**：开机前发现0293 guard错误要求
-> `sweets1ap=1`，而当前数据面已验证基线是`=3`（S1 leaf AP=11），所以0293内核
-> 明确禁用、未上机。0294只修该门并升级v2 marker；实际adapter 35项正负对照通过。
-> 仍69/120，必须取得0294新摘要/marker/镜像身份后才允许第70枪。
-> 见 [`docs/audio-halstream-0294-2026-11-13.md`](docs/audio-halstream-0294-2026-11-13.md)。
-
-> **0293离线接入已完成，等待完整构建（2026-11-13）**：真实GLINK两条收包路径已
-> 分派独立控制ACK/period DONE；默认关闭的`sweethalstream=1`只做4×4096B、除32、
-> cap30的有界HAL→AudioReach流。该阶段**强制绕过功放/I2C与AW cal，不是听测**；
-> 全链/8文件重放、生产核心136647断言、适配33门、功放12路径通过。
-> 无新设备操作，仍69/120；完整产物和镜像门未过之前不boot。见
-> [`docs/audio-halstream-0293-2026-11-13.md`](docs/audio-halstream-0293-2026-11-13.md)。
-
-> **2026-11-13：HAL capture实机门已通过，用户决定UI后修。** 第69枪有效ring取得
-> 524288帧、500234非静音帧，peak32768，ADSP/硬件隔离成立；只证明入流，不证明出声。
-> 同版HAL已按用户新授权保留到用户态，恢复备份在hfs-retain-boot69，预算仍69/120。
-> 连续period所有权/固定除32衰减核心已做离线全S16验证，但未接真实GPR、未编0293。
-> 入口 [`docs/audio-hal-stream-offline-2026-11-13.md`](docs/audio-hal-stream-offline-2026-11-13.md)。
-
-> **第 69 枪 HAL capture 已启动，待判（2026-11-12）**：用户在 TWRP 明确授权安装，
-> 并要求若可行保留到用户态。HAL 三处写入已备份/读回且独立 cmp 相等，
-> 冻结镜像一次 fastboot boot 成功，预算现 **69/120**。用户反馈启动早期铃声页
-> 闪退/关于页卡住，当前等待恢复与 PCM 证据；不清缓存、不追加开机，未宣称 HAL
-> 通过或已经可固化。执行入口 [`docs/audio-hal-live-2026-11-12.md`](docs/audio-hal-live-2026-11-12.md)。
-
-> **2026-11-12 HAL 捕获镜像就绪，未上机**：0292 完整产物验收并打包为
-> `images/hal-capture-0292-20261112.img`。用户已允许只读重取设备当前 HFS 卷头，
-> catalog 和原插件检查通过；未安装、未引导，仍 **68/120**。临时 HAL 替换涉及
-> 现有 root 写入，必须另获明确授权且只在 recovery + userdata 未挂载时执行。
-> 本轮镜像实际关闭 `sweetadsp/sweetglink/sweeti2c/sweetamp/sweetgpu`，不带 PCM 图实验。
-> 事前判据与身份见 [`docs/audio-hal-ready-2026-11-12.md`](docs/audio-hal-ready-2026-11-12.md)。
-
-> **音频已按用户要求重开，但当前仅做离线 HAL PCM 捕获阶段（2026-11-10）**：
-> 第一轮只验证 iOS AudioServerPlugIn 是否把 48 kHz/S16/双声道 PCM 写到
-> `/dev/marble-audio`。0292 的内核节点只入 ring、统计和覆盖旧帧，**没有**
-> AudioReach/TDM/I2C/功放/听筒调用；volume ioctl 只记录并夹到 90 dB 衰减范围，
-> 不写任何硬件增益。用户特别强调不得乱调增益；后续硬件阶段禁止正增益，首次
-> 峰值不得高于历史 `sweetvol=16`（约 -6 dBFS），且扬声器和听筒必须分开。
-> 当前预算仍 68/120，未新增开机。见
-> [`docs/audio-hal-reopen-2026-11-10.md`](docs/audio-hal-reopen-2026-11-10.md)。
-
-> **音频已暂停（2026-11-08，最终68/120）**：按用户要求在第68枪之后收尾，不自动重开。0290实机修正诊断复位副作用；0291实机使两颗功放读回从4003/38变为表值b440/05a9，PWDN/AMPPD/HMUTE均清除。图/缓冲归还/正常复位通过，但第68枪声音未明确反馈、PLL/I2S及最终渲染未证明，不能说音频已全通。当前权威冻结入口 **[`docs/AUDIO-CLOSEOUT-2026-11-08.md`](docs/AUDIO-CLOSEOUT-2026-11-08.md)**，其他方面入口为 `docs/OTHER-LINES-2026-11-08.md`。R1免费轮仍扣0。下面的“进行中/待开机”等均为历史节点，不得据此自动开音频、GPU或其他停车线。
-
-> **0290实测与0291补充修复（2026-11-08）**：第67枪已通过保护/回读/控制/安全门，RESET=1/1、两颗实际可读，但4003/38表明仍掉电/静音；预算现67/120。发现写函数把地址与数据拆为两条WRITE，0291已改为厂商同样的三字节单消息，读保持不变，事务模型及全链验证通过。用户要求继续“Try again”，新构建过门后最多执行第68枪，不改图/格式/EOS/音幅/GPU。见 `docs/audio-ampguard-2026-11-08.md` 与事前表。
-> **协议语义校准**：厂商WR接口定义DONE为写缓冲已被消费并可归还客户端，不应再一概称为“仅入队”；它仍不证明最终TDM/功放渲染。当前内核短音不经过AudioQueue或Android AudioTrack，应用层push/pull差异不能解释已确认的诊断复位缺陷。
-
-> **R1 听感已取得（2026-11-08）**：用户明确反馈“没听到”；R1 日志门全部成立，因此是隔离生效后仍无声的有效负读数。单独隔离描述符不足以出声，不否认该 AP 覆盖缺陷。前两轮未留意仍为未知；只记录反馈，没有新开机，预算仍66/120。人类观测见 `verify/r1-descsep-listen-free-0289-hearing.json`。
-
-> **2026-11-08 R1 免费听测**：用户因前轮未留意而明确授权再放一次且不计预算。已按隔离组原配置重放，只有 sweettime 更新；所有身份/控制/提交/安全收尾门通过，保留 R1 独立日志，本次扣除=0，预算仍 **66/120**。R1结果574dc6d及前轮滞留提交已推送成功，远端main与HEAD实测一致（0 0）。前轮未留意和本轮未反馈都不能写成无声。详见执行记录 §5 与 audio-closeout 的 R1 事前/判决条目。
-
-> **2026-11-08 执行完成**：0289 已推送构建并取回，第 65/66 枪描述符隔离开/关对照全部事前日志门通过，当前预算 **66/120**，听感尚未取得。EOS 已由与设备原位 hash 相同的 GSL 二进制确认厂商是 28 B，旧 XNU 的 44 B 与其不一致；旧零事件不能排除 AP 封装原因。记录见 [`docs/audio-descsep-live-2026-11-08.md`](docs/audio-descsep-live-2026-11-08.md) 与 [`docs/audio-eos-wire-2026-11-08.md`](docs/audio-eos-wire-2026-11-08.md)。本轮两枪止损已到，未开 B1/EOS/第三枪，设备已正常回 Android。
-
-> **2026-11-07 续接更新**：第 65 枪尚未开；B1 被零开机预检暂停。描述符覆盖 PCM、配置未跟随模块删除、回落路径及 EOS 封装冲突的证据，见 [`docs/audio-preflight-2026-11-07.md`](docs/audio-preflight-2026-11-07.md)。0289 为本地已验证但未提交/未完整构建的草案，现有 kernel 仍为 0288；预算仍 64/120。
-
-> **⚠️ 本文件含已被推翻的结论（2026-11-07 更新）。当前权威状态见
-> [`unixnu-sheng-audio-2026-11-07.md`](unixnu-sheng-audio-2026-11-07.md) §§13–48，全项目九条线的一句话状态见 **[`STATUS-2026-11-07.md`](STATUS-2026-11-07.md)**。**
-> 已作废/收窄的旧说法：① "18 KB / 18128 / 18504 cal 是墙" —— 降级为未检验假设；
-> ② "ACDB 重建容器 = EBADPARAM，内容被否" —— 那些拒绝来自 **B 形式（ACF 索引）**，
-> 而 B 形式开头 16 字节被 APM 当参数头读会得到 `param_size=0xB0000002`（2.75 GiB），
-> 它是 GSL/ACDB 侧结构、**从来不是 APM wire payload**；③ `g_graph_vendor4`(2724) 是**上一代**
-> 且自身索引超界 4 B，由它得出的一切结论作废；④ 旧 2960 五枪用默认 `off=16/len=2944`
-> 削掉了 entry[0] 的头，其 `0x2` 是自伤不是判决；⑤ "图里缺 DEC/CNV" 与 "各缺一半" 两次都被
-> 逐字 dump 推翻 —— 被接受的 `g_graph_vp_wr` 同时有 WR 与硬件段；⑥ `DATA_BUFFER_DONE` 只证明入队；
-> ⑦ "EOS 无应答是 100 ms 窗太短" 已撤回（`g_apm_xfer` 等 5 s）。
-> **当前事实**：856 B A 形式（+PCM_DEC/PCM_CNV）`graph_open=0`、`graph_start=0`、
-> `pcm tone done (120 buffers)`、DSP 回 121 个 DONE —— 用户**三次**都没听到 ⇒ 三条有效负读数。
-> `EOS_RENDERED` 在收包仪器被证明可用的前提下从未到达（第 64 枪 137 包、`0x05001001` = 0）
-> ⇒ AP 侧事件路线按止损关闭，现在做 B 线（第 65 枪 = 0288 摘掉 AFE id，内核已过门，只差打包开机）；
-> **预算 64/120**。新会话第一入口 = [`STATUS-2026-11-07.md`](STATUS-2026-11-07.md)。
-
-
-这是本工作区的**第一入口**。目的不是重复文档，而是把"每次都重新踩的坑"和
-"已经付费验证过的事实"放在一处，省掉翻 `docs/*.md` 注释的时间。
-细节按主题在 `work/xnu-gh/docs/` 里，本文件只给结论 + 怎么做。
-
----
+> **新会话第一入口**：[`docs/STATUS.md`](docs/STATUS.md)（现在在哪、下一步是什么）。
+> 按时间的编年史只有一份：[`docs/chronology.md`](docs/chronology.md)（要改日期就改那里）。
+> 本文件只留操作守则、踩坑清单与已验证事实，不再堆历史结论。
 
 ## 0. 这是什么
 
-XNU 8796 / iOS 16 移植到 Redmi Note 12 Turbo（`marble`，SM7475，SoC 名 **UKEE**），
-纯 RAM 运行；ADSP 侧走 Qualcomm AudioReach（GPR/APM/SPF）；震动是 PMIC HAP520 走 SPMI。
+把 Apple 开源的 **XNU 8796.141.3**（iOS 16 同期内核）和 iPhone X 的
+iOS 16.7.16 用户态跑到 **Redmi Note 12 Turbo（marble / SM7475 / Snapdragon 7+ Gen 2）**上。
+启动链路是 ABL → 自写裸机 shim → XNU → iPhone X userland，**纯 RAM 运行**：
+不刷 boot、不写 Android 分区表，只用 `fastboot boot`。
 
----
+当前主线是 Wi-Fi（0299–0303，总开机 74/120）；音频暂停在 73/120；GPU 第二优先。
+详细状态以 `docs/STATUS.md` 为准。
 
 ## 1. 设备红线（不可协商）
 
-- **只 `fastboot boot`**。禁 flash / erase / format / set-active / oem，
-  不碰 GPT、persist、modemst。任何"写分区"的需求先问用户。
-- 目标机 serial = **2aa26095**。同一条 USB 上可能挂着别的手机（三星 `r9q` 等）——
-  **绝不在别的机器上 boot 测试镜像**。
-- **不主动 collapse GPU**（GPU 线目前是 FROZEN 状态）。
-- 死机只能建议用户**长按电源**；我不做"再等等看"以外的补救。
+- **只允许 `fastboot boot`**。禁止 `flash` / `erase` / `format` / `set_active` /
+  `oem` 写命令；不碰 GPT、`persist`、`modemst`。
+- **不主动 collapse GPU**。没有用户明确点头，不开任何 GPU 枪。
+- **一次开机一个会话**（one-device-one-session）；不要在子智能体里抢设备。
+- 每次开机前必须完成本地验证：产物 grep、marker、stub 编译、判据表已 commit。
 - 宿舍安静：音幅 1/16、`sweetbufs≤30`、不放长音、不热挂探针。
-  **更长/更响的测试需要用户明确许可**。
-- 开机预算：用户 2026-11-04 把额度从 20 提到 **120**；已用 19（2026-11-05：C=16、D=17、E=18、F=19）。
-  **每一次开机前必须先完成本地验证**（产物 grep、marker、stub 编译、判据表已 commit）。
-- **带外探针每轮只发一发**（2026-11-05 实测：boot 17 一发被拒 ⇒ 数据面 31 发 + 4 次 done；
-  boot 18 四发被拒 ⇒ 1 发无响应。发数不是因，但**多发的代价无法归因**，所以一次一发）。
-- **SMMU CB 故障寄存器不能当负证据**：六个 CB 常年 `FSR=0x400`、我们 W1C 清不掉、
-  `FAR/farhi` 是无意义陈旧值，pre 与 post **逐字节相同**（boot 18/19 两次实测）。
-  ⇒ "没有新故障位" **不等于** "没有发生翻译故障"。
-- `fetch_kernel.sh` 取产物摘要必须**按资产名配对**：`kernel-latest` 旁边躺着一个陈旧的
-  `build-error.txt` 且排在前面，"页面第一个 sha256" 取的是它的摘要 ⇒ 会误判"没出新内核"。
-- 一次开机一个会话（one-device-one-session）；不要在子智能体里抢设备。
-- **拉完 ring 先对身份**：`grep -m1 -o "sweettime=[0-9]*" logs/ring-<label>.txt` 必须等于本轮
-  build log 里 `cmdline:` 的 `sweettime`。不等 ⇒ panic/早复位没写 ring，`pull_logs.sh` 会
-  **静默返回上一轮的 ring**（2026-11-04 真的发生过，差点把 M 轮数据当成 C 轮打分）。
-- **不要在持锁函数里打印或再进 IOKit**：`IORegistryEntry::copyProperty()` 的 `wrap2` 是
-  `PLOCK; getProperty(...); PUNLOCK` ⇒ 在 `getProperty` 里 `getName()` + `IOLog` 会嵌套拿
-  同一把锁。0251 因此连炸两次开机，已从序列删除。要打印就挂在**解锁之后**的位置。
+  更长/更响的测试需要用户明确许可。
+- 死机只建议用户**长按电源**；不做「再等等看」以外的补救。
+- 仓库不含 Apple / Qualcomm / Xiaomi 的二进制固件、IPSW、HFS 用户态镜像。
+- 不提交设备私密数据；公开文档统一用 `$SERIAL` 或 `<your-device>`。
 
----
-
-## 2. 环境（Mac 侧）
-
-- GitHub **HTTPS/网页/API 经常炸**（SSL_ERROR_SYSCALL、DNS 失败、CDN 发旧包）。
-  `git push`（SSH）通常能过，失败就**重试一次**再下结论。
-- 没有 `gh` CLI。**不要用循环轮询 Actions API**（60/hr 未认证额度，历史上被烧过）。
-- 构建结果只看 release 资产：
-  `https://github.com/<repo>/releases/expanded_assets/kernel-latest`（加 `?x=<ns>` 绕缓存）
-  + `build-error.txt` 的 `commit:` 行。
-- CI **只在 push 到 `main`** 且路径含 `xnu/patches/**` 或 workflow 文件时触发。
-  推 feature 分支 = 静默无构建。惯例：`git push origin HEAD:main`。文档单独推不会触发。
-- 下载 kernel 用**续传循环**直到完整（17.5 MB，常在第 3–8 次成功）：
-  `curl -sSL -C - --max-time 200 -o out/kernel.raw "<asset-url>?cb=$i$RANDOM"`。
-- `fetch_kernel.sh` 在 curl 出错时会因 `set -e` **静默退出**（只打印一行 release page 就没了），
-  随后你 grep 的是**上一个构建**的 kernel ⇒ 看起来像"补丁被跳过"。
-  必须自己核对：新 marker 在、旧 marker 也要在（链是累积的）。
-
----
-
-## 3. 构建 → 验证 → 开机 的标准流程
+## 2. 构建 → 验证 → 开机
 
 ```bash
 export D22AP_ADT=$HOME/Desktop/marble-ios/work/xnu/research/ipsw-x/d22ap.adt
 export ADSP_FW_DIR=$HOME/Desktop/marble-ios/work/adsp-fw
 cd $HOME/Desktop/marble-ios/work/xnu-gh
-# KEEPALIVE=1 停在 iOS（人机交互轮）；不带 = 有 sweetreboot=1，自动复位并自动拉 ring
-bash scripts/mkimage.sh sweethap=1 ...           # 位置参数会被追加到 cmdline
-# 交互轮： SERIAL=2aa26095 bash scripts/boot_interactive.sh images/<img>
-# 日志轮： SERIAL=2aa26095 bash scripts/boot_one.sh images/<img> <label>
+
+# 交互轮：KEEPALIVE=1 停在 iOS；日志轮：sweetreboot=1 自动复位并拉 ring
+bash scripts/mkimage.sh sweethap=1 ...
+bash scripts/boot_interactive.sh images/<img>
+bash scripts/boot_one.sh images/<img> <label>
 ```
 
-1. **CNTP_CTL 必须 NOP**（`fetch_kernel.sh` 里那段：模式 `28e21bd5` → `1f2003d5`，
-   全 kernel **恰好 1 处**，否则 assert 失败；raw kernel 不启动）。
-2. **boot-args 字段 = 607 字节**，`mkimage.sh` 在 >590 时**直接报错退出**（不要绕过）。
-   历史上超长会静默切值（`sweetbufs=30`→`3`），把无效值当成有效读数。
-3. **开机前**核产物，不是只核构建日志打印：
+1. **CNTP_CTL 必须 NOP**：`fetch_kernel.sh` 会把 `msr CNTP_CTL_EL0` 改成 NOP；
+   全 kernel 恰好 1 处，否则 assert 失败。raw kernel 不能直接启动。
+2. **boot-args ≤ 590 字节**：`mkimage.sh` 在超长时直接报错退出，不许绕过。
+   历史上超长会静默把 `sweetbufs=30` 切成 `sweetbufs=3`。
+3. **逐条核产物**，不是只看构建日志：
    ```bash
-   LC_ALL=C grep -ac "sweetbufs=30" images/<img>     # 逐条 flag，值不能被切半
+   LC_ALL=C grep -ac "sweetbufs=30" images/<img>
    LC_ALL=C grep -ac "<本补丁的 marker 字面量>" images/<img>
    ```
-   两个已知假信号：
-   - 裸 grep 到某 flag 名 ≠ 它在 cmdline 里
-     （`PE_parse_boot_argn("sweetaopval")` 的**常量串**同样在镜像里）；
-   - `%#x` 打印 0 时输出 `0`（不是 `0x0`），数故障值要用 `=[0-9a-fx]*`。
-4. 判据（gate）**必须在开机前写进 `docs/audio-closeout.md` 并 commit**，事后不改。
-   数字要**从已有 ring 里 grep 出真实形态**再写，不靠推。
+   裸 grep 到 flag 名不等于它在 cmdline 里；`%#x` 打 0 时输出是 `0` 不是 `0x0`。
+4. **判据表开机前 commit**，事后不改。一个语义变量；证人打印它实际用的参数。
+5. **拉完 ring 先对身份**：`grep -m1 -o "sweettime=[0-9]*" logs/ring-<label>.txt`
+   必须等于本轮 build log 的 `sweettime`。不等 ⇒ panic/早复位没写 ring，
+   `pull_logs.sh` 会静默返回上一轮。
 
----
+## 3. 补丁纪律
 
-## 4. 补丁（xnu/patches/NNNN-*.patch）纪律
-
-- 常驻重建树在 **`work/chain-tree/`**（`/tmp` 会被清空）。
-  它每个子树只跟踪**一个文件**：改 `bsd/dev/sweet_glink.c` /
-  `iokit/Kernel/arm/hid/SweetHaptics.cpp` / `iokit/Kernel/IORegistryEntry.cpp` 之前，
-  先确认该文件在树上的链位；新纳入的文件要先从 `work/ci-src/xnu-xnu-8796.141.3`
-  复制并提交为基线，再编辑。
-- **`work/ci-src` 是过滤过的快照**：某些文件被截断（`IOUserClient.cpp` 里搜不到 `attach`），
-  `KernelConfigTables.cpp` 只到 ~0207 的链位 ⇒ 不能当 CI 基线，也不能据它数 personality 条数。
-- **生成补丁的顺序**（这条错一次就烧一轮 CI）：
-  1. 先把重放好的基线 **commit**；
-  2. 编辑；
-  3. `git diff <基线那个 rev> -- <file>` —— **不是 `git diff`**
-     （HEAD 若已含上一版，你会拿到只有一行的碎片，`0251` 上真踩过）；
-  4. 在一份**纯净基线副本**上 `git apply --check -p1`，再 apply，再 `diff -q` 对比你写的树；
-  5. 数 hunk：和改动点数一致才提交（多出来的 hunk = 别人的补丁混进来了）。
-- **基线 rev = 最后一个"已经变成补丁"的 rev，不是最后一个本地 commit**。
-  链树里没落成 `.patch` 的 commit 在 CI 里**不存在**，据它 `git diff` 出来的上下文
-  CI 树里没有 ⇒ `git apply --check` 直接拒（dxb 用的正是 `git apply --check` + `git apply`，
-  所以只要基线选对，本地这一条就是 CI 的等价测试）。
-  run 387（0261）就是这么红的：链树 `1a2266b` 加的 `body touched=` 观察块还没进任何补丁，
-  0261 的 hunk 2 却把它当既有上下文 ⇒ `error: patch failed: bsd/dev/sweet_glink.c:5540` ⇒
-  补丁被跳过 ⇒ 产物里是 K1 的 `oobcfg v8`。**marker 门把损失压成一次 CI 红，零次开机。**
-- **看跳过原因不要下 44 MB 作业日志**：dxb 把 `git apply` 的报错塞进同一条
-  `Skipping patch …` 行，而我们的 errors 抓取正好排除了它。
-  现在 `build-error.txt` 自带 `=== skip detail ===` 段；历史轮次用
-  `python3 tools/ci_joblog.py <sha>`（Keychain 里的 token，直接取作业日志里的 skip 行 + 失败步骤）。
-- **每个补丁自带 marker**，且 marker = **整条 printf 格式串**、跨补丁唯一、在镜像里连续。
-  作为**运行时参数**传入的 tag 不是 marker（字面量不连续）。
-- **修上一版也要带可区分字面量**（如 `SWEET MARK: dtprop v3`）。`0251` v2/v3 只差代码、
-  没有新字符串 ⇒ 无法用 marker 区分两个构建，只能比整包 sha。
-- 改了 printf 字符串 ⇒ **同一 push 里更新 `.github/workflows/xnu.yml` 的 marker 列表**。
-- **CI 侧 marker 列表是"省钱的那道门"**：它让一次被跳过的补丁表现为 CI 红，
-  而不是一次白花的开机。
-- 在函数里插代码前，检查它调用的标识符**首次声明是否在使用点之前**
-  （`gm_rd()`、`sweet_cpu_*()` 这类晚期定义 + `extern` 会让 CI 报 ISO C90/C99 未声明；
-  stub 编译**抓不到顺序问题**，要人工把标识符列一遍）。
-- **新增/改写函数后必做 stub 语法检查**：把新函数原文抽出来 + 最小 stub，
+- 常驻重建树在 `work/chain-tree/`（`/tmp` 会被清空）。
+- 生成补丁前先把重放好的基线 **commit**；然后编辑；
+  用 `git diff <基线 rev> -- <file>`，**不是 `git diff`**。
+- 基线 rev = 最后一个**已经落成 `.patch`** 的 rev，不是最后一个本地 commit。
+- 在纯净基线副本上 `git apply --check -p1` → apply → `diff -q` 对比；
+  hunk 数与改动点数一致才提交。
+- 每个补丁自带唯一 marker，marker = **整条 printf 格式串**、跨补丁唯一、在镜像里连续。
+- 改 printf 字符串 ⇒ 同一 push 里更新 `.github/workflows/xnu.yml` 的 marker 列表。
+- 新增/改写函数后必做 stub 语法检查：
   `clang / clang++ -Wall -Wextra -Wformat=2 -Werror -fsyntax-only`。
-  今天两轮损失都是它没做（丢 `uint32_t i;` → CI 红；守卫顺序 → 开机 panic）。
-  注意 stub 自己多余的变量也会被 `-Werror=unused-variable` 打死，
-  别把 stub 的错读成代码的错。
-- `python` 行手术容易吃掉括号/声明行；**用链对比抓**。生成 C 代码用**非 raw** 三引号，
-  单引号串里别放撇号。
-- `cmd | head -2 && echo OK` 会**吞掉 cmd 的失败**（管道取的是 head 的状态）。
-  用 `cmd; st=$?` 或 `&&`。
-- 只在"只动 `+` 行"时改已有补丁才安全；改了就要重算每个 hunk 的 `-N,M/+N,M` 并
-  在**打补丁前**的树上 `git apply --check`。新逻辑一律开新编号补丁。
+- 插代码前检查标识符首次声明是否在使用点之前（stub 抓不到顺序问题）。
+- `git add` 不许管进 `head`（SIGPIPE 会吞掉 add）；用
+  `git diff --cached --numstat` 核对实际暂存内容。
 
----
+## 4. 仪器与日志的坑
 
-## 5. 仪器与日志的坑（写判据之前必读）
+- 内核 console 在 `exec bluetoothd` 之后基本哑 ⇒ 关键行必须直写 ring。
+- `bsd/dev` 的 `printf` = 单写；`SWEET_HAP_LOG` = 双写（IOLog + ring）。
+- ring 单条记录约 240 字节，截断不加分隔符；长 payload 分 180 字节段打。
+- **仪器必须能自证失败**：只在已被证明会执行的路径上打印，否则标注「非判据」。
+- 阳性对照要在同一轮里被证明会出数；聚合数按进程/类/pid 拆开。
+- 尺寸/长度匹配不是证据；同一个 `u32=18504` 在 ACDB 里能出现几十次。
+- `status=0` + 静音是**移除**，不是成功；`no response` 要先做 liveness probe。
+- 新 checker 先在已知-good 产物上测；两个解释都能拟合一个 refusal 时，一次只动一个轴。
+- 导出/读回的 body shape 必须从对象自己的 walk 推导，不能猜。
 
-- 内核 console 在 `exec bluetoothd` 之后基本哑 ⇒ 只有直接调 `sweet_log_append()` 的行
-  保证进 ring。早期行会出现两遍（console + 直写），那是直写通道在工作的证明。
-- **行数换算**：`bsd/dev` 的 `printf` = **单写**（行数 = 次数）；
-  `SWEET_HAP_LOG`（IOLog + ring 直写）= **双写**（行数 = 2×次数）。
-  写判据前先从 ring grep 出真实形态（历史上我把双写行当成两次事件）。
-- ring 单条记录 ~240 字节，**截断不加分隔符** ⇒ 一个"长行"其实是多条被粘起来；
-  别数行、别按行算长度。长 payload 分 180 字节段打；读回用 `getLength()` 限制。
-- **仪器必须能自证失败**：只在"已被证明会执行的路径"上打印；否则明确写成**非判据**
-  （`bhap open` 就是——UC 连接根本不走 driver 侧 `open()`）。
-- **阳性对照要在同一轮里被证明会出数**。`IOK launchd:` 当对照失败过
-  （launchd 0 行而 backboardd 785 行）；换成 backboardd 自己当对照才对。
-- 聚合数**按进程、按类/pid 拆开**。`IOK` 追踪的 400 行/boot 上限是**全局共享**的；
-  某进程正好 400/60 行是**饱和**，不是它的总数。
-- 尺寸/长度**匹配不是证据**：`u32=18504` 在 MTP ACDB 出现 53 次、Forte 98 次；
-  "连续窗口求和凑到 18,504"在每个文件里能命中 9–12 次 ⇒ 一律不得据此认领记录组。
-- **不要把仪器产生不了的数据写成观测**：`0x01001006` 的 OOB 包正文不在包里，
-  `gprsend` 那 96 个字里 `p10..` 是**填充**，我曾把它读成"18,504 正文首字为 0"。
-- 别拿错字段对比：HAP520 的 `auto_res`（`0xf009/0xf00a` 阻抗）≠ DT 的 `lra-f0-*`
-  （谐振频率）。此比较已停用。
-- 一次失败后的检查**不许复用**；没跑过的检查不许写进 commit message。
-- Android 原厂侧（本机）：**debugfs 没挂**、`kprobe_events` EACCES、`mount(2)` EPERM、
-  `setenforce` EPERM、pstore/sysfs EACCES、没有 `/dev/mem`、`clk_summary` 空
-  ⇒ tracefs 类数据抓不到。可用：`/sys/class/regulator`、`/proc/asound/pcm`、regmap 列表、
-  `/sys/kernel/tracing`（部分）。root 形式用 `adb shell "su 0 sh -c '...'"`
-  （`su 0 cat` 会掉进交互 shell，`exec-out` 拿到的只有提示符）。
-- `adb devices` 空常常是本机 adb server 而不是手机：`adb kill-server && adb start-server`。
-- 后台任务不要 `| tail`（会缓冲到退出，看起来像"没在跑"）；重定向到文件再读产物。
+## 5. 已验证事实 / 不要重走
 
----
+### 音频
+- 控制面全绿：`GRAPH_OPEN` / `PREPARE` / `START`、TDM `SET_CFG` 全 `status=0`。
+- 数据面已通：S1 叶子 `AP` 位修正后 `DATA_BUFFER done status=0`，1200 buffer 正常复位。
+- 856 B A 形式图（含 `PCM_DEC` + `PCM_CNV`）能开、能起、能推 120 帧；三次有效听测均无声。
+- `EOS_RENDERED` 从未到达；收包仪器已被证明可用（137 包、预期 opcode mix）。
+- 第 73 轮是 **PRM 回包解析失配**，不是 PRM 拒绝：正确应答是
+  `0x02001002` + `0x0800102c`；0298 已离线修好绑定，尚未完整构建/开机。
+- 不要再用 `DATA_BUFFER` 当探针；DONE 只证明缓冲归还，不证明最终渲染。
 
-## 6. 已验证的结论（不要重新证明，也不要自我推翻）
+### 触感
+- AP 侧 SPMI 直驱 HAP520 真的能震（44/44 次有震感）⇒ 输出侧已解决。
+- 按键与开机震动已解决；UIKit / CoreHaptics 的请求仍被 `backboardd` 的用户态 gate 拦下。
+- 不得用坐标 / selector / 内核定时器模拟脉冲。
 
-### 音频（iOS ⇄ ADSP）
-- 控制面**全绿**：`GRAPH_OPEN`/`PREPARE`/`START` `status=0`，`DATA_BUFFER` 被 ADSP 消费
-  （`data_buffer … done status=0`），`sweets1ap=1`（S1 叶子 AP=01）第一次拿到响应。
-- **②（2026-11-05，F–M1 共十枪，已用 27/120；N1 是第 28 枪、**未开**）**：`status` 的分辨力已逐轴拆完，
-  同址 `0x1000`、同 `dst=1`、同句柄、每轮只发一发：
-  ~~**iid 是分界**（`iid=1` ⇒ `0x3`；`iid=` 真实模块号 ⇒ `0x1`，其余逐字不动，0260/第 24 枪）~~
-  **这条已被 M1 打掉（第 27 枪，0263）**：`iid=0x428f`（真实模块）+ `param=0x08001004` + size 12/28 + 带内
-  ⇒ **`0x3`**。⇒ `0x3` 的三个读数 iid 是 `1/1/0x428f`，`0x1` 的四个是 `0x40bd…` 与真 iid+真 param 那几支
-  ⇒ 剩下的候选是"**记录点名哪个 iid**"与 param/size/传输的**组合**，三个码仍是拒绝、语义不命名。
-  在 iid=真实 之下 **每条 size（12 vs 52）与条数（4 vs 9）都是 `0x1`** ⇒ 这两格低信息量、未再花开机；
-  **传输不是分界**（同一份 288 B 带外与带内同码 `0x1`，0261/第 25 枪）；
-  **长度不是分界**（降到 216 B ≤256 带内仍 `0x1`，0262/第 26 枪）；
-  已排除还包括 **地址 / 地址形式 / param id 单独 / 正文字节**（F/E/I/J）。
-  ⇒ 与唯一拿到 `0` 的 C 之间只剩 **param id 与每条 size** 两格，且对 C 是一起动
-  （C = `iid=0x428f` + `param=0x08001017`(12)/`0x0800101b`(28)、2 条、带内 80 B。
-  **更正（2026-11-05，我自己在头文件里复核）**：这两个 param 是**真模块参数**
-  （`PARAM_ID_HW_EP_MF_CFG` @ `hw_intf_cmn_api.h:156`、`PARAM_ID_TDM_INTF_CFG` @ `pcm_tdm_api.h:362`），
-  **不是自创**；`0x08001004` 才是 **APM 图级参数** `APM_PARAM_ID_MODULE_CONN`（`apm_module_api.h:150`）；
-  `iid=1` = `APM_MODULE_INSTANCE_ID`（`apm_api.h:261`）⇒ 之前那句"ACDB 里没有 ⇒ 自创"**作废**，
-  普查只证明"ACDB 里没有"（厂商运行时生成的 cal 本来不落 ACDB）。
-  另：`0x08001015` 是 `MODULE_PROP` 下的 PORT_INFO **属性 id**（`apm_module_api.h:127`），
-  不是 SET_CFG 的 cal key ⇒ 曾排队的 **M2（发 `0x08001015`/size 8）撤回**。
-  ⇒ M1 的问题改述为**命名空间测试**：把图级 `MODULE_CONN` 塞进模块记录，会不会把已被接受的容器变成被拒。
-  **M1 的结果（第 27 枪）：会**（`0` → `0x3`，唯一动的就是 param）。
-  **M1 还触发了一个设备安全门未满足**：本轮 ring 以 `data_buffer send` 截尾，没有 `pcm tone done`、
-  `===== done =====`、`PSCI SYSTEM_RESET`，而复位路径打印后**先 `sweet_log_sync()` 才 `smc`**，
-  解码窗口又与头部 `total` 逐字节相等 ⇒ 不是丢日志（⇒ **不是**我的过滤器；`tools/ring_window.py` 现在会显式查这个）。
-  ⇒ 当轮停手，补两枪（**都只本地重打包，不动 CI**）：**M1c**（28，去掉开关 ⇒ 探针 0 发）**正常收尾**；
-  **M1r**（29，同一发重放）`0x3` **复现**且**正常收尾** ⇒ **M1 的早退是一次性**，探针无因果证据。
-  **N1（0264，第 30 枪）已把记录级仪器修成能自证，并顺手判死它**：`error_code` 预置 `0xa5a5a5a5` 后
-  `body touched=0 of 288`、应答后四条 `err` 仍是哨兵 ⇒ **前八轮的 `err=0` 是"没人写过"，不是"写了 0"**；
-  头文件也写明该字段 *"Applicable only for out-of-band command mode"*，而命令级应答只有 32 B 装不下逐记录码
-  ⇒ **记录级拒绝原因在当前协议形态下不可观察，别再为它花开机**。
-  三个码**除 `0` 外都是拒绝**、语义不命名；`0` 只写"命令级接受"。
-  另：`GRAPH_OPEN` 的 `status=0x2` 语义仍未查；18 KB 正文**一个字节都没拿到过**。
-- **② 的新离线结论（2026-11-05，零开机）**：子图 `0xb0000023` 的逐模块 cal 表 = **10 条**、
-  全部 `param=0x08001015 size=8` ⇒ 上线正文 **240 B ≤256** ⇒ **一发带内 SET_CFG 就装得下整张表**，
-  既不需要带外、也不需要切块、更与那 18 KB 无关（常量与几何见
-  `docs/data/acdb-m2-subgraph23-records.txt`）。厂商 672 B OOB 正文**不等于**任何子图的记录长度和
-  （最近 480）⇒ 672 仍是未解释项，不得据此认领内容组。
-- **AudioReach 线上格式**（官方实现 + 我在本机 `libar-gsl.so` 上逐条反汇编复验）：
-  - 记录头 = **`apm_module_param_data_t{module_instance_id, param_id, param_size, error_code}`
-    = 16 B**，记录间 `GSL_ALIGN_8BYTE`。**没有** GSL 外层包装头。
-  - OOB 包 = 40 B gsl/gpr 头 + **`apm_cmd_header_t{payload_address_lsw, msw, mem_map_handle,
-    payload_size}`**（抓包里就是 `p6..p9`；**正文在映射区，包里取不到**），
-    实测区内偏移可以不是 0（`p6=0x800`）。
-  - 路由：`payload_size ≤ 256` 走 inband，`>256` 走 OOB（比较的是**调用者正文长度本身**，
-    不含任何头）；单条记录 ⇒ `dst = 该记录的 module_instance_id`，多记录 ⇒
-    `dst = APM = 1`（`APM_MODULE_INSTANCE_ID = 1`）。
-  - **`property_flag = 1 << (mem_pool_id − 1)`**（`libar-gsl.so:0x186fc→0x18710`）
-    ⇒ pool=3 必然 flag=4。所以 `sweetshmflag=4` **不是** "offset 模式"
-    （此说法已在 `docs/START-HERE.md` 更正）。
-  - `APM_CMD_SET_CFG = 0x01001006`；我们实测的 `GRAPH_START` op 是 `0x01001002`；
-    `0x08001005` = `APM_PARAM_ID_SUB_GRAPH_LIST`（**不是** GRAPH_START 的 opcode）。
-- 我们那个 **2,960 容器**的构造方法被反向验证：
-  `Σ(52 + align8(blob_len))` 对 `{b0000002:808, b0000025:756, b0000024:256/924, b0000023:944}`
-  精确等于 2,960。注意另一种框法 `8 + align8(44+blob_len)` 给出同一个数
-  ⇒ **数字本身不能区分两种格式**。
-- ACDB 结构（本机 6 份文件，9,039/9,039 条目验证）：条目头 **44 B**，不变式
-  `entry_len = 44 + blob_len`；字段序
-  `entry_len, desc_len, subgraph_id, num_desc_params, {param_id,size,data}…, blob_len, blob`；
-  blob 起点恒满足 `file_offset % 4 == 2`。blob 内部是 `{iid, param_id, size} + align8` 的 TLV 链。
-- **mediaserverd 现状**（J/K/L/M 四轮实测）：open 4 台 IOAudio2 设备、`map`、`notify port`
-  都有，**一个 `IOAudio2DeviceUserClient` 的方法都不调**；它落空的查询只有
-  `AppleEFINVRAM`/`IODTNVRAM`/`bluetooth`，且在那之后还继续跑了 180+ 行
-  ⇒ "缺 NVRAM 所以停住"**没有证据**。
-  `path IODeviceTree:/product` 的上百次查询发生在**成功 open 之后**。
-  `GetControlValue`（selector 4）的回答从 0 改成 1 **什么都没变**（M 轮）。
-- `sel=4`（GetControlValue）**跟音频 flag 走**，与探针/追踪无关；`sweetaopval`、`sweetnobb`、
-  `sweetampverify` 这些已死仪器不再带。
-- `crashed: mediaserverd` 只出现在 **24/181** 个 ring，且与"能 open 音频设备"的 12 个 ring
-  **完全不重叠** ⇒ 崩溃风暴是另一批 boot 的问题，**不能**解释"开壳不出流"。
+### GPU / Wi-Fi / 基带
+- 旧 XNU 8796 GPU 线仍冻结：kgsl-smmu 的 CB 页一碰整机挂死，CX 域电源未真正打通。
+- FoXLinne 的上游 iOS 18 GPU 实现可参考，但 iOS 16 适配未开始；不得整仓覆盖。
+- Wi-Fi 当前主线：第 74 轮只读 handoff 通过，确认 QCA6490/PCIe0 交接后保持关闭；端点识别尚未实机验证。0302/0303 尚未进入实际启动路径。
+- Wi-Fi 失败关闭：没有端点 marker 不进 DMA；没有 owner 授权不放 BME；
+  不能照抄参考机 bank/slot，不能因 MMIO 回读成功就放开 DMA。
+- 基带未开实验；先决门是 306 MB `mpss_region` 能否在本内核启动时持有。
 
-### 震动（B4）
-- **输出侧已解决**：AP 侧 SPMI 直驱真的能震（44/44 次有震感、震感与设置一致）
-  ⇒ "B4 和 ② 是同一堵墙"作废。
-- `fault during play=0x2` 由**本次脉冲**产生：`0xf066<-0x07` 清除后立即读 `0xf00c` **恒为 0**，
-  播放中恒 `0x2`（44/44）。所以 `0x2` **不代表"没动"**，位语义未查。
-- **4 个同名 bhap 实例是我们自己造的**：4 个不同 `self`、`provider` 全是同一个
-  `IOResources` 节点 ⇒ 同一 provider 被同一条 personality 匹配 4 次，**不是**实例互相匹配；
-  iOS（pid 57）attach 的是**最后注册的那个**，前 3 个是孤儿。机制候选是
-  `SweetHaptics.cpp:593` 把实例 `IOMatchCategory` 改写成 `IODefaultMatchCategory`
-  （XNU 靠它去重：`IOService.cpp:3887 copyClientWithCategory` + `:4033` 赋值），
-  **但 Callan 同样改写却只有 1 个实例 ⇒ 仍是候选，不是结论**。
-- UC 连接**不调用 driver 侧 `open()`** ⇒ 想问"谁 attach 了哪个实例"，只能挂在 selector 路径上。
-- DT 里只有 **1 个** `qcom,hv-haptics@f000`；`swr_haptics`（SoundWire）并存但不是我们的必要条件。
+### 存储
+- root 镜像位于 userdata 尾部；**f2fs 没有缩小，GPT 没有改**。
+- 研究机日常仍开 Android ⇒ f2fs 写满会覆盖尾部 root，这是活的风险。
+- 当前只能事后发现：开机前重读 HFS+ 卷头签名与 free 块数，发现被覆盖就重新分块写尾部。
 
----
+## 6. 环境与工具
 
-## 7. 已关闭 / 不要重走
+- GitHub HTTPS/网页/API 经常炸；SSH 推通常能过。没有 `gh` CLI。
+- CI 只在 push 到 `main` 且路径含 `xnu/patches/**` 或 workflow 时触发。
+- runner 类失败（`Job is waiting for a hosted runner to come online`）表示作业根本没进 Build；
+  这时 release 摘要和 `build-error.txt` 都不会变，摘要本身不能定位失败，必须看日志。
+  本地 `ci_replay.sh` / stub 编译 / marker 回查都通过时，重跑即可，不要改代码。
+- 构建结果只看 release 资产；`fetch_kernel.sh` 取摘要必须按资产名配对。
+- 下载 kernel 用续传循环直到完整；不要用循环轮询 Actions API。
+- Android 侧 debugfs 没挂、kprobe 不可用、`/dev/mem` 不存在、`clk_summary` 为空；
+  可用的是 regulator、`/proc/asound/pcm`、regmap 列表等只读接口。
 
-- **WiFi（CNSS/QCA6490）：2026-11-05 用户决定"先缓"**，不是判死。取证在 `docs/HANDOFF-2026-11-05.md` 第九节
-  与 `docs/status-log.md` 当晚条目。**为什么贵**：要新长四段——PCIe RC/PHY 链路（本项目从没做过，GPU 内置不占这条）、
-  MHI 主机栈、整套 802.11 驱动（QCA6490 属 M3/`ath11k` 类，含板级 cal 与 IPA offload）、外加用户态要让
-  `wifid`/`corewifi`/SkyWalker 认一个 Apple HAL 表面（"能上网"与"设置里能用"是两个工程）。
-  **日后重启的第一口**：先离线确认本机用哪个 `bdwlan.eNN`/`bd_l*.elf` 变体（`/vendor/firmware_mnt/image/qca6490/`，26 MB），
-  最多一发只读 PCIe 配置空间/链路速率的微探针；**不要先写驱动**。
-- **基带（MSS）：一枪未开，先决门是内存**——DT `remoteproc-mss` 要 **`mpss_region@8bc00000` 306 MB**
-  （ADSP 当年只用 49 MB）。**没核清"这块区在我们 XNU 启动时能否持有"之前不许开机做基带**。
-  别把这两个词当证据：`sweetnobb` = no **bit-bang**（与基带无关）；`mkadt.py` "no baseband here" 指 iOS 侧无 BB 资产。
+## 7. 目录与产物
 
-- 追那 18 KB 的**内容**（机内 6 份 ACDB 已量完：没有任何 blob 落在 18,000–19,000；
-  所谓"超限校准记录"是 1,524 条目表之后的**文件级尾块**，不是子图校准）。
-- 用"凑总长"认领 ACDB 记录组。
-- `auto_res` vs `lra-f0-*` 的比较。
-- 用 `tinyplay` 当扰动去测时钟（该格已因"无法测量"关闭）。
-- `matchPropertyTable` 探针（观测不到类查询，别再挂回来）。
-- GPU 线：FROZEN。重开门槛 = 真自旋心跳 + 能扛住停滞的输出通道。
-- 按文件名找库：`/vendor/lib64/libgsl.so` 是 **Adreno GPU** 的 GSL，
-  音频的是 **`/vendor/lib64/libar-gsl.so`**（本地副本 `work/phone-libs/`）。
-
----
-
-## 8. 目录与产物
-
+```text
+.github/workflows/xnu.yml       CI：构建 XNU、marker 门、发布 kernel-latest
+xnu/patches/                    XNU 的全部移植补丁（当前到 0303）
+shim/                           RAM-only 引导 shim（AArch64 裸机 + boot.img v4）
+scripts/                        取内核 / 打包 / 启动 / 拉日志 / Wi-Fi 构建
+docs/chronology.md              唯一编年史
+docs/STATUS.md                  当前状态
+docs/START-HERE.md              当前验证过的配方
+docs/audio-closeout.md          音频当前判决 + 证据索引
+docs/audio-hal-listen.md        0293→0298 / R1 合并记录
+docs/gpu-status.md              GPU 当前判决 + 原始日志索引
+docs/wifi-foxlinne-port.md      当前 Wi-Fi 移植
+docs/haptics-abi-2026-10-30.md  触感 ABI 与当前 gate
+docs/smmu-dead-ends.md          已证伪的 SMMU 路线
+docs/required-assets.md        自备文件与许可
+docs/traces/                    原始抓包与解析方法
+work/chain-tree/                常驻重建树
+work/archive/                   本地档案（不进公开仓库）
 ```
-work/xnu-gh/                     补丁、脚本、docs、logs（git 仓库）
-  xnu/patches/NNNN-*.patch       补丁序列（当前到 0264；0261-0264 = L1/L2/M1/N1）
-  .github/workflows/xnu.yml      CI，含 "Verify our patches applied" marker 列表
-  docs/HANDOFF-2026-11-05.md     **交接入口**：轴拆到哪、别再走哪些、下一枪的投入/收益排序、复现配方
-  docs/status-log.md             按时间的实验日志（最新看这里）
-  docs/audio-closeout.md         ② 与音频收尾 + 每轮判据/判决（H/I/J/K/L/M/N、②攻坚 1-6）
-  docs/audio-hal-bridge.md       iOS 侧出声还差什么（路线排序、ep 序列）
-  docs/START-HERE.md             已知-good 配置 + 复现命令
-  docs/gpu-probe.md / smmu-dead-ends.md / speaker-path.md / handoff.md / required-assets.md
-  tools/acdb_graph_rebuild.py    ACDB TLV 走链 + 容器对表
-  tools/acdb_size_scan.py        整文件 u32 尺寸扫描
-  tools/ci_replay.sh             推送前的 CI 等价测试（base + 全链重放 vs 链树 HEAD）
-  tools/walk_param_records.py    多记录 apm_module_param_data 容器逐字节走链
-  tools/decode_graph_blob.py     用 sheng 的词表走链厂商 GRAPH_OPEN 正文（只读，自证末尾对齐）
-  docs/unixnu-sheng-audio-2026-11-07.md  sheng 音频源码读到什么 / 已付过钱的是哪三样 / 新格 = 图里缺 DEC+CNV
-  docs/data/vendor4-graph-decode-2026-11-07.txt  上面那条的输出归档（4 子图 / 18 模块 / 30 连接）
-  tools/ring_window.py           SWEETLOG 头部 total vs 解码字节；窗口后的收尾串判为陈旧字节
-  tools/score_probe.py           按开机前判据打分（l1/l2/m1/m1c/n1），含上面两条自检
-  work/archive/tmp-scratch-2026-11-05/  /tmp 里历次草稿收进来的存档（见其 MANIFEST.md）
-work/chain-tree/                 常驻重建树（git，按文件跟踪；见第 4 节）
-work/chain-tree-i2c/             I2C 子树的另一链位
-work/ci-src/xnu-xnu-8796.141.3/  过滤过的源码快照（不可当基线）
-work/phone-acdb/                 本机 6 份 ACDB（已从 /tmp 挪出）
-work/phone-libs/libar-gsl.so     AudioReach GSL
-work/iphone-x-recon/             真机取证（dyld/ioservice.txt 等；
-                                 hfs 本地 iosroot16.img 只是 ~2.68 GB 前缀，用户态结论必须回机读）
-logs/ring-*.txt                  ring 日志（新一轮之前先把上一份按 run 名复制出来）
-```
-
-判日志位置只认**最后一条 `sweet_log_sync()`**；文档引用 ring 要用归档文件名，
-不是会被覆盖的 `logs/ring-gpu-pwr.txt` 那类默认名。

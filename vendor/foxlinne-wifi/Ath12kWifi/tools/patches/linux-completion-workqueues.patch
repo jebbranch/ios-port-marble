@@ -1,0 +1,29 @@
+Subject: Mark QMI receive and MHI transition queues as native IO completion work
+
+The native single executor defers ordinary control work while mutexes are
+held. QMI replies and MHI state transitions must continue through synchronous
+driver waits. This changes scheduling roles only; protocol bodies are unchanged.
+
+--- a/qmi_interface.c
++++ b/qmi_interface.c
+@@ -650,7 +650,7 @@
+ 	if (!qmi->recv_buf)
+ 		return -ENOMEM;
+ 
+-	qmi->wq = alloc_ordered_workqueue("qmi_msg_handler", 0);
++	qmi->wq = alloc_ordered_workqueue("qmi_msg_handler", LX_WQ_IO_COMPLETION);
+ 	if (!qmi->wq) {
+ 		ret = -ENOMEM;
+ 		goto err_free_recv_buf;
+--- a/mhi-init.c
++++ b/mhi-init.c
+@@ -951,7 +951,8 @@
+ 	INIT_WORK(&mhi_cntrl->st_worker, mhi_pm_st_worker);
+ 	init_waitqueue_head(&mhi_cntrl->state_event);
+ 
+-	mhi_cntrl->hiprio_wq = alloc_ordered_workqueue("mhi_hiprio_wq", WQ_HIGHPRI);
++	mhi_cntrl->hiprio_wq = alloc_ordered_workqueue("mhi_hiprio_wq",
++						   WQ_HIGHPRI | LX_WQ_IO_COMPLETION);
+ 	if (!mhi_cntrl->hiprio_wq) {
+ 		dev_err(mhi_cntrl->cntrl_dev, "Failed to allocate workqueue\n");
+ 		ret = -ENOMEM;

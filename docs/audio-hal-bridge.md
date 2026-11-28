@@ -147,7 +147,7 @@ iOS 的音频服务在我们这颗机器上**是活的**，它缺的是**下面�
 
 - **共享的一半**：iOS 的触觉走音频栈（`CoreHaptics` → haptic-audio → mediaserverd 这条路），
   所以本文 §5 的 (1)(2) 两步同时是震动的拦路；这与
-  `docs/haptics-handoff-2026-10-30.md:790` 记的 `CHHapticEngine → AppleSPUHapticsAudioDriver → AOP/DSP`
+  `docs/haptics-abi-2026-10-30.md` 记的 `CHHapticEngine → AppleSPUHapticsAudioDriver → AOP/DSP`
   一致，且 `AppleSPUHapticsAudioDriver` 在 F5 里确认存在于我们启动的内核。
 - **不共享的一半**：物理后端不同。F8 显示 marble 的触觉是 `pm8350b-swr-haptics`（SoundWire 上的
   PMIC 通道），而喇叭是 WCD938x + AW882xx。所以**内核侧把喇叭打通并不会自动让马达到**；
@@ -702,53 +702,37 @@ B1 就是拿同一版内核、同一份镜像，只把"人故意连按音量键 
    SoundWire 马达后端单列，不进以上任何判据。
 
 
-## B4 只读盘点（两名专家 + 我复核）：**震动线大概率撞的是同一堵墙，而且比"iOS 不提交"更早**
+## B4 触感：输出侧已解决，剩下的在用户态
 
-### 一、先记两次对我自己的纠正
-1. **"每 boot 2 次"是双写行数**，不是两次事件（0209 的 `SWEET_HAP_LOG = IOLog + sweet_hap_ring_log`，
-   `xnu/patches/0209-sweet-haptics-ringlog.patch:38-42`）。真实值：**open/map/`sel=1` 各 1 次/boot**（71/176 ring）。
-2. ep8 的"`uid=Actuator` 重复 map 4 次"与本表"震动壳 `map type=0`"**是两类不同对象**：
-   前者 `IOAudio2DeviceUserClient`（`SweetAudioProbe.cpp:244`，0244，**单写**），
-   后者 `AppleAOPButtonHapticsServiceUserClient`（0209，**双写**）。
-   且 ep6/ep7 同样有那 4 次，只是旧 printf 不打 `uid=` ⇒ **格式差异不是行为差异**。
+早期记录曾把 `auto_res=0x26` 与 DT 的 `lra-f0-*` 比较，据此推断「直驱从没让马达动过、
+B4 与音频是同一堵墙」。**这条结论已撤回**：
 
-### 二、用户态止点（176 ring 一致，实测）
-`AppleAOPButtonHapticsServiceUserClient`：open → map → `buffer watch on` → `sel=1`（内含 asset count 18、
-64 字节头 dump **全零**）→ **再无第二个 selector**；`AppleSPUHapticsAudioUC`：open → `setProperties
-{GlobalConfig,GlobalForceFeel=1}` → 0 selector；`AppleHapticsSupportUserClient`：0 open；
-`IOAudio2DeviceUserClient`：0 selector。全库无 `StartHardware`、无会话中 close。
-⇒ 与音频侧**完全同形**：开壳、配置，**一次都不提交**。
+- `auto_res` 与 `lra-f0-*` 不是同一字段，比较永久停用；
+- AP 侧 SPMI 直驱 PMIC HAP520 **真的能震**：44/44 次有震感，震感与设置一致；
+- `fault during play=0x2` 由本次脉冲产生，清除后为 0，与「没动」无关；
+- 按键与开机震动已解决；设置里的「声音与触感」、键盘反馈、响铃/静音振动开关都已出现。
 
-### 三、更前面的那一堵墙：**我们的直驱从来没让马达动过**（实测数字，全库）
-| 读数 | 出现次数 |
-|---|---|
-| `SWEET HAP: ... auto_res=0x26` | **391 次，且恒为 0x26 = 38** |
-| `fault during play=0x2` | **372**（另有 `0x10`×3、`0x1`×1） |
-| `final en=0` | 391 |
+剩下的缺口在用户态：UIKit / CoreHaptics 的请求被 `backboardd` 的 gate 拦下，
+内核各路径看不到 IPC。约束不变：不得用坐标 / selector / 内核定时器模拟脉冲，
+测试必须来自真实 UIKit、CoreHaptics、ButtonResolver 或系统 HID 事件。
+详见 [`haptics-abi-2026-10-30.md`](haptics-abi-2026-10-30.md)。
 
-设备树对这颗 LRA 的标定是 `qcom,lra-f0-min=0xa0(160) / max=0xb4(180) / default=0xaa(170)`
-（`logs/fdt/marble-live.dts:8724-8726`），而 `vmax-mv=0x5aa(1450)`、`lra-period-us=0x16fa(5882)`
-与我们写的 `vmax=29`、`tlra=0x498` **完全吻合**。
-⇒ 我们把 DT 给的参数都写对了、SPMI 写全部 `rc=0`、`rev2=0x2`(HAP520) 也在，
-**但每一次 play 都读到 38（标定范围 160–180 之外）并立刻 fault 0x2**。
+---
 
-### 四、结构解释（**假设，未证**，但给出可判的下一步）
-DT 里这颗 haptics **同时**挂着两条访问路径：
-```
-qcom,hv-haptics@f000 (SPMI 寄存器面, status="ok")
-   └─ qcom,hap-swr-slave-reg  (phandle 0x631)         ← 供电/使能
-rx_swr_master (qcom,swr-mstr, master_id=2, swr-num-dev=2)   marble-live.dts:21376+
-   └─ swr_haptics@f0170220  compatible="qcom,pm8350b-swr-haptics", status="ok",
-                            swr-slave-supply=<0x631>
-```
-⇒ **同一个 HAP 块有两个主人**：AP 侧走 SPMI（我们的路），LPASS/ADSP 侧走 SoundWire（厂商的路，
-`swr_haptics` 是 LPASS RX SoundWire 总线上的从设备）。我们的写全部 `rc=0` 却恒定读到越界阻抗 + fault，
-与"马达实际由 ADSP 经 SWR 驱动、SPMI 这面只是影子/被切换了输入"**相容**。
-**没证的部分**：到底是所有权被切走、还是 `auto_res` 不是我想的阻抗值（单位/含义都没读准），
-也**没有**任何证据说"换成 SWR 访问就能响"。
+## 附：音频架构纠正（合并自旧 sound-plan）
 
-### 五、为什么这与 ② 是同一堵墙
-若马达要由 ADSP 经 LPASS/SoundWire 驱动，那"让手机震一下"需要的就是
-**让 ADSP 把它自己的 haptics 图开起来**——而让 ADSP 开图正卡在 ②（那条我们拿不到的 18504
-校准/配置对象与 `status=0x2`）。所以 B4 **不比扬声器容易**：它挂在同一条 LPASS 基础设施上。
-⇒ 机时不该从这里"再试一次"，而该由 #10 的能力决定点决定。
+旧音频计划的硬件普查方向有用，但两条路线判断已被实测取代：
+
+1. **桥的对象是 IOAudio2 + AOP，不是 AppleHDA。** 本移植内核里 `AppleHDA` 字符串计数为 0；
+   `IOAudio2Device`、`IOAudio2DeviceUserClient`、`AppleEmbeddedAudioDevice`、
+   `AppleARMIISAudioDevice`、`AppleAOPAudioController`、`AppleSPUHapticsAudioDriver` 都在。
+   rootfs 的 HAL 插件 `AppleAOPAudioPlugin.driver` 的加载条件是
+   `IOProviderClass = AppleAOPAudioController`。mediaserverd 在本移植里能起来，
+   也会 open 我们发的壳并调 `method_Open`。
+2. **扬声器不是 WSA。** live FDT 与厂商抓包确认实际路径是
+   **TERTIARY TDM + 两颗 AW882xx**；`qcom,wsa-max-devs = 0`。
+   详见 [`speaker-path.md`](speaker-path.md)。
+
+因此旧计划里「先做 AppleHDA 兼容层」与「WSA codec 直驱」两条建议作废。
+当前路线是：ADSP AudioReach 控制/数据面 → HAL 桥 → TDM → AW88266，
+判决与证据见 [`audio-closeout.md`](audio-closeout.md)。
